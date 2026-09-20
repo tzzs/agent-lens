@@ -17,7 +17,8 @@
     "paths": {
       "@agentlens/event-model": ["./packages/event-model/src/index.ts"],
       "@agentlens/storage": ["./packages/storage/src/index.ts"],
-      "@agentlens/collector": ["./packages/collector/src/index.ts"]
+      "@agentlens/collector": ["./packages/collector/src/index.ts"],
+      "@agentlens/pricing": ["./packages/pricing/src/index.ts"]
     }
   },
   "include": ["packages/*/src/**/*", "packages/*/test/**/*", "adapters/*/src/**/*", "adapters/*/test/**/*", "apps/*/src/**/*"]

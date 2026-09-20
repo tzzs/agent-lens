@@ -9,6 +9,7 @@ export default defineConfig({
       '@agentlens/event-model': r('./packages/event-model/src/index.ts'),
       '@agentlens/storage': r('./packages/storage/src/index.ts'),
       '@agentlens/collector': r('./packages/collector/src/index.ts'),
+      '@agentlens/pricing': r('./packages/pricing/src/index.ts'),
     },
   },
   test: {

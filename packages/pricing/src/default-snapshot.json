@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "fetchedAt": 1758506400000,
+  "source": "BOOTSTRAP snapshot, hand-written to mirror litellm field names for the model ids observed on the target machine (plan-v2 §4.4/§8). Prices are plausible placeholders of the right order of magnitude and MUST be regenerated from litellm by `agentlens pricing update` before release.",
+  "entries": [
+    {
+      "model": "claude-sonnet-5",
+      "litellm_provider": "anthropic",
+      "input_cost_per_token": 0.000003,
+      "output_cost_per_token": 0.000015,
+      "cache_read_input_token_cost": 3e-7,
+      "cache_creation_input_token_cost": 0.00000375,
+      "effective_from": 1751328000000
+    },
+    {
+      "model": "claude-sonnet-5-budget",
+      "litellm_provider": "anthropic",
+      "input_cost_per_token": 0.0000015,
+      "output_cost_per_token": 0.0000075,
+      "cache_read_input_token_cost": 1.5e-7,
+      "cache_creation_input_token_cost": 1.875e-6
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "litellm_provider": "anthropic",
+      "input_cost_per_token": 0.000003,
+      "output_cost_per_token": 0.000015,
+      "cache_read_input_token_cost": 3e-7,
+      "cache_creation_input_token_cost": 0.00000375,
+      "effective_from": 1738368000000
+    },
+    {
+      "model": "claude-opus-5",
+      "litellm_provider": "anthropic",
+      "input_cost_per_token": 0.00001,
+      "output_cost_per_token": 0.00005,
+      "cache_read_input_token_cost": 0.000001,
+      "cache_creation_input_token_cost": 0.0000125,
+      "effective_from": 1750032000000
+    },
+    {
+      "model": "claude-opus-4-8",
+      "litellm_provider": "anthropic",
+      "input_cost_per_token": 0.000015,
+      "output_cost_per_token": 0.000075,
+      "cache_read_input_token_cost": 0.0000015,
+      "cache_creation_input_token_cost": 0.00001875,
+      "effective_from": 1746057600000
+    },
+    {
+      "model": "claude-opus-4-8-budget",
+      "litellm_provider": "anthropic",
+      "input_cost_per_token": 0.0000075,
+      "output_cost_per_token": 0.0000375,
+      "cache_read_input_token_cost": 7.5e-7,
+      "cache_creation_input_token_cost": 9.375e-6
+    },
+    {
+      "model": "claude-opus-4-7",
+      "litellm_provider": "anthropic",
+      "input_cost_per_token": 0.000015,
+      "output_cost_per_token": 0.000075,
+      "cache_read_input_token_cost": 0.0000015,
+      "cache_creation_input_token_cost": 0.00001875,
+      "effective_from": 1743465600000
+    },
+    {
+      "model": "claude-opus-4-6",
+      "litellm_provider": "anthropic",
+      "input_cost_per_token": 0.000015,
+      "output_cost_per_token": 0.000075,
+      "cache_read_input_token_cost": 0.0000015,
+      "cache_creation_input_token_cost": 0.00001875,
+      "effective_from": 1735689600000
+    },
+    {
+      "model": "claude-haiku-4-5",
+      "litellm_provider": "anthropic",
+      "input_cost_per_token": 0.000001,
+      "output_cost_per_token": 0.000005,
+      "cache_read_input_token_cost": 1e-7,
+      "cache_creation_input_token_cost": 0.00000125,
+      "effective_from": 1730419200000
+    },
+    {
+      "model": "deepseek-flash",
+      "litellm_provider": "deepseek",
+      "input_cost_per_token": 2.5e-7,
+      "output_cost_per_token": 0.000001,
+      "cache_read_input_token_cost": 5e-8,
+      "effective_from": 1747440000000
+    }
+  ]
+}
