@@ -634,3 +634,24 @@ Replay · 导出（OTel/Langfuse）· 告警（"agentx 今日成本 +240%"）· 
 5. 🟢 其他 Agent 是否记录 MCP server 名 / compact 事件 / hook 类能力
 
 > 每项各产出一篇 `docs/research/<agent>.md`（含脱敏样本 + 可重跑的 probe 脚本），作为对应 Adapter 的 fixtures 来源。第 1 项在 M1 结束前不得跳过。
+
+---
+
+## 18. 实测第二轮（2026-09-21，Codex / Qoder / OpenCode / WorkBuddy）
+
+证据：`docs/research/codex.md`、`qoder-opencode.md`、`workbuddy.md`，脚本 `probe-codex{,-2}.mjs`、`probe-qoder.mjs`、`probe-opencode.mjs`、`probe-capabilities.mjs`、`reconcile-codex-ccusage.mjs`。样本量：Codex 379 文件 / 221,416 记录 / 571 MB；Qoder 4,845 文件 / 14,742 记录 / 38 session；OpenCode SQLite 22 表（session 10 / message 531 / part 2,242）；WorkBuddy SQLite 10 表。
+
+这一轮**证伪了 §3/§4/§8 的四条假设**，M2 的"逼 Schema 改第二轮"因此提前。结论按严重度：
+
+| # | 实测结论 | 对方案的影响 |
+|---|---|---|
+| 1 | 🔴 **§8「日志里没有成本字段」只对 Claude 家族成立**。OpenCode 原生带 `session.cost` 与逐消息/逐 step 成本；WorkBuddy `session_usage` 同样带成本。 | `events` 增列 `cost_reported REAL` + `cost_source TEXT('reported'\|'computed'\|'none')`。查询优先级：reported > computed；两者都无 → NULL，仍不得当 $0。 |
+| 2 | 🔴 **`request_id` 去重是 Claude/Qoder 特有形态，不是全局不变量**。同一测在 Codex/Qoder 均未复现"一次响应拆多条重复 usage"（Qoder 每个 request_id 恰好一条 usage；Codex 0 组重复）。Codex 的同类陷阱更狠：usage 有三层粒度（每次调用的 `last`/`usage` + 累积的 `total`/`turn`/`thread`），误用累积字段虚高 **约 1,971×**；正确口径是只累加每次调用的 `last_token_usage`，且按 ccusage 对账须**排除 subagent 线程**（逐字段偏差 cacheRead +2.3% / total +1.8%）。 | 去重口径改为**Adapter 声明**：`Adapter.aggregation = { mode: 'request_max' \| 'per_record_sum' \| 'last_call_sum', subagentsIncluded: boolean }`。`'request_max'` 仍是 Claude/Qoder 默认，查询立方体按 agent 分流；MAX-per-request 的兜底保留（漏声明时按最保守口径）。 |
+| 3 | 🟠 **§4.1「一个文件一个 session」只对 Claude/Qoder 成立**。Codex 是 file=thread，`session_id` 跨文件（379 个文件里 280 个共享 session，其中 257 个是 subagent 线程）；OpenCode/WorkBuddy 用关系型 session + `parent_id`。 | `events` 增列 `thread_id TEXT`（源内线程/文件粒度）与 `session_id`（产品粒度）双键；`sources.session_id_hint` 保留；subagent 是否计入总量成为显式开关（默认排除，与 ccusage 对齐）。 |
+| 4 | 🟠 **cache token 命名有 4 种方言**，且 Codex 的 `input_tokens` **已包含** cached（与 Claude 相反）：Claude/Qoder `cache_read_input_tokens`/`cache_creation_input_tokens`；Codex `cached_input_tokens`/`cache_write_input_tokens`；OpenCode `tokens_cache_read`/`tokens_cache_write`。 | 方言映射只允许存在于 Adapter 内，`events` 列名冻结；每个 Adapter 必须单测断言"input 是否含 cache"，否则 cost 会双计。 |
+| 5 | 🟡 **能力枚举不通用**：`hook.fire` 只有 Claude/Qoder 有（Codex 实测 0 条）；`context.compact`/`subagent`/`mcp.invoke` 概念都在，但源结构各异（Codex `compacted`/`dynamic_tools`/`thread_source`；OpenCode `time_compacting`/`parent_id`）。 | 枚举保留，但 UI 与 `doctor` 必须按 Agent 声明"该能力是否存在"（`capabilities.supports`），不得默认 hook 列有数。 |
+| 6 | 🟡 **`host_id` 推广成功**：Codex 的 `originator` 分布 Desktop 343 / tui / exec / cli_rs，与 Claude 的 `entrypoint` 同构。 | 无需改结构，Adapter 各自提供 `entrypoint→host_id` 归一表。 |
+| 7 | 🔴 **只读打开 SQLite 并非绝对安全**：Qoder 是 JSONL（Claude Code 分支，非 SQLite）；OpenCode 只读打开干净、不产生 sidecar；**WorkBuddy 的 `workbuddy.db`（WAL 模式）在 `readOnly:true` 下仍创建了 `-wal`/`-shm`**。 | 规则：Adapter 打开前必须检查 `-wal` 存在性；WAL 模式的第三方库默认**拒绝直开**，改走该 Agent 的导出/JSONL 通道，并把"因写入副作用而跳过"记进 `doctor`。这条是硬约束，宁可少采一路也不能碰别人的库。 |
+
+落地顺序（M2′，先改契约再写 Adapter）：`event-model` 加列与 `aggregation` 声明 → `storage` 迁移 `002_entity_refinement.sql`（新增列，不改既有列语义，幂等测试继续通过）→ `query` 立方体按 agent 分流聚合口径 → `adapters/codex`。Schema 改完即冻结，此后只加枚举值不改结构。
+
