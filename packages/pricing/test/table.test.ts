@@ -68,7 +68,7 @@ describe('PricingTable.lookup', () => {
 describe('PricingTable metadata', () => {
   it('lists models and sizes by distinct (provider, model)', () => {
     const table = PricingTable.fromSnapshot(bundledSnapshot(), { generatedAt: JAN_2026 })
-    expect(table.size()).toBe(8)
+    expect(table.size()).toBeGreaterThan(300)
     expect(table.models()).toContain('claude-sonnet-5')
     expect(table.models()).toContain('deepseek-flash')
     expect(PricingTable.empty().size()).toBe(0)

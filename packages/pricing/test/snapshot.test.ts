@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { normalizeLitellmEntries, loadSnapshot, bundledSnapshot, PricingDataError, type PriceSnapshot, type RawLitellmEntry } from '../src/snapshot.ts'
+import { PricingTable } from '../src/table.ts'
 
 const GENERATED_AT = Date.UTC(2026, 8, 20)
 
@@ -87,6 +88,13 @@ describe('bundledSnapshot', () => {
       'claude-opus-4-6',
       'claude-haiku-4-5',
       'deepseek-flash',
+      // §17 round two: Codex's model ids, which the Claude set never contained.
+      'gpt-5.6-sol',
+      'gpt-5.5',
+      'gpt-5.4',
+      'gpt-5.4-mini',
+      'gpt-5.2-codex',
+      'gpt-5.1-codex-mini',
     ]) {
       expect(models.has(m), m).toBe(true)
     }
@@ -95,6 +103,20 @@ describe('bundledSnapshot', () => {
   it('normalizes without throwing and drops budget aliases', () => {
     const entries = normalizeLitellmEntries(bundledSnapshot(), { generatedAt: GENERATED_AT })
     expect(entries.every((e) => !e.model.includes('budget'))).toBe(true)
-    expect(entries.length).toBe(8)
+    // A litellm-derived subset, not the hand-written stub: enough models that a new
+    // agent CLI landing is unlikely to open a pricing gap on its first day.
+    expect(entries.length).toBeGreaterThan(300)
+    // Open-weight models are legitimately $0, so only non-negative-and-finite is invariant;
+    // a missing price must stay absent (null), never a zero.
+    expect(entries.every((e) => e.inputPerMTok !== null && e.inputPerMTok >= 0)).toBe(true)
+    expect(entries.every((e) => e.outputPerMTok !== null && e.outputPerMTok >= 0)).toBe(true)
+    expect(entries.filter((e) => e.inputPerMTok === 0).length).toBeLessThan(entries.length / 2)
+  })
+
+  it('prices apply from the epoch so events older than the fetch still cost out (§8)', () => {
+    const snapshot = bundledSnapshot()
+    expect(snapshot.entries.every((e) => e.effective_from === 0)).toBe(true)
+    const table = PricingTable.fromSnapshot(snapshot, { generatedAt: GENERATED_AT })
+    expect(table.lookup('anthropic', 'claude-sonnet-5', Date.UTC(2020, 0, 1))?.inputPerMTok).toBe(2)
   })
 })

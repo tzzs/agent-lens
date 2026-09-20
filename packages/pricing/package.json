@@ -3,5 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "generate:snapshot": "node scripts/generate-snapshot.mjs"
+  },
   "exports": { ".": "./src/index.ts" }
 }
