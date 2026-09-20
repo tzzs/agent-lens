@@ -51,7 +51,7 @@ export function rowToEvent(row: Row): AgentEvent {
     usage,
     usageSource: row.usage_source as UsageSource,
     costReported: (row.cost_reported as number | null) ?? null,
-    costSource: (row.cost_source as AgentEvent['costSource']) ?? null,
+    costSource: (row.cost_source as AgentEvent['costSource']) ?? undefined,
     credits: (row.credits as number | null) ?? null,
     capability:
       row.capability_type === null
