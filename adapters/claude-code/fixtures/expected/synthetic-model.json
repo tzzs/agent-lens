@@ -1,0 +1,44 @@
+[
+  {
+    "seq": 1,
+    "id": "0f5fc16de3dcdc9c",
+    "type": "error",
+    "subtype": "synthetic-placeholder",
+    "hostId": "claude-code",
+    "requestId": null,
+    "capability": null,
+    "usage": null,
+    "usageSource": "missing",
+    "durationMs": null,
+    "status": "error",
+    "parentEventId": null,
+    "model": "<synthetic>",
+    "project": "project:alpha",
+    "payload": null,
+    "rawInMetadata": false
+  },
+  {
+    "seq": 2,
+    "id": "860ee882317b1361",
+    "type": "generation.end",
+    "subtype": null,
+    "hostId": "claude-code",
+    "requestId": "req-syn-2",
+    "capability": null,
+    "usage": {
+      "inputTokens": 3,
+      "outputTokens": 7,
+      "cacheReadTokens": 10,
+      "cacheWriteTokens": 0,
+      "reasoningTokens": 0
+    },
+    "usageSource": "reported",
+    "durationMs": null,
+    "status": "ok",
+    "parentEventId": null,
+    "model": "claude-sonnet-5",
+    "project": "project:alpha",
+    "payload": "assistant_message:9",
+    "rawInMetadata": false
+  }
+]

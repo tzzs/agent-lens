@@ -1,0 +1,38 @@
+[
+  {
+    "seq": 1,
+    "id": "1826607c6defc67c",
+    "type": "error",
+    "subtype": "api_error",
+    "hostId": "claude-code",
+    "requestId": null,
+    "capability": null,
+    "usage": null,
+    "usageSource": "missing",
+    "durationMs": null,
+    "status": "error",
+    "parentEventId": null,
+    "model": null,
+    "project": "project:alpha",
+    "payload": null,
+    "rawInMetadata": false
+  },
+  {
+    "seq": 2,
+    "id": "c583014433e99e20",
+    "type": "error",
+    "subtype": "api_error",
+    "hostId": "claude-code",
+    "requestId": null,
+    "capability": null,
+    "usage": null,
+    "usageSource": "missing",
+    "durationMs": null,
+    "status": "error",
+    "parentEventId": null,
+    "model": null,
+    "project": "project:alpha",
+    "payload": null,
+    "rawInMetadata": false
+  }
+]

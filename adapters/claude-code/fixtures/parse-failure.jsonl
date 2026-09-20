@@ -1,0 +1,4 @@
+{"parentUuid":null,"isSidechain":false,"userType":"external","cwd":"/work/alpha","sessionId":"sess-broken","version":"2.1.275","gitBranch":"main","type":"user","uuid":"u-bf-1","timestamp":"2026-09-21T07:00:00.000Z","entrypoint":"cli","promptId":"p-bf-1","message":{"role":"user","content":"this line is fine"}}
+{"parentUuid":"u-bf-1","isSidechain":false,"userType":"external","cwd":"/work/alpha","sessionId":"sess-broken","type":"assistant","uuid":"u-bf-2","timestamp":"2026-09-21T07:00:01.000Z"
+[not json at all
+{"parentUuid":"u-bf-3","type":42,"timestamp":"2026-09-21T07:00:02.000Z"}

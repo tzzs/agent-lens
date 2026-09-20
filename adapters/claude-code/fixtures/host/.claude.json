@@ -1,0 +1,7 @@
+{
+  "installMethod": "native",
+  "mcpServers": {
+    "Claude_Browser": { "type": "stdio", "command": "claude-browser" },
+    "plugin_build-ios-apps_xcodebuildmcp": { "type": "stdio", "command": "xcodebuildmcp" }
+  }
+}

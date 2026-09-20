@@ -1,0 +1,38 @@
+[
+  {
+    "seq": 1,
+    "id": "a9ae0e90fd4aa0a5",
+    "type": "skill.invoke",
+    "subtype": null,
+    "hostId": "claude-code",
+    "requestId": null,
+    "capability": "skill:grill-with-docs:invoked_skills",
+    "usage": null,
+    "usageSource": "missing",
+    "durationMs": null,
+    "status": "ok",
+    "parentEventId": null,
+    "model": null,
+    "project": "project:alpha",
+    "payload": null,
+    "rawInMetadata": false
+  },
+  {
+    "seq": 1,
+    "id": "dd488ff268fa40d5",
+    "type": "skill.invoke",
+    "subtype": null,
+    "hostId": "claude-code",
+    "requestId": null,
+    "capability": "skill:design-system:invoked_skills",
+    "usage": null,
+    "usageSource": "missing",
+    "durationMs": null,
+    "status": "ok",
+    "parentEventId": null,
+    "model": null,
+    "project": "project:alpha",
+    "payload": null,
+    "rawInMetadata": false
+  }
+]

@@ -1,0 +1,44 @@
+[
+  {
+    "seq": 1,
+    "id": "578cdfb0eef3bc1e",
+    "type": "generation.end",
+    "subtype": null,
+    "hostId": "claude-code",
+    "requestId": "req-st-1",
+    "capability": null,
+    "usage": {
+      "inputTokens": 20,
+      "outputTokens": 44,
+      "cacheReadTokens": 1500,
+      "cacheWriteTokens": 8,
+      "reasoningTokens": 0
+    },
+    "usageSource": "reported",
+    "durationMs": null,
+    "status": "ok",
+    "parentEventId": null,
+    "model": "claude-sonnet-5",
+    "project": "project:alpha",
+    "payload": null,
+    "rawInMetadata": false
+  },
+  {
+    "seq": 1,
+    "id": "d8d0919ab0ba6a21",
+    "type": "skill.invoke",
+    "subtype": null,
+    "hostId": "claude-code",
+    "requestId": null,
+    "capability": "skill:skill-creator:skill-tool",
+    "usage": null,
+    "usageSource": "missing",
+    "durationMs": null,
+    "status": "ok",
+    "parentEventId": "set:578cdfb0",
+    "model": "claude-sonnet-5",
+    "project": "project:alpha",
+    "payload": "tool_input:80",
+    "rawInMetadata": false
+  }
+]

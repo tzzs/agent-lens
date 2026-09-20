@@ -1,0 +1,38 @@
+[
+  {
+    "seq": 1,
+    "id": "7b12734e1bed9be7",
+    "type": "context.compact",
+    "subtype": "compact_boundary",
+    "hostId": "claude-code",
+    "requestId": null,
+    "capability": null,
+    "usage": null,
+    "usageSource": "missing",
+    "durationMs": null,
+    "status": "ok",
+    "parentEventId": null,
+    "model": null,
+    "project": "project:alpha",
+    "payload": null,
+    "rawInMetadata": false
+  },
+  {
+    "seq": 2,
+    "id": "7ad7b1c13ff3cce0",
+    "type": "unknown",
+    "subtype": "system:away_summary",
+    "hostId": "claude-code",
+    "requestId": null,
+    "capability": null,
+    "usage": null,
+    "usageSource": "missing",
+    "durationMs": null,
+    "status": "ok",
+    "parentEventId": null,
+    "model": null,
+    "project": "project:alpha",
+    "payload": null,
+    "rawInMetadata": true
+  }
+]

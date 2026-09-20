@@ -1,0 +1,7 @@
+{"type":"bridge-session","sessionId":"sess-meta","uuid":"u-meta-bridge","timestamp":"2026-09-21T04:00:00.000Z","entrypoint":"claude-desktop","remoteUrl":"https://remote.test/session/1"}
+{"type":"custom-title","sessionId":"sess-meta","uuid":"u-meta-title","timestamp":"2026-09-21T04:00:01.000Z","entrypoint":"claude-desktop","title":"Ship the telemetry importer"}
+{"type":"ai-title","sessionId":"sess-meta","uuid":"u-meta-aititle","timestamp":"2026-09-21T04:00:02.000Z","entrypoint":"claude-desktop","aiTitle":"Ship the telemetry importer (auto)"}
+{"type":"pr-link","sessionId":"sess-meta","uuid":"u-meta-pr","timestamp":"2026-09-21T04:00:03.000Z","entrypoint":"claude-desktop","prNumber":412,"prUrl":"https://forge.test/acme/alpha/pull/412"}
+{"type":"mode","sessionId":"sess-meta","uuid":"u-meta-mode","timestamp":"2026-09-21T04:00:04.000Z","entrypoint":"claude-desktop","mode":"plan"}
+{"type":"last-prompt","sessionId":"sess-meta","uuid":"u-meta-last","timestamp":"2026-09-21T04:00:05.000Z","entrypoint":"claude-desktop","lastPrompt":"a very long prompt body that must be redacted rather than stored verbatim in the metrics layer: ","leafUuid":"u-mb-4"}
+{"type":"file-history-delta","sessionId":"sess-meta","uuid":"u-meta-fh","timestamp":"2026-09-21T04:00:06.000Z","entrypoint":"claude-desktop","diff":"--- a/src/x.ts\n+++ b/src/x.ts\n@@ -1 +1 @@\n-old line\n+new line"}

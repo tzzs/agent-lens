@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "plugins": [
+    { "name": "build-ios-apps", "source": "anthropic-skills", "enabled": true },
+    { "name": "design", "source": "marketplace", "enabled": true }
+  ]
+}

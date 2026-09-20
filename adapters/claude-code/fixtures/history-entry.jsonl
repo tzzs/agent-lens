@@ -1,0 +1,3 @@
+{"display":"explain the failing test","pastedContents":{},"timestamp":1758441600000,"project":"/work/alpha","sessionId":"sess-history-1"}
+{"display":"now fix it","pastedContents":{"1":{"type":"text","content":"a pasted stack trace that must not be payloaded twice"}},"timestamp":1758441700000,"project":"/work/alpha","sessionId":"sess-history-1"}
+{"display":"draft the release note","pastedContents":{},"timestamp":1758441800000,"project":"/work/beta","sessionId":"sess-history-2"}

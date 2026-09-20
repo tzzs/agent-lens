@@ -1,0 +1,44 @@
+[
+  {
+    "seq": 1,
+    "id": "79f5d380b3d8176d",
+    "type": "message.user",
+    "subtype": null,
+    "hostId": "claude-desktop",
+    "requestId": null,
+    "capability": null,
+    "usage": null,
+    "usageSource": "missing",
+    "durationMs": null,
+    "status": "ok",
+    "parentEventId": null,
+    "model": null,
+    "project": "project:alpha",
+    "payload": "user_message:20",
+    "rawInMetadata": false
+  },
+  {
+    "seq": 2,
+    "id": "303b0695ff3c97c9",
+    "type": "generation.end",
+    "subtype": null,
+    "hostId": "claude-desktop",
+    "requestId": "req-desk-1",
+    "capability": null,
+    "usage": {
+      "inputTokens": 220,
+      "outputTokens": 1500,
+      "cacheReadTokens": 90000,
+      "cacheWriteTokens": 300,
+      "reasoningTokens": 0
+    },
+    "usageSource": "reported",
+    "durationMs": null,
+    "status": "ok",
+    "parentEventId": null,
+    "model": "claude-opus-4-8",
+    "project": "project:alpha",
+    "payload": "assistant_message:18",
+    "rawInMetadata": false
+  }
+]

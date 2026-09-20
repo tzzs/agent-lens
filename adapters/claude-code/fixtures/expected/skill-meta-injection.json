@@ -1,0 +1,20 @@
+[
+  {
+    "seq": 1,
+    "id": "e63955305a41ef48",
+    "type": "skill.invoke",
+    "subtype": null,
+    "hostId": "claude-code",
+    "requestId": null,
+    "capability": "skill:writing-great-skills:meta-injection",
+    "usage": null,
+    "usageSource": "missing",
+    "durationMs": null,
+    "status": "ok",
+    "parentEventId": null,
+    "model": null,
+    "project": "project:alpha",
+    "payload": null,
+    "rawInMetadata": false
+  }
+]

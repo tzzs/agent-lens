@@ -1,0 +1,38 @@
+[
+  {
+    "seq": 1,
+    "id": "7f5ad973252bb58d",
+    "type": "unknown",
+    "subtype": "telemetry-blob",
+    "hostId": "claude-code",
+    "requestId": null,
+    "capability": null,
+    "usage": null,
+    "usageSource": "missing",
+    "durationMs": null,
+    "status": "ok",
+    "parentEventId": null,
+    "model": null,
+    "project": "project:alpha",
+    "payload": null,
+    "rawInMetadata": true
+  },
+  {
+    "seq": 2,
+    "id": "705594c3d9a4489c",
+    "type": "unknown",
+    "subtype": "attachment:plan_mode",
+    "hostId": "claude-code",
+    "requestId": null,
+    "capability": null,
+    "usage": null,
+    "usageSource": "missing",
+    "durationMs": null,
+    "status": "ok",
+    "parentEventId": null,
+    "model": null,
+    "project": "project:alpha",
+    "payload": null,
+    "rawInMetadata": true
+  }
+]

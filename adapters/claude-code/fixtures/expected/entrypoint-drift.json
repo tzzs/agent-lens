@@ -1,0 +1,68 @@
+[
+  {
+    "seq": 1,
+    "id": "18bcc87aa0b93f2d",
+    "type": "message.user",
+    "subtype": null,
+    "hostId": "claude-code",
+    "requestId": null,
+    "capability": null,
+    "usage": null,
+    "usageSource": "missing",
+    "durationMs": null,
+    "status": "ok",
+    "parentEventId": null,
+    "model": null,
+    "project": "project:alpha",
+    "payload": "user_message:42",
+    "rawInMetadata": false
+  },
+  {
+    "seq": 2,
+    "id": "bb7d37385ecc8573",
+    "type": "generation.end",
+    "subtype": null,
+    "hostId": "claude-code",
+    "requestId": "req-ne-1",
+    "capability": null,
+    "usage": {
+      "inputTokens": 6,
+      "outputTokens": 9,
+      "cacheReadTokens": 120,
+      "cacheWriteTokens": 1,
+      "reasoningTokens": 0
+    },
+    "usageSource": "reported",
+    "durationMs": null,
+    "status": "ok",
+    "parentEventId": null,
+    "model": "claude-sonnet-4-6",
+    "project": "project:alpha",
+    "payload": "assistant_message:14",
+    "rawInMetadata": false
+  },
+  {
+    "seq": 3,
+    "id": "78f2952a2eb981fe",
+    "type": "generation.end",
+    "subtype": null,
+    "hostId": "claude-desktop",
+    "requestId": "req-ne-2",
+    "capability": null,
+    "usage": {
+      "inputTokens": 7,
+      "outputTokens": 9,
+      "cacheReadTokens": 130,
+      "cacheWriteTokens": 1,
+      "reasoningTokens": 0
+    },
+    "usageSource": "reported",
+    "durationMs": null,
+    "status": "ok",
+    "parentEventId": null,
+    "model": "claude-sonnet-4-6",
+    "project": "project:alpha",
+    "payload": "assistant_message:18",
+    "rawInMetadata": false
+  }
+]
