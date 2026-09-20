@@ -1,0 +1,45 @@
+窗口 2026-08-22 → 2026-09-21 (UTC)  |  ccusage v20.0.23 claude daily -j -b -O -z UTC
+窗口内 assistant+usage 记录=11260  合成记录已排除=20  缺 requestId=2  缺 message.id=0  模型=5 个
+
+口径                               input      output  cache_readcache_create        合计
+------------------------------------------------------------------------------
+ccusage 基线                         18K       4.18M      2.022B      24.49M      2.051B
+A naive 逐条求和                       28K       8.96M      3.629B      56.95M      3.695B
+B requestId 取 max                  18K       4.18M      2.022B      24.49M      2.051B
+C requestId 取首块                    18K       4.11M      2.022B      24.49M      2.051B
+D message.id 取 max                 15K       4.18M      2.022B      24.49M      2.051B
+
+相对 ccusage 的偏差:
+  A naive        input:60.5%  output:114.4%  cache_read:79.5%  cache_create:132.5%   总量:80.2%
+  B reqId-max    input:0.0%  output:0.0%  cache_read:0.0%  cache_create:0.0%   总量:0.0%
+  C reqId-first  input:0.0%  output:-1.5%  cache_read:0.0%  cache_create:0.0%   总量:-0.0%
+  D msgId-max    input:-16.2%  output:-0.0%  cache_read:0.0%  cache_create:0.0%   总量:-0.0%
+
+判定:
+  naive / ccusage = 1.802x   （全量历史测得 1.87x，此处为同窗口一致性检验）
+  B ≡ D ? 否 → 二者不等价，须选 requestId（见下）  C ≡ B ? 否 → output_tokens 为累积值，必须取 max
+  distinct 组数: requestId=5945  message.id=5944
+  ccusage 报告成本合计 = $667.96（价格来源：ccusage 离线缓存价表）
+
+逐日比对（总 token）：
+  date             ccusage   B reqId-max     A naive   B/cc   A/cc
+  2026-09-04        23.05M        23.05M      41.43M   1.00x  1.80x
+  2026-09-06        31.70M        31.70M      59.78M   1.00x  1.89x
+  2026-09-07        88.16M        88.16M     161.45M   1.00x  1.83x
+  2026-09-08         1.29M         1.29M       2.26M   1.00x  1.75x
+  2026-09-09       335.97M       335.97M     577.20M   1.00x  1.72x
+  2026-09-10       321.26M       321.26M     549.28M   1.00x  1.71x
+  2026-09-11        60.14M        60.14M     108.42M   1.00x  1.80x
+  2026-09-13       100.14M       100.14M     261.86M   1.00x  2.62x
+  2026-09-14        88.18M        88.18M     151.41M   1.00x  1.72x
+  2026-09-15       177.17M       177.17M     326.34M   1.00x  1.84x
+  2026-09-16       291.94M       291.94M     480.61M   1.00x  1.65x
+  2026-09-17       233.05M       233.05M     431.91M   1.00x  1.85x
+  2026-09-18       143.38M       143.38M     245.16M   1.00x  1.71x
+  2026-09-19       100.11M       100.11M     200.85M   1.00x  2.01x
+  2026-09-20        55.27M        55.27M      97.23M   1.00x  1.76x
+
+宿主拆分（口径 B，总 token 及占比）：
+  claude-desktop     requests= 5943      2.051B  100.0%   input=12K output=4.18M cache_read=2.022B cache_create=24.49M
+  cli                requests=    2          6K  0.0%   input=6K output=0K cache_read=0K cache_create=0K
+  → 不分宿主直接把整目录记在 CLI 头上，误差 = 342256.4x（CLI 实际只占 0.0%）
