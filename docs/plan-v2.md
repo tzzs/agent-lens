@@ -655,3 +655,34 @@ Replay · 导出（OTel/Langfuse）· 告警（"agentx 今日成本 +240%"）· 
 
 落地顺序（M2′，先改契约再写 Adapter）：`event-model` 加列与 `aggregation` 声明 → `storage` 迁移 `002_entity_refinement.sql`（新增列，不改既有列语义，幂等测试继续通过）→ `query` 立方体按 agent 分流聚合口径 → `adapters/codex`。Schema 改完即冻结，此后只加枚举值不改结构。
 
+
+---
+
+## 19. 落地偏差记录（实现期回填，不改上文的设计结论）
+
+只记录**已实现代码与 §13/§18 计划不一致**的地方及理由。计划本身保持原样，便于回溯当时为什么这样选。
+
+### 13 技术选型的实际落地
+
+| 计划 | 实际 | 理由 |
+|---|---|---|
+| CLI 用 commander | 手写 200 行参数解析（`apps/cli/src/args.ts`） | 子命令只有 12 个、无嵌套、无插件机制；引入 commander 换来的是 `--by`/`--since` 这类自定义语义之上的第二套抽象 |
+| 存储 `node:sqlite`，回退 `better-sqlite3` | 只有 `node:sqlite`，无回退路径 | 回退分支要求原生依赖与双套 prepared-statement 代码路径；"零原生依赖"本身就是选它的理由，保留回退等于放弃这个理由 |
+| 监听用 chokidar | `node:fs.watch` + 每轮重新 discover | 只需要"目录里出现新文件"这一件事，而 §4.3 的 `skip/append/rotated` 判定本来就是幂等的，靠轮询也能收敛；chokidar 的递归与去抖在单目录粒度上是多余复杂度 |
+| esbuild 单文件分发 | 未实现（仍以 pnpm workspace + `node` 直跑 TS） | §15 明确把单二进制放在 M7，不属于本轮范围 |
+
+### 18 row 2 的落地比计划更严
+
+计划写的是"`request_max` 是默认，漏声明时按最保守口径兜底"。实际实现里 `AgentAdapter.aggregation` 是**必填字段**，且 `agentlens scan` 在任何一行落库前对已探测到的 Adapter 做契约校验，缺失即报错终止：
+
+- 兜底成 `request_max` 对 Codex 这类累积粒度日志是**放大**而不是保守（误用累积字段虚高约 1,971×），"最保守口径"这个说法在 row 2 自身的数据下不成立；
+- 沉默的 Adapter 才是真风险：它照样能跑通、照样出数字，只是全错。让"忘记声明"变成不可编译/不可运行，比写一条兜底规则便宜。
+
+同时 `aggregation_mode` / `subagents_included` 随迁移 `003` 落到 `agents` 表，由 `scan` 在该 Agent 首行写入前持久化，查询立方体读取**入库时**的口径而非运行时 Adapter。这样即使某个 Adapter 后续改了口径或被人删掉，历史行的折叠规则仍然确定。
+
+### 8 Cost Engine 的一处数据修正
+
+`packages/pricing/src/default-snapshot.json` 早期是手写的，实测偏差约 50%（`claude-sonnet-5` 写成 $3/$15，真实 $2/$10），会污染所有成本数字。现在由 `pnpm -F @agentlens/pricing generate:snapshot` 从 litellm 快照生成，并把 `effective_from` 统一置为 epoch：
+
+- 好处是任何历史窗口都有价可查，不会因为日期早于快照首日而整段显示 n/a；
+- 代价是**今天的价格被回溯套用**，`--explain` 与 `doctor` 需要把这一点显式说给用户，而不是假装是当期价格。要精确到历史价，用 `agentlens pricing override` 覆盖，不要改生成器。
