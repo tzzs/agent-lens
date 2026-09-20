@@ -100,7 +100,9 @@ describe('agentlens usage --by model (e2e against a temp db file)', () => {
     expect(await runCli(ctx)).toBe(0)
     const out = lines.join('\n')
     expect(out).toContain('metrics:')
-    expect(out).toContain('MAX(...) GROUP BY request_id')
+    // §18: the fold口径 must be visible in --explain, per agent, never implied
+    expect(out).toContain('aggregation policy')
+    expect(out).toContain('request_max')
   })
 
   it('unknown command exits 2; unknown flag exits 2', async () => {

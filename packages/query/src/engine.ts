@@ -1,26 +1,46 @@
 /**
  * §7 aggregation cube — the ONLY place token/cost SQL is composed.
  *
- * §3.1 aggregation invariant (measured, non-negotiable): one upstream API
- * response is split across several records that repeat identical usage, so a
- * plain SUM over events inflates tokens (~1.87x on the measured machine).
- * Therefore every token/duration/cost metric is computed in two stages:
- *   stage 1 (inner `req`): reduce events to ONE row per request_id key by
- *     taking the element-wise MAX of each token column — identical to
- *     `dedupeByRequestId` in event-model;
- *   stage 2 (outer): re-group those request rows over the requested dims and
- *     SUM them.
+ * §3.1 + §18 row 2 (the second measurement round superseded the "global invariant"
+ * framing): the fold that turns log rows into token totals is PER AGENT, because the
+ * upstream shapes differ. Claude Code and its fork Qoder split one response across
+ * content blocks and repeat identical usage in each (a plain SUM inflates ~1.87x) →
+ * `request_max`: MAX per request_id, then SUM. Codex does NOT duplicate usage; its trap
+ * is granularity (per-call rows beside cumulative `total`/`turn`/`thread` fields,
+ * ~1971x if the cumulative ones are folded) → `per_record_sum` / `last_call_sum`: every
+ * per-call row counted exactly once. So every token/duration metric is computed in two
+ * stages:
+ *   stage 1 (inner `req`): fold events to ONE row per (agent_id, request key), where the
+ *     request key is the request_id under `request_max` and the event id under both sum
+ *     modes — the SQL twin of `aggregateUsage` in event-model;
+ *   stage 2 (outer): re-group those request rows over the requested dims and SUM them.
+ * Grouping stage 1 by agent_id as well keeps one agent's key rule from ever merging
+ * another agent's rows. Agents with no declared policy keep `request_max`, the most
+ * conservative fold.
  * Rows with NULL/empty request_id key on their own event id, so each is its
  * own group of one: counted exactly once, never merged with other NULL rows.
  * Representative-row tie-break for dim values: lexicographically greatest
  * event id in the group (deterministic across replays, §4.2).
  *
+ * `cost_reported` (§18 row 1) bypasses both stages on purpose: the agent already reported
+ * a final number, so folding it again would be wrong. It is a SUM over the raw filtered
+ * events and stays NULL when no row reported one — never $0. A reported cost and the
+ * computed API-equivalent estimate are different facts, so they are separate metrics and
+ * are never added together.
+ *
  * Injection posture: dim/metric names are validated against the exported
- * whitelist and mapped to *constant* SQL fragments; every filter VALUE is a
- * bound parameter. User strings can never reach the query text.
+ * whitelist and mapped to *constant* SQL fragments; every filter VALUE — and every agent
+ * id in the aggregation map — is a bound parameter. User strings can never reach the
+ * query text.
  */
 import type { DatabaseSync } from 'node:sqlite'
 import { computeCost, type BillingMode, type PriceEntry } from '@agentlens/pricing'
+import {
+  assertAggregationMode,
+  DEFAULT_AGGREGATION,
+  type AggregationMode,
+  type AggregationPolicy,
+} from '@agentlens/event-model'
 import {
   assertDim,
   assertMetric,
@@ -58,6 +78,7 @@ const DIM_SQL: Record<Dim, string> = {
   host: "COALESCE(e.host_id, '')",
   project: "COALESCE(e.project_id, '')",
   session: "COALESCE(e.session_id, '')",
+  thread: "COALESCE(e.thread_id, '')",
   model: "COALESCE(m.name, '')",
   provider: "COALESCE(m.provider, '')",
   capability_type: "COALESCE(e.capability_type, '')",
@@ -102,6 +123,47 @@ interface Reqs {
   metrics: Metric[]
   dims: Dim[]
   where: Prepared
+  /** Stage-1 fold: request-key expression + its bound agent ids (§18 per-adapter policy). */
+  fold: Prepared
+}
+
+/** Stage-1 request key per §18 mode. `e` is the events alias. */
+const FOLD_KEY_SQL: Record<AggregationMode, string> = {
+  request_max: "COALESCE(NULLIF(e.request_id, ''), e.id)",
+  // At this layer a per-call row IS one usage row: the adapter already resolved Codex's
+  // cumulative `total`/`turn`/`thread` granularity, and re-adding it here is the 1971x bug.
+  per_record_sum: 'e.id',
+  last_call_sum: 'e.id',
+}
+
+/**
+ * Builds the per-agent stage-1 key. Only agents whose mode differs from
+ * DEFAULT_AGGREGATION need a CASE arm; everything else falls through to the default,
+ * which is the conservative `request_max`. Agent ids are bound parameters, modes are
+ * validated against the closed enum, so no caller string reaches the query text.
+ */
+function buildFold(aggregation: Record<string, AggregationPolicy> | undefined): Prepared {
+  const agentsByMode = new Map<AggregationMode, string[]>()
+  for (const [agentId, policy] of Object.entries(aggregation ?? {})) {
+    const mode = assertAggregationMode(policy.mode) // unknown mode throws; never a silent fallback
+    if (mode === DEFAULT_AGGREGATION.mode) continue
+    const list = agentsByMode.get(mode)
+    if (list) list.push(agentId)
+    else agentsByMode.set(mode, [agentId])
+  }
+  if (agentsByMode.size === 0) {
+    return { sql: FOLD_KEY_SQL[DEFAULT_AGGREGATION.mode], params: [] }
+  }
+  const arms: string[] = []
+  const params: unknown[] = []
+  for (const [mode, agents] of agentsByMode) {
+    arms.push(`WHEN e.agent_id IN (${agents.map(() => '?').join(', ')}) THEN ${FOLD_KEY_SQL[mode]}`)
+    params.push(...agents)
+  }
+  return {
+    sql: `CASE ${arms.join(' ')} ELSE ${FOLD_KEY_SQL[DEFAULT_AGGREGATION.mode]} END`,
+    params,
+  }
 }
 
 export interface QueryDeps {
@@ -112,10 +174,24 @@ export interface QueryDeps {
   priceResolver?: (provider: string, model: string, occurredAt: number) => PriceEntry | null
   /** Default 'api' (§8). */
   billingModeFor?: (agentId: string) => BillingMode
+  /**
+   * §18 row 2: how each adapter's rows fold into token totals, keyed by `agent_id` —
+   * the same declaration `Adapter.aggregation` carries, so the CLI wires adapters straight
+   * through and no caller ever has to choose a dedupe rule per query. A missing entry
+   * means DEFAULT_AGGREGATION (`request_max`, the most conservative fold); an unknown
+   * mode throws UnknownAggregationError instead of silently guessing.
+   */
+  aggregation?: Record<string, AggregationPolicy>
 }
 
 function num(v: unknown): number {
   if (v === null || v === undefined) return 0
+  return Number(v)
+}
+
+/** NULL-preserving numeric read: a missing value stays "no data", never 0 (§8). */
+function nullableNum(v: unknown): number | null {
+  if (v === null || v === undefined) return null
   return Number(v)
 }
 
@@ -154,23 +230,33 @@ function buildWhere(filter: QueryFilter | undefined): Prepared {
   inList('e.capability_name', filter?.capabilityName)
   inList('e.status', filter?.status)
   inList('e.type', filter?.type)
+  if (filter?.includeSubagentThreads === false) {
+    // metadata is JSON text at rest (§6); the marker adapters set is `subagentThread: true`.
+    // NULL metadata / missing key / explicit false all read as "not a subagent thread".
+    parts.push("json_extract(e.metadata, '$.subagentThread') IS NOT 1")
+  }
   return { sql: parts.length ? `WHERE ${parts.join(' AND ')}` : '', params }
 }
 
-/** Stage 1 (§3.1): one row per request key, element-wise MAX per token column. */
+/** Stage 1 (§18): one row per (agent, request key), MAX per token column under `request_max`. */
 function dedupStage(reqs: Reqs): string {
   const tokenMaxes = TOKEN_FIELDS.map(
     (f) => `MAX(COALESCE(e.${TOKEN_EVENT_COL[f]}, 0)) AS ${TOKEN_METRIC[f]}`,
   ).join(',\n      ')
   const needsDuration = reqs.metrics.includes('duration')
   return `req AS (
-      SELECT COALESCE(NULLIF(e.request_id, ''), e.id) AS req_key, MAX(e.id) AS rep_id,
+      SELECT COALESCE(e.agent_id, '') AS agent_key, ${reqs.fold.sql} AS req_key, MAX(e.id) AS rep_id,
       ${tokenMaxes}${needsDuration ? ',\n      MAX(COALESCE(e.duration_ms, 0)) AS duration' : ''}
       FROM events e
       LEFT JOIN models m ON m.rowid = e.model_rowid
       ${reqs.where.sql}
-      GROUP BY req_key
+      GROUP BY agent_key, req_key
     )`
+}
+
+/** Stage-1 params precede the WHERE params in query text order (the fold key is in SELECT). */
+function stageParams(reqs: Reqs): unknown[] {
+  return [...reqs.fold.params, ...reqs.where.params]
 }
 
 function selectClause(reqs: Reqs, metricSqls: string[]): { selects: string; groupBy: string } {
@@ -193,11 +279,14 @@ function eventQuery(reqs: Reqs): Prepared {
   const metricSqls: string[] = []
   if (reqs.metrics.includes('events')) metricSqls.push('COUNT(*) AS events')
   if (reqs.metrics.includes('sessions')) metricSqls.push('COUNT(DISTINCT e.session_id) AS sessions')
+  // Raw SUM, never the fold: a reported cost is already the agent's final number (§18 row 1).
+  // SQLite SUM returns NULL when every row is NULL, which is exactly the "no data" we must show.
+  if (reqs.metrics.includes('cost_reported')) metricSqls.push('SUM(e.cost_reported) AS cost_reported')
   const { selects, groupBy } = selectClause(reqs, metricSqls)
   return { sql: `SELECT ${selects} ${fromClause()} ${reqs.where.sql} ${groupBy}`, params: reqs.where.params }
 }
 
-/** Stage 2 (§3.1): SUM over the per-request MAX rows for the token/duration metrics. */
+/** Stage 2 (§18): SUM over the folded per-agent request rows for token/duration metrics. */
 function requestStageQuery(reqs: Reqs): Prepared | null {
   const metricSqls: string[] = []
   for (const m of reqs.metrics) {
@@ -219,7 +308,7 @@ function requestStageQuery(reqs: Reqs): Prepared | null {
       JOIN events e ON e.id = r.rep_id
       LEFT JOIN models m ON m.rowid = e.model_rowid
       ${groupBy}`,
-    params: reqs.where.params,
+    params: stageParams(reqs),
   }
 }
 
@@ -249,7 +338,7 @@ function costBucketsQuery(reqs: Reqs): Prepared | null {
       JOIN events e ON e.id = r.rep_id
       LEFT JOIN models m ON m.rowid = e.model_rowid
       GROUP BY ${dimGroup}${bucketGroup}`,
-    params: reqs.where.params,
+    params: stageParams(reqs),
   }
 }
 
@@ -358,7 +447,7 @@ export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): Quer
   const metrics = (spec.metrics ?? ['events']).map(assertMetric)
   const dims = (spec.dims ?? []).map(assertDim)
   if (new Set(dims).size !== dims.length) throw new Error('query: duplicate dims in spec')
-  const reqs: Reqs = { metrics, dims, where: buildWhere(spec.filter) }
+  const reqs: Reqs = { metrics, dims, where: buildWhere(spec.filter), fold: buildFold(deps?.aggregation) }
 
   const eventRows = runPrepared(db, eventQuery(reqs))
   const tokenQ = requestStageQuery(reqs)
@@ -371,7 +460,7 @@ export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): Quer
     if (!r) {
       r = {}
       for (const d of dims) r[d] = row[d] ?? ''
-      for (const m of metrics) r[m] = m === 'cost_api_equiv' ? null : 0
+      for (const m of metrics) r[m] = m === 'cost_api_equiv' || m === 'cost_reported' ? null : 0
       merged.set(key, r)
     }
     return r
@@ -380,6 +469,8 @@ export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): Quer
     const r = ensure(row)
     if (metrics.includes('events')) r.events = num(row.events)
     if (metrics.includes('sessions')) r.sessions = num(row.sessions)
+    // NULL must survive: "nothing reported" is not $0 (§8/§18 row 1).
+    if (metrics.includes('cost_reported')) r.cost_reported = nullableNum(row.cost_reported)
   }
   for (const row of tokenRows) {
     const r = ensure(row)
@@ -437,6 +528,7 @@ function computeTotals(db: DatabaseSync, reqs: Reqs, deps: QueryDeps | undefined
     if (m === 'events') totals.events = num(ev.events)
     else if (m === 'sessions') totals.sessions = num(ev.sessions)
     else if (m === 'cost_api_equiv') totals.cost_api_equiv = null
+    else if (m === 'cost_reported') totals.cost_reported = nullableNum(ev.cost_reported)
     else totals[m] = num(tk[m])
   }
   if (reqs.metrics.includes('cost_api_equiv') && deps?.priceResolver) {

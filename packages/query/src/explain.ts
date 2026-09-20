@@ -20,7 +20,10 @@ export function describeQuery(spec: QuerySpec): string {
   if (spec.order) lines.push(`order:   ${spec.order}`)
   if (spec.limit !== undefined) lines.push(`limit:   ${spec.limit}`)
   lines.push(
-    'semantics: token/duration/cost metrics aggregate MAX(...) GROUP BY request_id first, then SUM (§3.1); events/sessions count raw events',
+    "semantics: tokens/duration fold per (agent, request) using that agent's §18 aggregation policy, then SUM; " +
+      'a missing policy means request_max (MAX per request_id, the conservative Claude Code/Qoder rule); ' +
+      'events/sessions count raw events; cost_reported is a raw SUM of what the agent reported and is never added ' +
+      'to cost_api_equiv, a computed estimate',
   )
   return lines.join('\n')
 }

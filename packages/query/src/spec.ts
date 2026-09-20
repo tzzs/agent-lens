@@ -15,10 +15,16 @@ export const METRICS = [
   'tokens_cache_write',
   'tokens_reasoning',
   'cost_api_equiv',
+  /**
+   * §18 row 1: the cost the AGENT itself logged (OpenCode `session.cost`, WorkBuddy
+   * `session_usage`). A reported cost and an API-equivalent estimate are different facts
+   * about different things, so they are separate metrics and are never added together.
+   */
+  'cost_reported',
 ] as const
 export type Metric = (typeof METRICS)[number]
 
-/** §7 dim set; `host` and `hook` are the §1.5 measurement additions. */
+/** §7 dim set; `host` and `hook` are the §1.5 measurement additions, `thread` the §18 one. */
 export const DIMS = [
   'time',
   'day',
@@ -28,6 +34,8 @@ export const DIMS = [
   'host',
   'project',
   'session',
+  /** §18 row 3: source-grain thread. A Codex session spans many thread files; Claude's is 1:1 with a file. */
+  'thread',
   'model',
   'provider',
   'capability_type',
@@ -74,6 +82,18 @@ export interface QueryFilter {
   capabilityName?: string[]
   status?: string[]
   type?: string[]
+  /**
+   * §18 row 2/3: Codex thread files are mostly subagents (257 of 379 measured), and the
+   * ccusage reconciliation excludes them from headline totals. Setting this to false drops
+   * events flagged `metadata.subagentThread` BEFORE any folding, so a subagent's MAX row
+   * cannot set the ceiling of a parent request either.
+   *
+   * Default TRUE deliberately: it keeps every existing caller's numbers byte-identical,
+   * and "headline excludes subagents" is a presentation decision for the CLI/UI surface
+   * (§18 asks for an explicit switch, not for the cube to hide rows by default). An agent
+   * that never emits the marker is unaffected by either value.
+   */
+  includeSubagentThreads?: boolean
 }
 
 export interface QuerySpec {

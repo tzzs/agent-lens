@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { DatabaseSync } from 'node:sqlite'
-import type { AgentEvent, Usage } from '@agentlens/event-model'
-import { aggregateRequestTokens } from '@agentlens/event-model'
+import type { AgentEvent, AggregationPolicy, Usage } from '@agentlens/event-model'
+import { aggregateRequestTokens, aggregateUsage, UnknownAggregationError } from '@agentlens/event-model'
 import { hexSeed } from './fixtures.ts'
 import { insertEvents, migrate, openDatabase } from '@agentlens/storage'
 import type { PriceEntry } from '@agentlens/pricing'
@@ -236,5 +236,224 @@ describe('cost via injected priceResolver', () => {
     }, { priceResolver: resolver, billingModeFor: (a) => (a === 'claude-sub' ? 'subscription' : 'api') })
     // cost_api_equiv is the API-equivalent value; subscription mode's actualUsd ($0) is not a cube metric.
     expect(res.rows[0]?.cost_api_equiv).toBe(3)
+  })
+})
+
+// §18 row 2: the fold is declared per adapter and applied by the cube — the caller of
+// query() never chooses a dedupe rule.
+describe('§18 per-agent aggregation policy', () => {
+  const u = (inputTokens: number, outputTokens = 0): Usage => ({
+    inputTokens,
+    outputTokens,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 0,
+  })
+  // Claude Code / Qoder: one response split per content block, usage repeated.
+  const claudeRows = (): AgentEvent[] =>
+    [0, 1, 2].map((i) => hexSeed({ agentId: 'claude-code', sessionId: 's-cc', requestId: 'cc-1', usage: u(100, 10) }, `cc${i}`))
+  // Codex: three distinct per-call usage rows for the same response, no duplication.
+  const codexRows = (): AgentEvent[] =>
+    [10, 20, 30].map((v, i) => hexSeed({ agentId: 'codex', sessionId: 's-cx', requestId: 'cd-1', usage: u(v) }, `cx${i}`))
+
+  const POLICIES: Record<string, AggregationPolicy> = {
+    'claude-code': { mode: 'request_max', subagentsIncluded: true },
+    codex: { mode: 'last_call_sum', subagentsIncluded: false },
+  }
+
+  const byAgent = (aggregation?: Record<string, AggregationPolicy>) => {
+    const events = [...claudeRows(), ...codexRows()]
+    const db = seeded(events)
+    const res = query(db, { metrics: ['tokens_input'], dims: ['agent'] }, { aggregation })
+    const map = Object.fromEntries(res.rows.map((r) => [r.agent as string, r.tokens_input as number]))
+    return { map, res, events }
+  }
+
+  it('gives each agent its own correct total under its declared policy', () => {
+    const { map, res, events } = byAgent(POLICIES)
+    expect(map).toEqual({ 'claude-code': 100, codex: 60 })
+    expect(res.totals.tokens_input).toBe(160)
+    // The SQL cube and the in-memory reference implementation must agree per agent.
+    for (const [agentId, policy] of Object.entries(POLICIES)) {
+      const rows = events.filter((e) => e.agentId === agentId)
+      expect(aggregateUsage(rows, policy).usage.inputTokens).toBe(map[agentId])
+    }
+  })
+
+  // Documents the failure mode the per-agent routing exists to prevent: either global
+  // policy is wrong for one of the two agents, and "wrong" goes in BOTH directions.
+  it('one global request_max silently drops codex per-call rows', () => {
+    const { map } = byAgent({
+      'claude-code': { mode: 'request_max', subagentsIncluded: true },
+      codex: { mode: 'request_max', subagentsIncluded: true },
+    })
+    expect(map).toEqual({ 'claude-code': 100, codex: 30 }) // 60 lost, not an inflation
+  })
+
+  it('one global per_record_sum re-inflates claude duplicated rows', () => {
+    const { map } = byAgent({
+      'claude-code': { mode: 'per_record_sum', subagentsIncluded: true },
+      codex: { mode: 'per_record_sum', subagentsIncluded: true },
+    })
+    expect(map).toEqual({ 'claude-code': 300, codex: 60 }) // the 1.87x-class bug, exactly 3x here
+  })
+
+  it('a missing policy entry falls back to DEFAULT_AGGREGATION (request_max)', () => {
+    const { map, res } = byAgent(undefined)
+    expect(map).toEqual({ 'claude-code': 100, codex: 30 }) // conservative, but still the fallback fold
+    expect(res.totals.tokens_input).toBe(130)
+    // Partial map: only codex declared, claude-code still folded by the default.
+    expect(byAgent({ codex: { mode: 'per_record_sum', subagentsIncluded: false } }).map).toEqual({
+      'claude-code': 100,
+      codex: 60,
+    })
+  })
+
+  it('folding is grouped per agent, so a shared request_id across agents never merges', () => {
+    const events = [
+      hexSeed({ agentId: 'a1', requestId: 'shared', usage: u(5) }, 'sh1'),
+      hexSeed({ agentId: 'a2', requestId: 'shared', usage: u(7) }, 'sh2'),
+    ]
+    const res = query(seeded(events), { metrics: ['tokens_input'], dims: ['agent'] })
+    expect(Object.fromEntries(res.rows.map((r) => [r.agent as string, r.tokens_input as number]))).toEqual({
+      a1: 5,
+      a2: 7,
+    })
+    expect(res.totals.tokens_input).toBe(12)
+  })
+
+  it('an unknown mode throws through the cube, never falls back', () => {
+    const db = seeded(codexRows())
+    expect(() =>
+      query(db, { metrics: ['tokens_input'] }, {
+        aggregation: { codex: { mode: 'sum_all' as never, subagentsIncluded: false } },
+      }),
+    ).toThrow(UnknownAggregationError)
+  })
+
+  it('agent dim routing keeps host/hook dims working unchanged', () => {
+    const events = [
+      ...claudeRows().slice(0, 1),
+      hexSeed({ agentId: 'codex', hostId: 'codex', type: 'hook.fire', capability: { type: 'hook', name: 'PreToolUse:Bash' } }, 'cxhook'),
+    ]
+    const res = query(seeded(events), { metrics: ['events'], dims: ['host', 'hook'], filter: { agent: ['codex'] }, order: 'dim:host:asc' })
+    expect(res.rows.map((r) => `${r.host}/${r.hook}:${r.events}`)).toEqual(['codex/PreToolUse:Bash:1'])
+    const all = query(seeded(events), { metrics: ['events'], dims: ['hook'], order: 'dim:hook:asc' })
+    expect(all.rows.map((r) => `${r.hook}:${r.events}`)).toEqual([':1', 'PreToolUse:Bash:1'])
+  })
+})
+
+describe('§18 includeSubagentThreads filter', () => {
+  const u = (inputTokens: number): Usage => ({
+    inputTokens,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 0,
+  })
+  const sub = { subagentThread: true }
+  const events = (): AgentEvent[] => [
+    // Same request as the parent row, but bigger: if the filter ran AFTER folding the
+    // subagent's MAX would still set the ceiling, so 100 below can only mean pre-fold.
+    hexSeed({ requestId: 'r-sub', sessionId: 's-sub', usage: u(100) }, 'sp1'),
+    hexSeed({ requestId: 'r-sub', sessionId: 's-sub', usage: u(500), metadata: sub }, 'sp2'),
+    hexSeed({ requestId: 'r-plain', sessionId: 's-sub', usage: u(5), metadata: { subagentThread: false } }, 'sp3'),
+  ]
+
+  it('default true keeps today\'s numbers byte-identical', () => {
+    const db = seeded(events())
+    const def = query(db, { metrics: ['tokens_input', 'events'] })
+    expect(def.totals).toEqual({ tokens_input: 505, events: 3 })
+    expect(query(db, { metrics: ['tokens_input', 'events'], filter: {} }).totals).toEqual(def.totals)
+    expect(query(db, { metrics: ['tokens_input'], filter: { includeSubagentThreads: true } }).totals.tokens_input).toBe(505)
+  })
+
+  it('false drops exactly the flagged rows, before folding', () => {
+    const db = seeded(events())
+    const res = query(db, { metrics: ['tokens_input', 'events'], filter: { includeSubagentThreads: false } })
+    expect(res.totals).toEqual({ tokens_input: 105, events: 2 }) // 100 + 5, one row dropped
+    const perThread = query(db, { metrics: ['tokens_input'], dims: ['session'], filter: { includeSubagentThreads: false } })
+    expect(perThread.rows).toHaveLength(1)
+    expect(perThread.rows[0]?.tokens_input).toBe(105)
+    // headline total changed: 505 -> 105
+    expect(res.totals.tokens_input).toBeLessThan(505)
+  })
+})
+
+describe('§18 thread dim', () => {
+  const u = (inputTokens: number): Usage => ({
+    inputTokens,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 0,
+  })
+  const events = [
+    hexSeed({ threadId: 't1', requestId: 'tr1', usage: u(10) }, 'th1'),
+    hexSeed({ threadId: 't1', requestId: 'tr2', usage: u(20) }, 'th2'),
+    hexSeed({ threadId: 't2', requestId: 'tr3', usage: u(30) }, 'th3'),
+    hexSeed({ threadId: null, usage: u(40) }, 'th4'),
+  ]
+
+  it('groups events by thread_id, with nulls in their own bucket', () => {
+    const res = query(seeded(events), { metrics: ['tokens_input', 'events'], dims: ['thread'], order: 'dim:thread:asc' })
+    expect(res.rows.map((r) => `${r.thread}:${r.tokens_input}/${r.events}`)).toEqual([':40/1', 't1:30/2', 't2:30/1'])
+    expect(res.totals.tokens_input).toBe(100)
+    expect(res.columns).toContain('thread')
+  })
+})
+
+describe('§18 cost_reported metric', () => {
+  const usage = (inputTokens: number): Usage => ({
+    inputTokens,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 0,
+  })
+  const PRICE_ROW = { provider: 'anthropic', name: 'test-model' }
+
+  it('sums raw reported rows, outside the dedupe path', () => {
+    const events = [
+      // One request split in two: tokens fold to ONE group, reported cost stays per row.
+      hexSeed({ requestId: 'cost-1', usage: usage(1000), costReported: 0.4, costSource: 'reported', model: PRICE_ROW }, 'rp1'),
+      hexSeed({ requestId: 'cost-1', usage: usage(1000), costReported: 0.4, costSource: 'reported', model: PRICE_ROW }, 'rp2'),
+      hexSeed({ requestId: 'cost-2', usage: usage(10), model: PRICE_ROW }, 'rp3'), // reported nothing
+    ]
+    const res = query(seeded(events), { metrics: ['cost_reported', 'tokens_input', 'events'] })
+    expect(res.totals.cost_reported).toBeCloseTo(0.8, 10)
+    expect(res.totals.tokens_input).toBe(1010) // folded: cost-1 counted once
+    expect(res.totals.events).toBe(3)
+  })
+
+  it('stays NULL when no row reported a cost, never 0', () => {
+    const db = seeded([hexSeed({ requestId: 'n1', usage: usage(10) }, 'nr1'), hexSeed({ requestId: 'n2' }, 'nr2')])
+    const res = query(db, { metrics: ['cost_reported'] })
+    expect(res.totals.cost_reported).toBeNull()
+    const dimmed = query(db, { metrics: ['cost_reported'], dims: ['session'] })
+    expect(dimmed.rows.every((r) => r.cost_reported === null)).toBe(true)
+    const empty = query(seeded([]), { metrics: ['cost_reported'] })
+    expect(empty.totals.cost_reported).toBeNull()
+  })
+
+  it('is a separate metric from cost_api_equiv and is never added into it', () => {
+    const events = [
+      // priced usage -> computed estimate; reported cost is a different number entirely.
+      hexSeed({ requestId: 'sep1', usage: usage(1_000_000), costReported: 0.25, costSource: 'reported', model: PRICE_ROW }, 'sep1'),
+      // zero tokens, only a reported cost: the computed metric must not pick it up.
+      hexSeed({ requestId: 'sep2', usage: null, costReported: 0.5, costSource: 'reported', model: PRICE_ROW }, 'sep2'),
+    ]
+    const res = query(seeded(events), { metrics: ['cost_reported', 'cost_api_equiv'] }, { priceResolver: resolver })
+    expect(res.totals.cost_reported).toBeCloseTo(0.75, 10)
+    expect(res.totals.cost_api_equiv).toBe(3) // 1M input x $3/M, no 0.25/0.5 folded in
+    expect(res.columns).toEqual(['cost_reported', 'cost_api_equiv'])
+    // Per row the same separation holds: a reported-only row keeps its cost out of the estimate.
+    const dimmed = query(
+      seeded([hexSeed({ requestId: 'sep2', usage: null, costReported: 0.5, costSource: 'reported', model: PRICE_ROW, sessionId: 'only-reported' }, 'sep2')]),
+      { metrics: ['cost_reported', 'cost_api_equiv'], dims: ['session'] },
+      { priceResolver: resolver },
+    )
+    expect(dimmed.rows[0]?.cost_reported).toBeCloseTo(0.5, 10)
+    expect(dimmed.rows[0]?.cost_api_equiv).toBeNull() // zero tokens: nothing priced, and 0.5 did not leak in
   })
 })
