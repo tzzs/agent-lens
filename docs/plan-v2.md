@@ -7,6 +7,7 @@
 >
 > **v2.1（2026-09-21）：已按 `docs/research/claude-code.md` 的实测修订。** 实测样本 92 个 JSONL / 68,314 条记录，推翻了 v2 关于 usage 剥离的假设，并新增三条会导致数字根本性错误的规则（`requestId` 去重、`entrypoint` 身份拆分、worktree 项目归组）。
 > **v2.2：ccusage 对账通过（口径四字段 0.0% 偏差），同时据此收缩了 §1 的差异化主张** —— ccusage 已覆盖 18 个 Agent CLI 并有 per-project 报表，重心因此移到 Session / Capability / 规范化实体三件事。被修订处均标注「实测」。
+> **v2.3（2026-09-21）：实测第二轮见 §18。** Codex / Qoder / OpenCode / WorkBuddy 的测量证伪了 §3.1 的「去重是全局不变量」、§4.1 的「一文件一 session」与 §8 的「日志里没有成本字段」三条，并发现只读打开 WAL 模式的第三方库会产生写入副作用。M2 的 Schema 第二轮修订因此提前，落地清单在 §18 末尾。
 
 ---
 
@@ -626,7 +627,6 @@ Replay · 导出（OTel/Langfuse）· 告警（"agentx 今日成本 +240%"）· 
 **Claude Code（§1、§2）已于 2026-09-21 完成，结论见 `docs/research/claude-code.md`。** 原第 1、2 项的结果：usage 未剥离（假设证伪）；真正的一号风险是 `requestId` 多 block 重复计数（+87%）与 Desktop/CLI 宿主混淆（94.6% vs 5.4%）；session 边界为"一文件一 session"无需启发式；subagent 入口是 `Agent` 工具且侧链可独立计费；skill 有 4 条激活路径。
 
 剩余待实测：
-
 1. ✅ **与 ccusage 同区间对账**（2026-09-21 完成，`reconcile-ccusage.mjs`）→ 口径 B 与 ccusage **四字段 0.0% 偏差、逐日 15 天 1.00x**；分组键必须 `requestId`（非 `message.id`），取值必须 `max`（非首块）。副产品：ccusage 能力边界远超预期，已据此改写 §1。
 2. 🟡 Codex `rollout-*.jsonl`：记录结构、session 边界、cache token 字段命名、是否存在同类重复计数
 3. 🟡 Qoder / OpenCode：是否 SQLite、是否有稳定 session UUID、只读可开性
