@@ -4,6 +4,7 @@
  * so the committed snapshots in fixtures/expected stay stable.
  */
 import { readdir, readFile, stat } from 'node:fs/promises'
+import { deepStrictEqual } from 'node:assert'
 import { Buffer } from 'node:buffer'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,6 +16,7 @@ import {
   type SourceSpec,
 } from '@agentlens/event-model'
 import { forgetState } from '../src/state.ts'
+import { PARSE_ERROR_KEY } from '../src/record.ts'
 
 export const FIXTURES_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../fixtures')
 export const HOST_DIR = join(FIXTURES_DIR, 'host')
@@ -38,7 +40,7 @@ export function recordsFromJsonl(text: string): RawRecord[] {
       try {
         value = JSON.parse(line)
       } catch (err) {
-        value = { __agentlensParseError: `json-parse: ${String(err)}`, rawLine: line }
+        value = { [PARSE_ERROR_KEY]: `json-parse: ${String(err)}`, rawLine: line }
       }
       const ts = (value as { timestamp?: unknown })?.timestamp
       out.push({
@@ -113,7 +115,6 @@ export async function matchSnapshot(launcher: string, actual: unknown): Promise<
   } catch {
     expected = null
   }
-  const { deepStrictEqual } = await import('node:assert')
   if (expected === null) {
     throw new Error(`missing snapshot ${expectedPath} — run UPDATE_SNAPSHOTS=1 to create it`)
   }

@@ -8,8 +8,11 @@ export const AGENT_ID = 'claude-code'
 export const HOST_CLI = 'claude-code'
 export const HOST_DESKTOP = 'claude-desktop'
 
-/** Set by `parse()` on a line it could not decode, so normalize can report it (§5.2 rule 1). */
-export const PARSE_ERROR_KEY = '__agentlensParseError'
+/**
+ * The one marker convention lives in the collector, so a parse-failure marker
+ * produced by any framing path is recognised here too (§5.2 rule 1).
+ */
+export { PARSE_ERROR_KEY } from '@agentlens/collector'
 
 export interface UnknownRecord {
   [key: string]: unknown

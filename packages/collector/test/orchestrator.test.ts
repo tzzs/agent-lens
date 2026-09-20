@@ -13,6 +13,7 @@ import type {
   SourceSpec,
 } from '@agentlens/event-model'
 import { SCHEMA_VERSION, deriveEventId } from '@agentlens/event-model'
+import { parseJsonlRecords } from '../src/parse-jsonl.ts'
 import type { EventSink, SavedSourceState, SourceCommit } from '../src/orchestrator.ts'
 import { rescanSourceOnVersionDrift, scanSource } from '../src/orchestrator.ts'
 
@@ -28,7 +29,8 @@ afterEach(async () => {
   currentTmp = null
 })
 
-/** Minimal pure adapter: one message.user event per record; `{"bad":true}` ⇒ ParseFailure. */
+/** Minimal pure adapter: `parse` is the default JSONL framing; one message.user event
+ * per record; `{"bad":true}` ⇒ ParseFailure. */
 function fakeAdapter(parserVersion = 1): AgentAdapter {
   return {
     id: 'fake',
@@ -38,7 +40,8 @@ function fakeAdapter(parserVersion = 1): AgentAdapter {
       return { present: true }
     },
     async *discover(): AsyncIterable<SourceSpec> {},
-    async *parse(): AsyncIterable<RawRecord> {},
+    // The default JSONL framing: this seam is live, the orchestrator drives it.
+    parse: (source, from, ctx) => parseJsonlRecords(source, from, ctx),
     async normalize(record: RawRecord, ctx: NormalizeCtx): Promise<NormalizeResult> {
       const value = record.value as { bad?: boolean; text?: string; timestamp?: number }
       if (value?.bad) {

@@ -1,7 +1,8 @@
 /**
  * Source scan orchestration (docs/plan-v2.md §4.2/§4.3/§5.3).
  *
- * The orchestrator knows nothing about storage: it feeds an `EventSink`.
+ * The orchestrator knows nothing about storage: it feeds an `EventSink`. Framing
+ * (bytes → `RawRecord`s) is the adapter's `parse` (§5.1), never this module's.
  * Crash-safety rule §4.2: `commitSource` — the only thing that advances
  * `last_offset` — runs after the whole batch was written; any throw before it
  * leaves the offset behind so the next scan replays the batch (writes are
@@ -11,19 +12,15 @@ import type {
   AgentAdapter,
   AgentEvent,
   NormalizeCtx,
+  ParseCtx,
   ParseFailure,
+  ParseTail,
   RawRecord,
   SourceSpec,
 } from '@agentlens/event-model'
 import { isParseFailure } from '@agentlens/event-model'
-import {
-  needsRescan,
-  parseLine,
-  readIncremental,
-  statSource,
-  type JsonlChunkMeta,
-  type LineItem,
-} from './incremental.ts'
+import { needsRescan, statSource } from './incremental.ts'
+import { isParseErrorRecord, PARSE_ERROR_KEY, resolveOccurredAt, truncate } from './parse-jsonl.ts'
 import { readSqliteIncremental } from './sqlite-source.ts'
 
 export interface SourceCommit {
@@ -86,8 +83,6 @@ export interface ScanResult {
   nextSeq: number
 }
 
-const RAW_LINE_LIMIT = 16 * 1024
-
 /** §5.3: parser_version mismatch ⇒ full rescan from 0, safe only because writes are idempotent (§4.2). */
 export function rescanSourceOnVersionDrift(
   adapter: Pick<AgentAdapter, 'parserVersion'>,
@@ -127,23 +122,35 @@ export async function scanSource(
   let linesConsumed = 0
   let failures = 0
 
-  const it = readIncremental(source.path, fromOffset, { firstSeq, maxLineBytes: ctx.maxLineBytes })
-  let meta: JsonlChunkMeta
+  // §5.1: framing is the adapter's job — `parse` is the only entry point for bytes → records.
+  const stream = adapter.parse(source, { offset: fromOffset, firstSeq }, buildParseCtx(ctx, source))
+  let tail: ParseTail
   while (true) {
-    const r = await it.next()
+    const r = await stream.next()
     if (r.done) {
-      meta = r.value
+      tail = r.value
       break
     }
     if (ctx.signal?.aborted) throw new Error(`scanSource: aborted at offset ${fromOffset}`)
-    const item = r.value
+    const record = r.value
     linesConsumed++
-    const outcome = await consumeLine(item, adapter, normalizeCtx)
-    if (outcome.kind === 'events') {
-      events.push(...outcome.events)
-    } else {
+    if (isParseErrorRecord(record.value)) {
       failures++
-      ctx.sink.writeParseFailure({ ...outcome.failure, path: source.path })
+      ctx.sink.writeParseFailure({
+        reason: record.value[PARSE_ERROR_KEY],
+        rawLine: record.value.rawLine,
+        offset: record.offset,
+        rawSeq: record.seq,
+        path: source.path,
+      })
+      continue
+    }
+    const result = await adapter.normalize(record, normalizeCtx)
+    if (isParseFailure(result)) {
+      failures++
+      ctx.sink.writeParseFailure({ ...result.failure, path: source.path })
+    } else {
+      events.push(...result.events)
     }
   }
 
@@ -152,7 +159,7 @@ export async function scanSource(
   ctx.sink.commitSource({
     id: source.id,
     path: source.path,
-    lastOffset: meta.nextOffset,
+    lastOffset: tail.nextOffset,
     inode: statted.inode,
     size: statted.size,
     mtimeMs: statted.mtimeMs,
@@ -168,51 +175,9 @@ export async function scanSource(
     linesConsumed,
     events: events.length,
     failures,
-    nextOffset: meta.nextOffset,
-    nextSeq: meta.nextSeq,
+    nextOffset: tail.nextOffset,
+    nextSeq: tail.nextSeq,
   }
-}
-
-type LineOutcome =
-  | { kind: 'events'; events: AgentEvent[] }
-  | { kind: 'failure'; failure: ParseFailure }
-
-async function consumeLine(
-  item: LineItem,
-  adapter: AgentAdapter,
-  ctx: NormalizeCtx,
-): Promise<LineOutcome> {
-  if ('oversized' in item) {
-    return {
-      kind: 'failure',
-      failure: {
-        reason: `oversized-line: ${item.bytes} bytes exceed maxLineBytes`,
-        rawLine: '',
-        offset: item.offset,
-      },
-    }
-  }
-  const parsed = parseLine(item)
-  if (!parsed.ok) {
-    return {
-      kind: 'failure',
-      failure: {
-        reason: `json-parse: ${parsed.error}`,
-        rawLine: truncate(parsed.text),
-        offset: parsed.offset,
-        rawSeq: parsed.seq,
-      },
-    }
-  }
-  const record: RawRecord = {
-    seq: parsed.seq,
-    offset: parsed.offset,
-    occurredAt: resolveOccurredAt(parsed.value, ctx.now()),
-    value: parsed.value,
-  }
-  const result = await adapter.normalize(record, ctx)
-  if (isParseFailure(result)) return { kind: 'failure', failure: result.failure }
-  return { kind: 'events', events: result.events }
 }
 
 function scanSqliteSource(
@@ -318,36 +283,21 @@ function commitGone(
   return { action: 'gone', linesConsumed: 0, events: 0, failures: 0, nextOffset: s.lastOffset, nextSeq: s.linesConsumed + 1 }
 }
 
-function buildNormalizeCtx(ctx: ScanCtx, source: SourceSpec): NormalizeCtx {
+function buildParseCtx(ctx: ScanCtx, source: SourceSpec): ParseCtx {
   return {
     source,
     agentId: ctx.agentId,
     hostId: ctx.hostId,
     sessionHint: source.sessionHint ?? null,
     signal: ctx.signal,
+    maxLineBytes: ctx.maxLineBytes,
+  }
+}
+
+function buildNormalizeCtx(ctx: ScanCtx, source: SourceSpec): NormalizeCtx {
+  return {
+    ...buildParseCtx(ctx, source),
     resolveProject: ctx.resolveProject,
     now: ctx.now,
   }
-}
-
-const TS_FIELDS = ['timestamp', 'created_at', 'createdAt', 'time', 'ts', 'created'] as const
-
-/** Best-effort generic timestamp extraction; adapters refine semantics (§5.1 RawRecord.occurredAt). */
-function resolveOccurredAt(value: unknown, fallback: number): number {
-  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-    const obj = value as Record<string, unknown>
-    for (const field of TS_FIELDS) {
-      const v = obj[field]
-      if (typeof v === 'number' && Number.isFinite(v)) return v < 1e11 ? v * 1000 : v
-      if (typeof v === 'string') {
-        const ms = Date.parse(v)
-        if (!Number.isNaN(ms)) return ms
-      }
-    }
-  }
-  return fallback
-}
-
-function truncate(text: string): string {
-  return text.length > RAW_LINE_LIMIT ? `${text.slice(0, RAW_LINE_LIMIT)}…` : text
 }

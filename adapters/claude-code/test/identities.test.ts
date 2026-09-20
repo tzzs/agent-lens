@@ -32,7 +32,7 @@ describe('host_id from entrypoint', () => {
     for (const e of shared) byHost.set(e.hostId, (byHost.get(e.hostId) ?? 0) + 1)
     expect([...byHost.keys()].sort()).toEqual(['claude-code', 'claude-desktop'])
     // absent entrypoint → CLI, but the ambiguity is reported rather than hidden
-    const absent = shared.filter((e) => e.metadata?.host_diagnostics?.includes('entrypoint-absent'))
+    const absent = shared.filter((e) => (e.metadata?.host_diagnostics as string[] | undefined)?.includes('entrypoint-absent'))
     expect(absent.length).toBeGreaterThan(0)
     expect(new Set(absent.map((e) => e.hostId))).toEqual(new Set(['claude-code']))
     const unknown = shared.filter((e) =>

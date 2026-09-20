@@ -6,7 +6,15 @@
 import { describe, expect, it } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { deriveSourceId, isParseFailure, type ParseCtx, type RawRecord, type SourceSpec } from '@agentlens/event-model'
+import {
+  deriveSourceId,
+  isParseFailure,
+  type NormalizeResult,
+  type ParseCtx,
+  type ParseFailure,
+  type RawRecord,
+  type SourceSpec,
+} from '@agentlens/event-model'
 import { claudeCodeAdapter } from '../src/index.ts'
 import { PARSE_ERROR_KEY } from '../src/record.ts'
 import { FIXTURES_DIR, ctxFor, recordsFromJsonl, resetStateFor } from './helpers.ts'
@@ -16,11 +24,12 @@ function sourceFor(name: string): SourceSpec {
   return { id: deriveSourceId('claude-code', path), path, kind: 'jsonl', sessionHint: null }
 }
 
-async function readAll(name: string, from = 0): Promise<RawRecord[]> {
+/** Reads a fixture through `parse`; `firstSeq` is the absolute ordinal the resume starts at (§4.3/§5.1). */
+async function readAll(name: string, from = 0, firstSeq = 1): Promise<RawRecord[]> {
   const source = sourceFor(name)
   const ctx: ParseCtx = { source, agentId: 'claude-code', hostId: 'claude-code' }
   const out: RawRecord[] = []
-  for await (const record of claudeCodeAdapter.parse(source, { offset: from }, ctx)) out.push(record)
+  for await (const record of claudeCodeAdapter.parse(source, { offset: from, firstSeq }, ctx)) out.push(record)
   return out
 }
 
@@ -41,7 +50,8 @@ describe('parse', () => {
 
   it('resumes from a byte offset without re-reading consumed lines', async () => {
     const all = await readAll('multi-block-usage.jsonl')
-    const tail = await readAll('multi-block-usage.jsonl', all[2]!.offset)
+    // A resume carries both the byte boundary and the ordinal it continues from (§5.1 ByteOffset).
+    const tail = await readAll('multi-block-usage.jsonl', all[2]!.offset, all[2]!.seq)
     expect(tail.map((r) => r.offset)).toEqual([all[2]!.offset, all[3]!.offset])
     expect(tail.map((r) => r.seq)).toEqual([3, 4])
   })
@@ -70,6 +80,17 @@ describe('parse', () => {
   })
 })
 
+/** Narrows without a cast, so a wrong shape fails loudly instead of reading as undefined. */
+function failureOf(r: { result: NormalizeResult } | undefined): ParseFailure {
+  if (!r || !isParseFailure(r.result)) throw new Error(`expected a ParseFailure, got ${JSON.stringify(r)}`)
+  return r.result.failure
+}
+
+function eventsOf(r: { result: NormalizeResult } | undefined): Exclude<NormalizeResult, { failure: unknown }> {
+  if (!r || isParseFailure(r.result)) throw new Error('expected normalized events')
+  return r.result
+}
+
 describe('normalize of parse failures', () => {
   it('reports reason/rawLine/offset/rawSeq and never throws', async () => {
     const ctx = ctxFor('parse-failure.jsonl', 'sess-broken')
@@ -81,20 +102,20 @@ describe('normalize of parse failures', () => {
     const failures = results.filter((r) => isParseFailure(r.result))
     expect(failures.map((f) => f.record.seq)).toEqual([2, 3])
 
-    const second = failures[0]?.result as { failure: Record<string, unknown> }
-    expect(second.failure.reason).toContain('json')
-    expect(String(second.failure.rawLine)).toContain('u-bf-2')
-    expect(second.failure.offset).toBe(failures[0]?.record.offset)
-    expect(second.failure.rawSeq).toBe(2)
-    expect(second.failure.upstreamType).toBeNull()
+    const second = failureOf(failures[0])
+    expect(second.reason).toContain('json')
+    expect(String(second.rawLine)).toContain('u-bf-2')
+    expect(second.offset).toBe(failures[0]?.record.offset)
+    expect(second.rawSeq).toBe(2)
+    expect(second.upstreamType).toBeNull()
 
-    const third = failures[1]?.result as { failure: Record<string, unknown> }
-    expect(String(third.failure.rawLine)).toBe('[not json at all')
+    const third = failureOf(failures[1])
+    expect(String(third.rawLine)).toBe('[not json at all')
 
     // the two good records still normalize, and the numeric type is a counted unknown
     const ok = results.filter((r) => !isParseFailure(r.result))
     expect(ok.map((r) => r.record.seq)).toEqual([1, 4])
-    const unknown = (ok[1]?.result as { events: { type: string; metadata?: Record<string, unknown> }[] }).events
+    const unknown = eventsOf(ok[1]).events
     expect(unknown.some((e) => e.type === 'unknown')).toBe(true)
     expect(unknown.find((e) => e.type === 'unknown')?.metadata?.mapped).toBe(false)
   })

@@ -37,6 +37,12 @@ export interface SourceSpec {
 export interface ByteOffset {
   /** Byte position to resume from; a trailing partial line is never consumed (§4.3). */
   offset: number
+  /**
+   * Absolute ordinal of the first record to emit (defaults to 1). WHY: `raw_seq`
+   * participates in the deterministic event id fingerprint, so a resumed scan
+   * must continue numbering or replays collide.
+   */
+  firstSeq?: number
 }
 
 export interface RawRecord {
@@ -56,7 +62,24 @@ export interface ParseCtx {
   /** Set when the adapter needs the parent record's identity (subagent trees). */
   sessionHint?: string | null
   signal?: AbortSignal
+  /** Lines longer than this are reported as an unparseable marker instead of buffered (§4.3). */
+  maxLineBytes?: number
 }
+
+/**
+ * Where a `parse` stream left off, carried on the generator's completion value.
+ * WHY: only the reader knows how many trailing bytes belong to an unterminated
+ * line, so the position travels on the completion value rather than in the
+ * yielded records.
+ */
+export interface ParseTail {
+  /** Byte offset of the last COMPLETELY consumed line boundary: the safe place to resume (§4.3). */
+  nextOffset: number
+  /** Ordinal the next record will get. */
+  nextSeq: number
+}
+
+export type RecordStream = AsyncGenerator<RawRecord, ParseTail>
 
 export interface NormalizeCtx extends ParseCtx {
   /** Canonical project id for the record's cwd; resolved by the collector (§4.1). */
@@ -79,7 +102,8 @@ export interface AgentAdapter {
   readonly parserVersion: number
   detect(ctx: HostContext): Promise<Detection>
   discover(ctx: HostContext): AsyncIterable<SourceSpec>
-  parse(source: SourceSpec, from: ByteOffset, ctx: ParseCtx): AsyncIterable<RawRecord>
+  /** The single framing entry point (§5.1): bytes → `RawRecord`s, ending in a `ParseTail`. */
+  parse(source: SourceSpec, from: ByteOffset, ctx: ParseCtx): RecordStream
   normalize(record: RawRecord, ctx: NormalizeCtx): Promise<NormalizeResult>
   capabilities?(ctx: HostContext): Promise<CapabilityCatalog[]>
 }
