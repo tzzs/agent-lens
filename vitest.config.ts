@@ -10,6 +10,9 @@ export default defineConfig({
       '@agentlens/storage': r('./packages/storage/src/index.ts'),
       '@agentlens/collector': r('./packages/collector/src/index.ts'),
       '@agentlens/pricing': r('./packages/pricing/src/index.ts'),
+      '@agentlens/query': r('./packages/query/src/index.ts'),
+      '@agentlens/adapter-claude-code': r('./adapters/claude-code/src/index.ts'),
+      '@agentlens/cli': r('./apps/cli/src/index.ts'),
     },
   },
   test: {

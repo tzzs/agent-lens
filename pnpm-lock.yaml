@@ -18,6 +18,33 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@24.13.6)
 
+  adapters/claude-code:
+    dependencies:
+      '@agentlens/collector':
+        specifier: workspace:*
+        version: link:../../packages/collector
+      '@agentlens/event-model':
+        specifier: workspace:*
+        version: link:../../packages/event-model
+
+  apps/cli:
+    dependencies:
+      '@agentlens/collector':
+        specifier: workspace:*
+        version: link:../../packages/collector
+      '@agentlens/event-model':
+        specifier: workspace:*
+        version: link:../../packages/event-model
+      '@agentlens/pricing':
+        specifier: workspace:*
+        version: link:../../packages/pricing
+      '@agentlens/query':
+        specifier: workspace:*
+        version: link:../../packages/query
+      '@agentlens/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
+
   packages/collector:
     dependencies:
       '@agentlens/event-model':
@@ -28,6 +55,20 @@ importers:
         version: link:../storage
 
   packages/event-model: {}
+
+  packages/pricing: {}
+
+  packages/query:
+    dependencies:
+      '@agentlens/event-model':
+        specifier: workspace:*
+        version: link:../event-model
+      '@agentlens/pricing':
+        specifier: workspace:*
+        version: link:../pricing
+      '@agentlens/storage':
+        specifier: workspace:*
+        version: link:../storage
 
   packages/storage:
     dependencies:
