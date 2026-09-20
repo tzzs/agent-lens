@@ -1,3 +1,7 @@
 export * from './types.ts'
 export * from './ids.ts'
 export * from './adapter.ts'
+export * from './dedupe.ts'
+export * from './project.ts'
+export * from './validate.ts'
+export * from './otel-map.ts'
