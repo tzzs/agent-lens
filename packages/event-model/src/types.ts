@@ -78,6 +78,22 @@ export const CAPABILITY_TYPES: readonly CapabilityType[] = [
 export type UsageSource = 'reported' | 'estimated' | 'missing'
 export type EventStatus = 'ok' | 'error' | 'unknown'
 
+/** §18: OpenCode and WorkBuddy log cost natively; a computed cost must never masquerade as one. */
+export type CostSource = 'reported' | 'computed' | 'none'
+
+/**
+ * §18: how one agent's records must be folded into per-request totals. Only Claude Code and
+ * its fork Qoder duplicate usage across content blocks; Codex instead ships cumulative
+ * usage alongside per-call usage, and folding the wrong field overstates tokens ~1971x.
+ */
+export type AggregationMode = 'request_max' | 'per_record_sum' | 'last_call_sum'
+
+export interface AggregationPolicy {
+  mode: AggregationMode
+  /** Codex thread files are mostly subagents; ccusage reconciliation excludes them from totals. */
+  subagentsIncluded: boolean
+}
+
 /** Raw token counts. Cost is never stored here — it is derived (§8). */
 export interface Usage {
   inputTokens: number
@@ -120,6 +136,8 @@ export interface AgentEvent {
   parentEventId?: string | null
   /** Token dedupe key (§3.1 invariant). NULL falls back to per-event accounting. */
   requestId?: string | null
+  /** §18: source-grain thread. Codex files are threads and one session spans many of them. */
+  threadId?: string | null
   /** ms epoch, as reported by the source. */
   timestamp: number
   ingestedAt?: number
@@ -128,6 +146,11 @@ export interface AgentEvent {
   model?: ModelRef | null
   usage?: Usage | null
   usageSource: UsageSource
+  /** §18 row 1: cost as reported by the agent itself, when its logs carry one. */
+  costReported?: number | null
+  costSource?: CostSource
+  /** §18: plan credits burned (Qoder); NULL where the agent has no credit economy. */
+  credits?: number | null
   capability?: CapabilityRef | null
   durationMs?: number | null
   status: EventStatus

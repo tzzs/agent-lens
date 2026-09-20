@@ -5,12 +5,26 @@ import { migrate } from '../src/migrate.ts'
 import { tempDir } from './helpers.ts'
 
 describe('migrations', () => {
-  it('applies 001_init.sql exactly once and is a no-op on the second run', () => {
+  it('applies every migration exactly once and is a no-op on the second run', () => {
     const db = openDatabase(':memory:')
-    expect(migrate(db)).toEqual(['001_init.sql'])
+    expect(migrate(db)).toEqual(['001_init.sql', '002_measurement_round_two.sql'])
     expect(migrate(db)).toEqual([])
     const applied = db.prepare('SELECT id FROM schema_migrations').all()
-    expect(applied.map((r) => r.id)).toEqual(['001_init.sql'])
+    expect(applied.map((r) => r.id)).toEqual(['001_init.sql', '002_measurement_round_two.sql'])
+    db.close()
+  })
+
+  it('adds the §18 columns and thread index without disturbing 001 rows', () => {
+    const db = openDatabase(':memory:')
+    migrate(db)
+    const cols = (db.prepare('PRAGMA table_info(events)').all() as { name: string }[]).map((c) => c.name)
+    expect(cols).toEqual(
+      expect.arrayContaining(['thread_id', 'cost_reported', 'cost_source', 'credits']),
+    )
+    expect(
+      (db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_events_thread'").all())
+        .length,
+    ).toBe(1)
     db.close()
   })
 

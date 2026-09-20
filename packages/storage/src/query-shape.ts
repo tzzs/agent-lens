@@ -43,12 +43,16 @@ export function rowToEvent(row: Row): AgentEvent {
     projectId: String(row.project_id ?? ''),
     parentEventId: (row.parent_event_id as string | null) ?? null,
     requestId: (row.request_id as string | null) ?? null,
+    threadId: (row.thread_id as string | null) ?? null,
     timestamp: Number(row.timestamp),
     ingestedAt: row.ingested_at === null ? undefined : Number(row.ingested_at),
     type: row.type as EventType,
     subtype: (row.subtype as string | null) ?? null,
     usage,
     usageSource: row.usage_source as UsageSource,
+    costReported: (row.cost_reported as number | null) ?? null,
+    costSource: (row.cost_source as AgentEvent['costSource']) ?? null,
+    credits: (row.credits as number | null) ?? null,
     capability:
       row.capability_type === null
         ? null

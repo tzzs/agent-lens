@@ -110,11 +110,12 @@ export function insertEvents(
     const insertEvent = db.prepare(`
       INSERT OR IGNORE INTO events (
         id, schema_version, agent_id, host_id, source_id, session_id, project_id,
-        parent_event_id, request_id, timestamp, ingested_at, type, subtype,
+        parent_event_id, request_id, thread_id, timestamp, ingested_at, type, subtype,
         model_rowid, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-        reasoning_tokens, usage_source, capability_type, capability_name, capability_provider,
+        reasoning_tokens, usage_source, cost_reported, cost_source, credits,
+        capability_type, capability_name, capability_provider,
         duration_ms, status, error_fingerprint, raw_seq, raw_offset, content_ref, metadata
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `)
     const insertPayload = db.prepare(`
       INSERT OR IGNORE INTO payloads (event_id, kind, role, text, bytes, truncated, created_at)
@@ -136,6 +137,7 @@ export function insertEvents(
         nn(ev.projectId),
         nn(ev.parentEventId),
         nn(ev.requestId),
+        nn(ev.threadId),
         ev.timestamp,
         nn(ev.ingestedAt),
         ev.type,
@@ -147,6 +149,9 @@ export function insertEvents(
         nn(usage?.cacheWriteTokens),
         nn(usage?.reasoningTokens),
         nn(ev.usageSource),
+        nn(ev.costReported),
+        nn(ev.costSource),
+        nn(ev.credits),
         nn(ev.capability?.type),
         nn(ev.capability?.name),
         nn(ev.capability?.provider),
