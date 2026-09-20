@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+.tmp-vercel-*.css
+agentlens-web-ui.design/
+coverage/
+.vitest/
+*.db
+*.db-wal
+*.db-shm
