@@ -231,10 +231,17 @@ export function canonicalRepoRoot(cwd: string, opts: CanonicalizeOptions = {}): 
   return step12
 }
 
+/**
+ * The path `projectIdForCwd` digests. Callers that must show a project to a human need
+ * this: the id is a digest, and `projects.canonical_root` is the only reversible part.
+ */
+export function projectRootForCwd(cwd: string, opts: CanonicalizeOptions = {}): string {
+  const canonical = canonicalRepoRoot(cwd, opts)
+  if (canonical) return canonical
+  return normalizePath(cwd, opts.homedir ?? homedir()) ?? cwd
+}
+
 /** Never returns a null project: unresolvable cwds fall back to the normalized path. */
 export function projectIdForCwd(cwd: string, opts: CanonicalizeOptions = {}): string {
-  const canonical = canonicalRepoRoot(cwd, opts)
-  if (canonical) return deriveProjectId(canonical)
-  const normalized = normalizePath(cwd, opts.homedir ?? homedir()) ?? cwd
-  return deriveProjectId(normalized)
+  return deriveProjectId(projectRootForCwd(cwd, opts))
 }

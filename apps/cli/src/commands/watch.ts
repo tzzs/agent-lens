@@ -5,7 +5,7 @@
  * so `watch` and `scan` can never disagree about what a byte of history costs.
  */
 import { basename } from 'node:path'
-import { projectIdForCwd, type AgentAdapter, type SourceSpec } from '@agentlens/event-model'
+import { type AgentAdapter, type SourceSpec } from '@agentlens/event-model'
 import {
   createWatcher,
   scanSource,
@@ -26,7 +26,7 @@ import type { Ctx } from '../context.ts'
 import { makeHostCtx } from '../context.ts'
 import { getAdapters } from '../adapters.ts'
 import { formatCount, formatTime } from '../render.ts'
-import { cmdScan } from './scan.ts'
+import { cmdScan, makeProjectResolver, recordProjectRoots } from './scan.ts'
 
 function savedState(db: DatabaseSync, sourceId: string): SavedSourceState {
   const row = db.prepare(
@@ -87,6 +87,7 @@ function makeSink(
 }
 
 function makeTarget(db: DatabaseSync, ctx: Ctx, adapter: AgentAdapter, source: SourceSpec, contentEnabled: boolean): WatchTarget {
+  const projects = makeProjectResolver()
   const target: WatchTarget = {
     id: source.id,
     agentId: adapter.id,
@@ -95,7 +96,7 @@ function makeTarget(db: DatabaseSync, ctx: Ctx, adapter: AgentAdapter, source: S
     saved: positionOf(savedState(db, source.id)),
     scan: async () => {
       const state = savedState(db, source.id)
-      return scanSource(adapter, source, {
+      const result = await scanSource(adapter, source, {
         sink: makeSink(db, source, adapter.id, contentEnabled, (p) => {
           // §4.2: only a committed batch advances the in-memory resume position.
           target.saved = { inode: p.inode, size: p.size, mtimeMs: p.mtimeMs, lastOffset: p.lastOffset }
@@ -103,10 +104,12 @@ function makeTarget(db: DatabaseSync, ctx: Ctx, adapter: AgentAdapter, source: S
         saved: state,
         agentId: adapter.id,
         hostId: adapter.id,
-        resolveProject: (cwd) => (cwd ? projectIdForCwd(cwd) : null),
+        resolveProject: projects.resolveProject,
         now: ctx.now,
         snapshotDir: ctx.snapshotDir,
       })
+      recordProjectRoots(db, projects.roots)
+      return result
     },
   }
   return target

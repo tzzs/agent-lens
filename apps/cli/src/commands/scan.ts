@@ -3,9 +3,16 @@
  * through the cube so numbers cannot drift between commands.
  */
 import { basename, dirname, join } from 'node:path'
-import { projectIdForCwd, type AgentAdapter, type SourceSpec } from '@agentlens/event-model'
+import { projectIdForCwd, projectRootForCwd, type AgentAdapter, type SourceSpec } from '@agentlens/event-model'
 import { scanSource, type EventSink, type SavedSourceState, type SourceCommit } from '@agentlens/collector'
-import { insertEvents, recordParseFailure, setAgentAggregations, updateSourceProgress, type SourceProgress } from '@agentlens/storage'
+import {
+  insertEvents,
+  recordParseFailure,
+  setAgentAggregations,
+  updateSourceProgress,
+  upsertProject,
+  type SourceProgress,
+} from '@agentlens/storage'
 import type { DatabaseSync } from 'node:sqlite'
 import type { FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
@@ -79,6 +86,31 @@ function makeSink(db: DatabaseSync, source: SourceSpec, agentId: string, content
   }
 }
 
+/**
+ * A project id is a digest, and `insertEvents` can only mint the row from the event —
+ * so without this the whole product would label projects by hash. The collector is the
+ * one place that has seen the cwd, so it hands the canonical root to `projects` here.
+ */
+export function makeProjectResolver(): { resolveProject(cwd: string | null | undefined): string | null } & {
+  roots: Map<string, string>
+} {
+  const roots = new Map<string, string>()
+  return {
+    roots,
+    resolveProject(cwd) {
+      if (!cwd) return null
+      const id = projectIdForCwd(cwd)
+      roots.set(id, projectRootForCwd(cwd))
+      return id
+    },
+  }
+}
+
+export function recordProjectRoots(db: DatabaseSync, roots: Map<string, string>): void {
+  for (const [id, root] of roots) upsertProject(db, { id, canonicalRoot: root })
+  roots.clear()
+}
+
 export async function runScan(
   db: DatabaseSync,
   flags: FlagView,
@@ -89,6 +121,7 @@ export async function runScan(
   const contentEnabled = !flags.bool('no-content')
   const adapters = await getAdapters()
   const outcome: ScanOutcome = { adaptersFound: 0, sourcesScanned: 0, events: 0, failures: 0, notDetected: [], refusals: [] }
+  const projects = makeProjectResolver()
   for (const adapter of adapters) {
     if (only.length > 0 && !only.includes(adapter.id)) continue
     const hostCtx = makeHostCtx(ctx)
@@ -114,10 +147,13 @@ export async function runScan(
         saved,
         agentId: adapter.id,
         hostId: adapter.id,
-        resolveProject: (cwd) => (cwd ? projectIdForCwd(cwd) : null),
+        resolveProject: projects.resolveProject,
         now: ctx.now,
         snapshotDir: ctx.snapshotDir,
       })
+      // After every source rather than at the end: the ids are already durably referenced
+      // by the events, and a scan that dies mid-run must not leave them unlabelled.
+      recordProjectRoots(db, projects.roots)
       outcome.sourcesScanned++
       outcome.events += result.events
       outcome.failures += result.failures
