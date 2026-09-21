@@ -1,59 +1,224 @@
 @import "tailwindcss";
 
 /*
- * Design system for the Agent Activity Center (§10). A local-first telemetry
- * console: dense, dark, monospace numerals, low-chrome. Fonts are 100% system
- * stacks — no @font-face, no network font import, no CDN (product rule: this UI
- * must never make an outbound request beyond its own loopback origin).
+ * Design system for the Agent Activity Center (§10), in the visual language of
+ * Beautiful UI (beautifului.dev, MIT): neutral oklch surfaces, hairline rings
+ * instead of borders, one blue accent, tinted status colours, Inter + JetBrains
+ * Mono. Local-first rule: fonts ship inside dist/ (@fontsource, imported from
+ * main.js) and are served by the loopback server — this UI never makes a request
+ * beyond its own origin.
+ *
+ * Theme tokens are raw custom properties that switch per theme; @theme inline
+ * maps them onto Tailwind utilities (bg-surface, text-ink-2, shadow-card …).
+ * Light is the :root default. index.html resolves the theme (user choice, else
+ * prefers-color-scheme) into <html data-theme> before first paint and keeps it in
+ * sync, so CSS only ever keys off the attribute.
  */
-@theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
 
-  --color-ink-950: #080a0e;
-  --color-ink-900: #0d1017;
-  --color-ink-850: #12161f;
-  --color-ink-800: #171c27;
-  --color-ink-700: #232a38;
-  --color-ink-600: #333c4e;
-  --color-line: #232b3a;
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
-  --color-mist-100: #eef2f8;
-  --color-mist-300: #b6bfcd;
-  --color-mist-400: #8b95a6;
-  --color-mist-500: #6b7385;
+:root {
+  color-scheme: light;
+  --page: oklch(98.5% 0.001 286.376);
+  --canvas: oklch(96.1% 0.002 247.84);
+  --surface: oklch(100% 0 0);
+  --inset: oklch(97.9% 0.002 247.839);
+  --hover: oklch(97% 0.002 247.839);
+  --hover-2: oklch(93.3% 0.003 247.86);
+  --ink: oklch(24.7% 0.006 258.361);
+  --ink-2: oklch(50.6% 0.01 264.477);
+  --ink-3: oklch(62% 0.009 264.505);
+  --line: oklch(94.6% 0.003 264.542);
+  --line-strong: oklch(91.2% 0.005 258.326);
+  --line-soft: oklch(96.6% 0.002 264.542);
+  --field: oklch(96.1% 0.001 286.375);
 
-  --color-signal: #4fd1c5;
-  --color-signal-dim: #2b8b84;
-  --color-warn: #f6c453;
-  --color-danger: #f2777a;
-  --color-ok: #7fd88f;
-  --color-accent: #7aa2f7;
+  --accent: oklch(62.6% 0.205 254.947);
+  --accent-ink: oklch(55.6% 0.187 255.617);
+  --accent-tint: oklch(96% 0.019 252.878);
+  --green: oklch(55% 0.155 150.883);
+  --green-tint: oklch(95.8% 0.017 159.118);
+  --orange: oklch(62% 0.179 49.902);
+  --orange-tint: oklch(96.4% 0.021 67.581);
+  --red: oklch(57% 0.192 23.042);
+  --red-tint: oklch(95.6% 0.017 17.462);
 
-  --radius-card: 12px;
+  --tooltip-bg: oklch(27.2% 0.008 264.435);
+  --tooltip-fg: oklch(97.6% 0.002 247.839);
+  --tooltip-muted: oklch(73.1% 0.008 260.731);
+
+  --shadow-xs: 0 1px 2px oklch(0% 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px oklch(0% 0 0 / 0.06), 0 1px 2px oklch(0% 0 0 / 0.04);
+  --shadow-md: 0 4px 12px oklch(0% 0 0 / 0.07), 0 1px 3px oklch(0% 0 0 / 0.05);
+  --shadow-lg: 0 12px 32px oklch(0% 0 0 / 0.12), 0 2px 6px oklch(0% 0 0 / 0.06);
+  --shadow-btn: 0 0 0 1px var(--line-strong), var(--shadow-xs);
+  --shadow-card: 0 0 0 1px var(--line), var(--shadow-sm);
+  --shadow-raised: 0 0 0 1px var(--line), var(--shadow-md);
+  --shadow-overlay: 0 0 0 1px var(--line), var(--shadow-lg);
+
+  /* categorical series — one hue per slot, tuned per theme for contrast */
+  --cat-1: oklch(58% 0.17 255);
+  --cat-2: oklch(60% 0.12 190);
+  --cat-3: oklch(66% 0.16 60);
+  --cat-4: oklch(56% 0.17 300);
+  --cat-5: oklch(60% 0.15 150);
+  --cat-6: oklch(60% 0.18 25);
+  --cat-7: oklch(70% 0.14 90);
+  --cat-8: oklch(60% 0.15 350);
+  --cat-muted: oklch(70% 0.01 264);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: oklch(20.9% 0.004 264.477);
+  --canvas: oklch(23.1% 0.004 264.487);
+  --surface: oklch(26% 0.006 271.191);
+  --inset: oklch(24.3% 0.004 264.492);
+  --hover: oklch(28.9% 0.006 271.22);
+  --hover-2: oklch(31.8% 0.007 274.747);
+  --ink: oklch(96.4% 0.002 247.839);
+  --ink-2: oklch(76% 0.008 260.731);
+  --ink-3: oklch(62% 0.01 264.484);
+  --line: oklch(30.8% 0.006 258.354);
+  --line-strong: oklch(35.6% 0.007 264.474);
+  --line-soft: oklch(27.8% 0.006 258.354);
+  --field: oklch(29.3% 0.006 271.223);
+
+  --accent: oklch(68% 0.173 253.301);
+  --accent-ink: oklch(78.8% 0.113 248.33);
+  --accent-tint: oklch(68% 0.173 253.301 / 0.16);
+  --green: oklch(72% 0.154 153.814);
+  --green-tint: oklch(70.5% 0.154 153.814 / 0.14);
+  --orange: oklch(76% 0.156 55.642);
+  --orange-tint: oklch(74.6% 0.156 55.642 / 0.14);
+  --red: oklch(70% 0.18 21.433);
+  --red-tint: oklch(66.6% 0.18 21.433 / 0.14);
+
+  --tooltip-bg: oklch(18.2% 0.004 264.459);
+
+  --shadow-btn: 0 0 0 1px oklch(100% 0 0 / 0.1), 0 1px 2px oklch(0% 0 0 / 0.3);
+  --shadow-card: 0 0 0 1px oklch(100% 0 0 / 0.08), 0 1px 2px oklch(0% 0 0 / 0.2), 0 2px 6px oklch(0% 0 0 / 0.2);
+  --shadow-raised: 0 0 0 1px oklch(100% 0 0 / 0.13), 0 2px 10px oklch(0% 0 0 / 0.22);
+  --shadow-overlay: 0 0 0 1px oklch(100% 0 0 / 0.15), 0 8px 28px oklch(0% 0 0 / 0.34);
+
+  --cat-1: oklch(70% 0.15 255);
+  --cat-2: oklch(74% 0.11 190);
+  --cat-3: oklch(78% 0.14 65);
+  --cat-4: oklch(70% 0.15 300);
+  --cat-5: oklch(74% 0.14 150);
+  --cat-6: oklch(70% 0.16 25);
+  --cat-7: oklch(84% 0.13 95);
+  --cat-8: oklch(72% 0.14 350);
+  --cat-muted: oklch(52% 0.01 264);
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --color-page: var(--page);
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-inset: var(--inset);
+  --color-hover: var(--hover);
+  --color-hover-2: var(--hover-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-line-soft: var(--line-soft);
+  --color-field: var(--field);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-tint: var(--accent-tint);
+  --color-green: var(--green);
+  --color-green-tint: var(--green-tint);
+  --color-orange: var(--orange);
+  --color-orange-tint: var(--orange-tint);
+  --color-red: var(--red);
+  --color-red-tint: var(--red-tint);
+  --color-tooltip: var(--tooltip-bg);
+  --color-tooltip-fg: var(--tooltip-fg);
+  --color-tooltip-muted: var(--tooltip-muted);
+
+  --shadow-btn: var(--shadow-btn);
+  --shadow-card: var(--shadow-card);
+  --shadow-raised: var(--shadow-raised);
+  --shadow-overlay: var(--shadow-overlay);
+
+  --radius-card: 14px;
+  --radius-control: 8px;
+}
+
+/* LEGACY ALIASES — old ink/mist/signal names mapped onto the new tokens so pages
+ * render before they are migrated. Removed once every page uses the new names. */
+@theme inline {
+  --color-ink-950: var(--page);
+  --color-ink-900: var(--surface);
+  --color-ink-850: var(--hover);
+  --color-ink-800: var(--hover-2);
+  --color-ink-700: var(--line-strong);
+  --color-ink-600: var(--line-strong);
+  --color-mist-100: var(--ink);
+  --color-mist-200: var(--ink);
+  --color-mist-300: var(--ink-2);
+  --color-mist-400: var(--ink-2);
+  --color-mist-500: var(--ink-3);
+  --color-signal: var(--accent);
+  --color-signal-dim: var(--accent-ink);
+  --color-warn: var(--orange);
+  --color-danger: var(--red);
+  --color-ok: var(--green);
 }
 
 html {
-  color-scheme: dark;
+  background: var(--page);
 }
 
 body {
   margin: 0;
-  background: var(--color-ink-950);
-  color: var(--color-mist-100);
+  background: var(--page);
+  color: var(--ink);
   font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
-  font-feature-settings: "tnum" 1;
+  font-feature-settings: "cv11", "ss01";
 }
 
 * {
-  border-color: var(--color-line);
+  border-color: var(--line);
 }
 
 /* numerals read as a column in dense tables */
 .nums {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "zero" 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--accent-tint);
+}
+
+/* Visually hidden but read by screen readers (chart data tables, icon labels). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 ::-webkit-scrollbar {
@@ -61,9 +226,19 @@ body {
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-ink-700);
+  background: var(--line-strong);
+  border: 2px solid var(--page);
   border-radius: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

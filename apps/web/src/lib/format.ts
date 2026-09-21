@@ -85,3 +85,24 @@ export function costDisplay(n: number | null | undefined, partial = false): { te
   if (partial) return { text, title: 'at least this much: some agents have no price and are excluded (§8)' }
   return { text, title: 'computed from tokens × price (estimate)' }
 }
+
+/**
+ * Hash-like ids (session ids, sha256 project ids) are unreadable at full length
+ * and blow out table columns. Show a fixed-width prefix; callers put the full
+ * value in a `title` so it stays inspectable and copyable.
+ */
+export function shortId(id: string | null | undefined, n = 8): string {
+  if (!id) return '—'
+  return id.length > n + 1 ? id.slice(0, n) : id
+}
+
+/** True when a label is an opaque hex digest rather than a human name. */
+export function looksLikeHash(s: string | null | undefined): boolean {
+  return !!s && /^[0-9a-f]{24,}$/i.test(s)
+}
+
+/** A display name for a project: its name, or a short id when only a digest is known. */
+export function projectLabel(name: string | null | undefined): string {
+  if (!name) return '(no project)'
+  return looksLikeHash(name) ? shortId(name) : name
+}
