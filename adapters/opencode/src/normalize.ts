@@ -14,9 +14,9 @@
 import {
   deriveErrorFingerprint,
   deriveEventId,
-  deriveProjectId,
   deriveSessionId,
   SCHEMA_VERSION,
+  UNATTRIBUTED_PROJECT_ID,
   type AgentEvent,
   type CapabilityRef,
   type EventType,
@@ -51,7 +51,7 @@ import { PARSE_ERROR_KEY } from '@agentlens/collector'
 import { TABLE_MESSAGE, TABLE_PART, TABLE_SESSION } from './record.ts'
 
 /** §4.1 rule 5: an unattributable cwd is reported, never guessed. */
-export const UNATTRIBUTED_PROJECT_ID = deriveProjectId('unattributed')
+export { UNATTRIBUTED_PROJECT_ID }
 
 /**
  * §3.2 / §6: these parts carry whole file or page bodies (measured tools:

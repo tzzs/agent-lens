@@ -3,7 +3,10 @@ import {
   canonicalRepoRoot,
   loadMergeRules,
   parseProjectsToml,
+  projectLabel,
   projectIdForCwd,
+  projectRootForCwd,
+  UNATTRIBUTED_PROJECT_ID,
   type ProjectFs,
 } from '../src/project.ts'
 import { deriveProjectId } from '../src/ids.ts'
@@ -157,5 +160,29 @@ describe('projectIdForCwd', () => {
     expect(projectIdForCwd('/not/a/repo/x/', { fs: makeFs({}), rules: [] })).toBe(deriveProjectId('/not/a/repo/x'))
     const viaHome = projectIdForCwd('~/whatever', { fs: makeFs({}), rules: [], homedir: '/home/u' })
     expect(viaHome).toBe(deriveProjectId('/home/u/whatever'))
+  })
+})
+
+describe('projectRootForCwd', () => {
+  it('is exactly the path `projectIdForCwd` digests, so a label can never disagree with an id', () => {
+    const fs = makeFs({ '/main': dir, '/main/.git': dir, '/wt/f/.git': gitFile('/main/.git/worktrees/f') })
+    for (const cwd of ['/wt/f', '/wt/f/packages/app', '/not/a/repo/x/']) {
+      expect(projectIdForCwd(cwd, { fs, rules: [] })).toBe(deriveProjectId(projectRootForCwd(cwd, { fs, rules: [] })))
+    }
+    expect(projectRootForCwd('~/whatever', { fs: makeFs({}), rules: [], homedir: '/home/u' })).toBe('/home/u/whatever')
+  })
+})
+
+describe('projectLabel (§7)', () => {
+  it('reads a name, then a directory, then a word — and only falls back to the digest', () => {
+    expect(projectLabel({ id: 'abc', displayName: 'Picko', canonicalRoot: '/x/y' })).toBe('Picko')
+    expect(projectLabel({ id: 'abc', canonicalRoot: '/x/y/' })).toBe('y')
+    expect(projectLabel({ id: 'deadbeef' })).toBe('deadbeef')
+  })
+
+  it('names the one project that is not a path at all', () => {
+    // Every adapter's no-cwd fallback: 21% of a real corpus, so it must not print as a hash.
+    expect(UNATTRIBUTED_PROJECT_ID).toBe(deriveProjectId('unattributed'))
+    expect(projectLabel({ id: UNATTRIBUTED_PROJECT_ID })).toBe('unattributed')
   })
 })

@@ -245,3 +245,25 @@ export function projectRootForCwd(cwd: string, opts: CanonicalizeOptions = {}): 
 export function projectIdForCwd(cwd: string, opts: CanonicalizeOptions = {}): string {
   return deriveProjectId(projectRootForCwd(cwd, opts))
 }
+
+/**
+ * §5.2: a record with no attributable cwd is reported, never guessed. Every adapter
+ * falls back to this one id, so it lives here rather than being re-derived five times.
+ */
+export const UNATTRIBUTED_PROJECT_ID: string = deriveProjectId('unattributed')
+
+/**
+ * §7 label precedence — `display_name`, then the root's directory name, then the id.
+ * The id is a digest and unreadable, so the one project that is not a path at all is
+ * spelled out instead.
+ */
+export function projectLabel(project: {
+  id: string
+  displayName?: string | null
+  canonicalRoot?: string | null
+}): string {
+  if (project.displayName) return project.displayName
+  const base = project.canonicalRoot ? basename(project.canonicalRoot) : ''
+  if (base) return base
+  return project.id === UNATTRIBUTED_PROJECT_ID ? 'unattributed' : project.id
+}

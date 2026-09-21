@@ -7,7 +7,7 @@ import { accessSync, constants, readFileSync } from 'node:fs'
 import { homedir as osHomedir } from 'node:os'
 import { basename, dirname } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
-import type { HostContext } from '@agentlens/event-model'
+import { projectLabel, type HostContext } from '@agentlens/event-model'
 import type { FlagView } from './args.ts'
 import type { ServeHandle } from './serve.ts'
 import { loadAgentAggregations } from '@agentlens/storage'
@@ -172,7 +172,15 @@ export function resolveProjectIds(db: DatabaseSync, ctx: Ctx, values: string[]):
     'SELECT id, display_name, canonical_root FROM projects',
     (r) => {
       const root = r.canonical_root ? String(r.canonical_root) : null
-      return [String(r.id), r.display_name ? String(r.display_name) : null, root, root ? basename(root) : null]
+      const displayName = r.display_name ? String(r.display_name) : null
+      return [
+        String(r.id),
+        displayName,
+        root,
+        root ? basename(root) : null,
+        // The cube prints this, so whatever it prints has to be searchable here too.
+        projectLabel({ id: String(r.id), displayName, canonicalRoot: root }),
+      ]
     },
     true,
     'project',

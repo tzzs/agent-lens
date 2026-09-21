@@ -38,6 +38,7 @@ import { computeCost, type BillingMode, type PriceEntry } from '@agentlens/prici
 import {
   assertAggregationMode,
   DEFAULT_AGGREGATION,
+  projectLabel,
   type AggregationMode,
   type AggregationPolicy,
 } from '@agentlens/event-model'
@@ -396,9 +397,11 @@ function projectLabels(db: DatabaseSync): Map<string, string> {
   const rows = runPrepared(db, { sql: 'SELECT id, display_name, canonical_root FROM projects', params: [] })
   const map = new Map<string, string>()
   for (const r of rows) {
-    const root = r.canonical_root ? String(r.canonical_root) : null
-    const base = root ? (root.split('/').filter(Boolean).pop() ?? null) : null
-    map.set(String(r.id), (r.display_name ? String(r.display_name) : null) ?? base ?? String(r.id))
+    map.set(String(r.id), projectLabel({
+      id: String(r.id),
+      displayName: r.display_name ? String(r.display_name) : null,
+      canonicalRoot: r.canonical_root ? String(r.canonical_root) : null,
+    }))
   }
   return map
 }

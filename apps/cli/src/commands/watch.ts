@@ -87,7 +87,7 @@ function makeSink(
 }
 
 function makeTarget(db: DatabaseSync, ctx: Ctx, adapter: AgentAdapter, source: SourceSpec, contentEnabled: boolean): WatchTarget {
-  const projects = makeProjectResolver()
+  const projects = makeProjectResolver(ctx.homedir)
   const target: WatchTarget = {
     id: source.id,
     agentId: adapter.id,

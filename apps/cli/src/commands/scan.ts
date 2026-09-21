@@ -3,7 +3,7 @@
  * through the cube so numbers cannot drift between commands.
  */
 import { basename, dirname, join } from 'node:path'
-import { projectIdForCwd, projectRootForCwd, type AgentAdapter, type SourceSpec } from '@agentlens/event-model'
+import { deriveProjectId, projectRootForCwd, type AgentAdapter, type SourceSpec } from '@agentlens/event-model'
 import { scanSource, type EventSink, type SavedSourceState, type SourceCommit } from '@agentlens/collector'
 import {
   insertEvents,
@@ -91,16 +91,20 @@ function makeSink(db: DatabaseSync, source: SourceSpec, agentId: string, content
  * so without this the whole product would label projects by hash. The collector is the
  * one place that has seen the cwd, so it hands the canonical root to `projects` here.
  */
-export function makeProjectResolver(): { resolveProject(cwd: string | null | undefined): string | null } & {
+export function makeProjectResolver(homedir?: string): {
+  resolveProject(cwd: string | null | undefined): string | null
   roots: Map<string, string>
 } {
   const roots = new Map<string, string>()
+  const opts = homedir ? { homedir } : {}
   return {
     roots,
     resolveProject(cwd) {
       if (!cwd) return null
-      const id = projectIdForCwd(cwd)
-      roots.set(id, projectRootForCwd(cwd))
+      // One canonicalization per cwd: the id and the label must come off the same root.
+      const root = projectRootForCwd(cwd, opts)
+      const id = deriveProjectId(root)
+      roots.set(id, root)
       return id
     },
   }
@@ -121,7 +125,7 @@ export async function runScan(
   const contentEnabled = !flags.bool('no-content')
   const adapters = await getAdapters()
   const outcome: ScanOutcome = { adaptersFound: 0, sourcesScanned: 0, events: 0, failures: 0, notDetected: [], refusals: [] }
-  const projects = makeProjectResolver()
+  const projects = makeProjectResolver(ctx.homedir)
   for (const adapter of adapters) {
     if (only.length > 0 && !only.includes(adapter.id)) continue
     const hostCtx = makeHostCtx(ctx)

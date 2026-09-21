@@ -9,6 +9,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
+import { projectLabel } from '@agentlens/event-model'
 
 export type Row = Record<string, unknown>
 
@@ -57,19 +58,26 @@ export function resolveProjectIds(db: DatabaseSync, values: string[]): string[] 
     const hit = all.find((r) => {
       const root = r.canonical_root ? String(r.canonical_root) : null
       const base = root ? (root.split('/').filter(Boolean).pop() ?? null) : null
-      return match([r.id, r.display_name, root, base], want)
+      const label = projectLabel({
+        id: String(r.id),
+        displayName: r.display_name ? String(r.display_name) : null,
+        canonicalRoot: root,
+      })
+      return match([r.id, r.display_name, root, base, label], want)
     })
     return hit ? String(hit.id) : v
   })
 }
 
-/** id -> human label, using the cube's own precedence (display_name, then dir basename, then id). */
+/** id -> human label, using the cube's own precedence (§7: name, then dir, then word, then id). */
 export function projectLabelMap(db: DatabaseSync): Map<string, string> {
   const out = new Map<string, string>()
   for (const r of rowsOf(db, 'SELECT id, display_name, canonical_root FROM projects')) {
-    const root = r.canonical_root ? String(r.canonical_root) : null
-    const base = root ? (root.split('/').filter(Boolean).pop() ?? null) : null
-    out.set(String(r.id), (r.display_name ? String(r.display_name) : null) ?? base ?? String(r.id))
+    out.set(String(r.id), projectLabel({
+      id: String(r.id),
+      displayName: r.display_name ? String(r.display_name) : null,
+      canonicalRoot: r.canonical_root ? String(r.canonical_root) : null,
+    }))
   }
   return out
 }

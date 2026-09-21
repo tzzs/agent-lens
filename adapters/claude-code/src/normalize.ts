@@ -7,10 +7,10 @@
 import {
   deriveErrorFingerprint,
   deriveEventId,
-  deriveProjectId,
   deriveSessionId,
   deriveSessionIdFromSource,
   SCHEMA_VERSION,
+  UNATTRIBUTED_PROJECT_ID,
   type AgentEvent,
   type CapabilityRef,
   type EventType,
@@ -61,7 +61,7 @@ import { ScanState, stateFor } from './state.ts'
  * record without an attributable cwd is reported as unattributed rather than guessed —
  * the collector/sink keeps the session's already-known project instead.
  */
-export const UNATTRIBUTED_PROJECT_ID = deriveProjectId('unattributed')
+export { UNATTRIBUTED_PROJECT_ID }
 
 /** §5.3 whitelist: 13 host-metadata record types measured at 24.6% of all records. */
 export const HOST_METADATA_TYPES: readonly string[] = [

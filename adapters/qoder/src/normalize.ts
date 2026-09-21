@@ -10,10 +10,10 @@
 import {
   deriveErrorFingerprint,
   deriveEventId,
-  deriveProjectId,
   deriveSessionId,
   deriveSessionIdFromSource,
   SCHEMA_VERSION,
+  UNATTRIBUTED_PROJECT_ID,
   type AgentEvent,
   type CapabilityRef,
   type EventType,
@@ -60,7 +60,7 @@ import { ScanState, stateFor } from './state.ts'
  * §4.1 rule 5 (inherited): `cwd` is absent on host-metadata records, so an
  * unattributable cwd is reported, never guessed.
  */
-export const UNATTRIBUTED_PROJECT_ID = deriveProjectId('unattributed')
+export { UNATTRIBUTED_PROJECT_ID }
 
 /**
  * §5.3 whitelist — the record types the Qoder census measured besides the

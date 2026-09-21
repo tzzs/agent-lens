@@ -9,11 +9,11 @@
 import {
   deriveErrorFingerprint,
   deriveEventId,
-  deriveProjectId,
   deriveSessionId,
   deriveSessionIdFromSource,
   projectIdForCwd,
   SCHEMA_VERSION,
+  UNATTRIBUTED_PROJECT_ID,
   type AgentEvent,
   type CapabilityRef,
   type EventType,
@@ -60,7 +60,7 @@ import { ScanState, stateFor } from './state.ts'
  * `sessionId`), and an unattributable record is reported as such — the sink keeps the
  * session's already-known project rather than the adapter guessing one.
  */
-export const UNATTRIBUTED_PROJECT_ID = deriveProjectId('unattributed')
+export { UNATTRIBUTED_PROJECT_ID }
 
 /**
  * §5.3 record-type whitelist: exactly the six types the measured census counted

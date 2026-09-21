@@ -13,10 +13,10 @@
 import {
   deriveErrorFingerprint,
   deriveEventId,
-  deriveProjectId,
   deriveSessionId,
   deriveSessionIdFromSource,
   SCHEMA_VERSION,
+  UNATTRIBUTED_PROJECT_ID,
   type AgentEvent,
   type CapabilityRef,
   type EventType,
@@ -60,7 +60,7 @@ import { threadHintFromPath } from './paths.ts'
 import { ScanState, stateFor, type ThreadContext } from './state.ts'
 
 /** §4.1 rule 5, shared convention with the other adapters. */
-export const UNATTRIBUTED_PROJECT_ID = deriveProjectId('unattributed')
+export { UNATTRIBUTED_PROJECT_ID }
 
 /** §5.3 whitelist: the 8 top-level envelope types in codex.md §2.1. */
 export const CODEX_ENVELOPE_TYPES: readonly string[] = [

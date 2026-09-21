@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterAll, describe, expect, it } from 'vitest'
-import { projectIdForCwd, type AgentEvent } from '@agentlens/event-model'
+import { projectIdForCwd, UNATTRIBUTED_PROJECT_ID, type AgentEvent } from '@agentlens/event-model'
 import { insertEvents, migrate, upsertProject } from '@agentlens/storage'
 import { makeProjectResolver, recordProjectRoots } from '../src/commands/scan.ts'
 import { resolveProjectIds } from '../src/context.ts'
@@ -104,6 +104,19 @@ describe('project labels (§7)', () => {
 
     // Not a repository, so the fallback is the path itself — still a basename a human reads.
     expect(root(db, id)).toEqual({ canonical_root: plain, display_name: 'Scratch' })
+    db.close()
+  })
+
+  it('labels the records no cwd can be attributed to, without inventing a root', () => {
+    const db = freshDb()
+    const messages: string[] = []
+    const ctx = { homedir: tmp, err: (m: string) => messages.push(m) } as Ctx
+    // 21% of the real claude-code corpus: reported as unattributed (§5.2), so it has no path
+    // to label and would otherwise print as a 64-hex digest on the first screen.
+    insertEvents(db, [eventAt(UNATTRIBUTED_PROJECT_ID, 1)])
+    expect(root(db, UNATTRIBUTED_PROJECT_ID)).toEqual({ canonical_root: null, display_name: null })
+    expect(resolveProjectIds(db, ctx, ['unattributed'])).toEqual([UNATTRIBUTED_PROJECT_ID])
+    expect(messages).toEqual([])
     db.close()
   })
 })
