@@ -1,0 +1,495 @@
+/**
+ * Same-origin API client for the AgentLens dashboard.
+ *
+ * SECURITY / PRODUCT RULE: every request is a relative `/api/...` path against
+ * this same origin. The server binds loopback only and reads private local logs;
+ * nothing here may point at another host, a CDN, or an analytics endpoint. There
+ * is deliberately no base-URL configuration: `fetch('/api/health')` is the whole
+ * transport story, which is also what keeps the local-first promise auditable.
+ *
+ * The types below mirror the response shapes re-exported from
+ * `packages/server/src/index.ts`. They are read-only mirrors: the server owns the
+ * contract, this file only describes it so the UI renders real fields.
+ */
+
+export interface ErrorBody {
+  error: { kind: string; message: string; details?: Record<string, unknown> }
+}
+
+/** Thrown for any non-2xx so callers can branch on the server's error `kind`. */
+export class ApiError extends Error {
+  readonly status: number
+  readonly kind: string
+  readonly details?: Record<string, unknown>
+  constructor(status: number, body: ErrorBody) {
+    super(body?.error?.message ?? `request failed (${status})`)
+    this.name = 'ApiError'
+    this.status = status
+    this.kind = body?.error?.kind ?? 'internal'
+    if (body?.error?.details) this.details = body.error.details
+  }
+}
+
+async function getJSON<T>(path: string, params?: Record<string, string | number | string[] | undefined>): Promise<T> {
+  const url = buildURL(path, params)
+  const res = await fetch(url, { headers: { accept: 'application/json' } })
+  const text = await res.text()
+  let parsed: unknown = text
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    /* non-JSON error body */
+  }
+  if (!res.ok) {
+    const body = (parsed && typeof parsed === 'object' && 'error' in (parsed as object) ? parsed : { error: { kind: 'internal', message: text || res.statusText } }) as ErrorBody
+    throw new ApiError(res.status, body)
+  }
+  return parsed as T
+}
+
+/** Builds a relative /api URL from a base path and optional params (arrays repeat). */
+export function buildURL(path: string, params?: Record<string, string | number | string[] | undefined>): string {
+  const sp = new URLSearchParams()
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      if (v === undefined) continue
+      if (Array.isArray(v)) {
+        if (v.length) sp.set(k, v.join(','))
+      } else {
+        sp.set(k, String(v))
+      }
+    }
+  }
+  const q = sp.toString()
+  return q ? `${path}?${q}` : path
+}
+
+/* ------------------------------------------------------------------ *
+ * Shared vocabulary (mirrors @agentlens/query spec + server metrics.ts)
+ * ------------------------------------------------------------------ */
+
+export const QUERY_METRICS = [
+  'events',
+  'sessions',
+  'duration',
+  'tokens_total',
+  'tokens_input',
+  'tokens_output',
+  'tokens_cache_read',
+  'tokens_cache_write',
+  'tokens_reasoning',
+  'cost_api_equiv',
+  'cost_reported',
+] as const
+
+export const QUERY_DIMS = [
+  'time',
+  'day',
+  'week',
+  'month',
+  'agent',
+  'host',
+  'project',
+  'session',
+  'thread',
+  'model',
+  'provider',
+  'capability_type',
+  'capability_name',
+  'tool',
+  'skill',
+  'mcp',
+  'plugin',
+  'connector',
+  'command',
+  'subagent',
+  'hook',
+  'status',
+  'usage_source',
+] as const
+
+export type Row = Record<string, unknown>
+
+/** Capability axis whitelist (mirrors event-model CAPABILITY_TYPES). */
+export const CAPABILITY_TYPES = ['tool', 'skill', 'mcp', 'plugin', 'connector', 'command', 'subagent', 'hook'] as const
+
+/** A cost figure as the server emits it: null means "no basis", never $0. */
+export interface CostView {
+  pricingConfigured: boolean
+  apiEquivalentUsd: number | null
+  actualUsd: number | null
+  reportedUsd: number | null
+  apiEquivalentPartial: boolean
+  actualPartial: boolean
+  unpricedAgents: string[]
+  perAgent: {
+    agentId: string
+    billingMode: string
+    apiEquivalentUsd: number | null
+    actualUsd: number | null
+    reportedUsd: number | null
+  }[]
+  basis: string
+}
+
+export interface Filter {
+  since?: string
+  until?: string
+  agent?: string[]
+  host?: string[]
+  project?: string[]
+  session?: string[]
+  model?: string[]
+  provider?: string[]
+  capabilityType?: string[]
+  capabilityName?: string[]
+  status?: string[]
+  type?: string[]
+}
+
+/* ------------------------------------------------------------------ *
+ * Health
+ * ------------------------------------------------------------------ */
+
+export interface HealthResponse {
+  status: string
+  server: string
+  now: number
+  dbPath: string | null
+  events: number
+  sessions: number
+  migrationsApplied: number
+  contentAvailable: boolean
+  payloads: number
+  loopbackOnly: boolean
+}
+
+/* ------------------------------------------------------------------ *
+ * Overview
+ * ------------------------------------------------------------------ */
+
+export interface HostShare {
+  host: string
+  events: number
+  share: number
+}
+export interface HostSplitBanner {
+  agentId: string
+  dominantHost: string
+  dominantShare: number
+  hosts: HostShare[]
+  splitByDefault: true
+  message: string
+}
+export interface OverviewResponse {
+  generatedAt: number
+  window: { since?: string; until?: string; sinceTs: number | null; granularity: string; defaultSinceApplied: boolean }
+  cards: {
+    tokens: { total: number; input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number; basis: string }
+    cost: CostView
+    sessions: number
+    events: number
+  }
+  activity: Record<string, number>
+  trend: Row[]
+  trendByHost: Row[]
+  agents: Row[]
+  hosts: Row[]
+  projects: Row[]
+  capabilities: Row[]
+  banners: { hostSplit: HostSplitBanner | null; coverage: CoverageReport }
+  content: { available: boolean; payloads: number }
+}
+
+/* ------------------------------------------------------------------ *
+ * Coverage
+ * ------------------------------------------------------------------ */
+
+export interface UnreachableSource {
+  id: string
+  agentId: string
+  path: string | null
+  status: string
+  lastError: string | null
+  filePresent: boolean
+  dirPresent: boolean
+}
+export interface EmptyDir {
+  dir: string
+  agentIds: string[]
+  missingSources: number
+  lastEventAt: number | null
+}
+export interface CoverageReport {
+  generatedAt: number
+  incomplete: boolean
+  sourcesKnown: number
+  unreachable: UnreachableSource[]
+  emptyDirs: EmptyDir[]
+  projectDirsWithoutSessions: { project: string; root: string }[]
+  eventlessSessions: number
+  banner: string | null
+  limits: string
+}
+
+/* ------------------------------------------------------------------ *
+ * Sessions
+ * ------------------------------------------------------------------ */
+
+export interface SessionRow {
+  sessionId: string
+  agentId: string
+  hostId: string
+  projectId: string
+  project: string
+  title: string | null
+  firstTimestamp: number | null
+  lastTimestamp: number | null
+  events: number
+  tokensTotal: number
+  durationMs: number
+  costApiEquiv: number | null
+  payloads: number
+  contentAvailable: boolean
+}
+export interface SessionListResponse {
+  rows: SessionRow[]
+  totalSessions: number
+  truncated: boolean
+  content: { available: boolean }
+  filter: Filter
+}
+
+export interface PayloadView {
+  kind: string
+  role: string | null
+  text: string
+  bytes: number | null
+  truncated: boolean
+}
+export interface TimelineNode {
+  id: string
+  type: string
+  subtype: string | null
+  timestamp: number | null
+  rawSeq: number | null
+  requestId: string | null
+  parentEventId: string | null
+  agentId: string
+  hostId: string
+  model: { provider: string; name: string } | null
+  capability: { type: string; name: string; provider: string | null } | null
+  usage: {
+    inputTokens: number
+    outputTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+    reasoningTokens: number
+  } | null
+  usageSource: string
+  durationMs: number | null
+  status: string
+  errorFingerprint: string | null
+  metadata: Record<string, unknown> | null
+  payloads: PayloadView[]
+}
+export interface SessionDetailResponse {
+  session: {
+    id: string
+    agentId: string
+    hostId: string
+    projectId: string | null
+    project: string | null
+    title: string | null
+    firstTimestamp: number | null
+    lastTimestamp: number | null
+    eventCount: number
+  }
+  contentAvailable: boolean
+  contentNote: string
+  totals: Record<string, number | null>
+  nodes: TimelineNode[]
+  explain: string
+}
+
+/* ------------------------------------------------------------------ *
+ * Capabilities
+ * ------------------------------------------------------------------ */
+
+export interface CapabilityNameRow {
+  name: string
+  events: number
+  durationMs: number
+  tokensTotal: number
+  costApiEquiv: number | null
+  errors: number
+}
+export interface CapabilityTypeRow {
+  type: string
+  events: number
+  durationMs: number
+  tokensTotal: number
+  costApiEquiv: number | null
+  errors: number
+  agents: { agentId: string; events: number; sessions: number }[]
+  names: CapabilityNameRow[]
+}
+export interface CatalogView {
+  available: boolean
+  note: string
+  installed: number
+  neverUsed: { agentId: string | null; type: string; name: string; source: string }[]
+}
+export interface CapabilityResponse {
+  filter: Filter
+  types: CapabilityTypeRow[]
+  supports: { agentId: string; recorded: string[]; missing: string[] }[]
+  catalog: CatalogView
+  explain: string
+}
+
+/* ------------------------------------------------------------------ *
+ * Projects
+ * ------------------------------------------------------------------ */
+
+export interface ProjectRow {
+  projectId: string
+  project: string
+  canonicalRoot: string | null
+  observedCwds: { cwd: string; events: number }[]
+  agents: { agentId: string; sessions: number; tokensTotal: number; events: number; costApiEquiv: number | null }[]
+  models: { model: string; events: number; tokensTotal: number }[]
+  capabilities: { type: string; events: number }[]
+  recentSessions: { id: string; agentId: string; hostId: string; lastTimestamp: number | null; title: string | null }[]
+  metrics: Record<string, number | null>
+}
+export interface ProjectsResponse {
+  filter: Filter
+  rows: ProjectRow[]
+  totals: Record<string, number | null>
+  truncated: boolean
+  cost: CostView
+  note: string
+}
+
+/* ------------------------------------------------------------------ *
+ * Agents
+ * ------------------------------------------------------------------ */
+
+export interface AgentRow {
+  agentId: string
+  displayName: string | null
+  recorded: boolean
+  billingMode: string
+  hosts: { host: string; events: number; sessions: number }[]
+  capabilities: { type: string; events: number; errors: number }[]
+  models: { model: string; events: number; tokensTotal: number; costApiEquiv: number | null }[]
+  metrics: Record<string, number | null>
+}
+export interface AgentsResponse {
+  filter: Filter
+  rows: AgentRow[]
+  totals: Record<string, number | null>
+  cost: CostView
+}
+
+/* ------------------------------------------------------------------ *
+ * Models
+ * ------------------------------------------------------------------ */
+
+export interface ModelRow {
+  provider: string
+  model: string
+  events: number
+  sessions: number
+  tokensTotal: number
+  costApiEquiv: number | null
+  priced: boolean | null
+}
+export interface ModelsResponse {
+  filter: Filter
+  rows: ModelRow[]
+  totals: Record<string, number | null>
+  truncated: boolean
+  pricingConfigured: boolean
+  unpriced: { provider: string; model: string; lastSeen: number | null }[]
+  cost: CostView
+  note: string
+}
+
+/* ------------------------------------------------------------------ *
+ * Query cube (Usage explorer)
+ * ------------------------------------------------------------------ */
+
+export interface QueryResponse {
+  spec: { metrics?: string[]; dims?: string[]; filter?: Filter; order?: string; limit?: number }
+  explain: string
+  rows: Row[]
+  columns: string[]
+  totals: Record<string, number | null>
+  truncated: boolean
+}
+
+/* ------------------------------------------------------------------ *
+ * Doctor
+ * ------------------------------------------------------------------ */
+
+export interface DoctorAgentRow {
+  id: string
+  displayName: string | null
+  detectedVersion: string | null
+  dataRoot: string | null
+  events: number
+  sources: number
+  status: 'ok' | 'ingested-only' | 'not-detected' | 'error'
+  note: string | null
+}
+export interface DoctorReport {
+  generatedAt: number
+  adaptersInstalled: boolean
+  agents: DoctorAgentRow[]
+  parsing: { events: number; parseErrors: number; parseErrorPct: number; unknownTypes: number }
+  usageQuality: {
+    reported: number
+    estimated: number
+    missing: number
+    withoutRequestId: number
+    naiveTokens: number
+    dedupedTokens: number
+    inflationAvoidedPct: number
+    dedupActive: boolean
+  }
+  coverage: CoverageReport
+  capabilities: { type: string; events: number; errors: number }[]
+  capabilitySupport: { agentId: string; recorded: string[] }[]
+  catalog: { available: boolean; note: string; installed: number; neverUsed: number }
+  pricing: {
+    pricingConfigured: boolean
+    modelsPriced: number | null
+    modelsSeen: number
+    missing: { provider: string; model: string; lastSeen: number | null }[]
+  }
+  cost: CostView
+  permissions: { path: string; readable: boolean }[]
+  content: { available: boolean; payloads: number; note: string }
+}
+
+/* ------------------------------------------------------------------ *
+ * Route helpers — every path is relative to this origin.
+ * ------------------------------------------------------------------ */
+
+export type FilterParams = Record<string, string | number | string[] | undefined>
+
+export const api = {
+  health: () => getJSON<HealthResponse>('/api/health'),
+  overview: (params?: FilterParams) => getJSON<OverviewResponse>('/api/overview', params),
+  query: (params: FilterParams) => getJSON<QueryResponse>('/api/query', params),
+  sessions: (params?: FilterParams) => getJSON<SessionListResponse>('/api/sessions', params),
+  session: (id: string) => getJSON<SessionDetailResponse>(`/api/sessions/${encodeURIComponent(id)}`),
+  capabilities: (params?: FilterParams) => getJSON<CapabilityResponse>('/api/capabilities', params),
+  projects: (params?: FilterParams) => getJSON<ProjectsResponse>('/api/projects', params),
+  agents: (params?: FilterParams) => getJSON<AgentsResponse>('/api/agents', params),
+  models: (params?: FilterParams) => getJSON<ModelsResponse>('/api/models', params),
+  doctor: (params?: FilterParams) => getJSON<DoctorReport>('/api/doctor', params),
+  coverage: () => getJSON<CoverageReport>('/api/coverage'),
+}

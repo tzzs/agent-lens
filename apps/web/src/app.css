@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+/*
+ * Design system for the Agent Activity Center (§10). A local-first telemetry
+ * console: dense, dark, monospace numerals, low-chrome. Fonts are 100% system
+ * stacks — no @font-face, no network font import, no CDN (product rule: this UI
+ * must never make an outbound request beyond its own loopback origin).
+ */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+
+  --color-ink-950: #080a0e;
+  --color-ink-900: #0d1017;
+  --color-ink-850: #12161f;
+  --color-ink-800: #171c27;
+  --color-ink-700: #232a38;
+  --color-ink-600: #333c4e;
+  --color-line: #232b3a;
+
+  --color-mist-100: #eef2f8;
+  --color-mist-300: #b6bfcd;
+  --color-mist-400: #8b95a6;
+  --color-mist-500: #6b7385;
+
+  --color-signal: #4fd1c5;
+  --color-signal-dim: #2b8b84;
+  --color-warn: #f6c453;
+  --color-danger: #f2777a;
+  --color-ok: #7fd88f;
+  --color-accent: #7aa2f7;
+
+  --radius-card: 12px;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ink-950);
+  color: var(--color-mist-100);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "tnum" 1;
+}
+
+* {
+  border-color: var(--color-line);
+}
+
+/* numerals read as a column in dense tables */
+.nums {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-ink-700);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
