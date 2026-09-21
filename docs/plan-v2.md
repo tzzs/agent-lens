@@ -644,12 +644,12 @@ Replay · 告警（"agentx 今日成本 +240%"）· 效率分析（按 skill/pha
 
 **Claude Code（§1、§2）已于 2026-09-21 完成，结论见 `docs/research/claude-code.md`。** 原第 1、2 项的结果：usage 未剥离（假设证伪）；真正的一号风险是 `requestId` 多 block 重复计数（+87%）与 Desktop/CLI 宿主混淆（94.6% vs 5.4%）；session 边界为"一文件一 session"无需启发式；subagent 入口是 `Agent` 工具且侧链可独立计费；skill 有 4 条激活路径。
 
-剩余待实测：
+**五项已全部实测完成**（下表逐条给出结论与出处；`docs/research/` 每篇都带可重跑的 probe 脚本，夹具为脱敏样本）：
 1. ✅ **与 ccusage 同区间对账**（2026-09-21 完成，`reconcile-ccusage.mjs`）→ 口径 B 与 ccusage **四字段 0.0% 偏差、逐日 15 天 1.00x**；分组键必须 `requestId`（非 `message.id`），取值必须 `max`（非首块）。副产品：ccusage 能力边界远超预期，已据此改写 §1。
-2. 🟡 Codex `rollout-*.jsonl`：记录结构、session 边界、cache token 字段命名、是否存在同类重复计数
-3. 🟡 Qoder / OpenCode：是否 SQLite、是否有稳定 session UUID、只读可开性
-4. 🟡 WorkBuddy：数据根目录与格式
-5. 🟢 其他 Agent 是否记录 MCP server 名 / compact 事件 / hook 类能力
+2. ✅ **Codex `rollout-*.jsonl`**（`docs/research/codex.md` + `probe-codex.mjs`/`probe-codex-2.mjs`）→ **无** Claude Code 那种"一条 message 多 block 重复 usage"，但 usage 有**三种粒度嵌套**，按 cumulative 字段求和虚高 **~1971×**；subagent 线程与 ccusage 口径分歧 **+77%**。⇒ §18 row 2 的 `last_call_sum` 与 row 3 的 `subagentsIncluded=false` 都是从这条量出来的。
+3. ✅ **Qoder / OpenCode**（`docs/research/qoder-opencode.md`）→ Qoder **不是** SQLite 而是 JSONL，且结构上是 Claude Code 的分叉（逐字段几乎相同）另带两个事件模型未覆盖的扩展；OpenCode 是 SQLite、**只读可开且不产生 `-wal/-shm`**。
+4. ✅ **WorkBuddy**（`docs/research/workbuddy.md`）→ 数据根与格式已定位；关键安全发现是**只读打开 `workbuddy.db` 会创建 `-wal`/`-shm`**，故拒绝直开、改用本地 JSONL trace 作补充源；`session_usage` 的列名未实测就拒绝对号入座（宁可贡献 0 事件也不臆造）。
+5. ✅ **能力面逐 Agent 实测**（`probe-capabilities.mjs`，含 pi/zcode 两个后补 Adapter）→ MCP server 名、compact 事件、hook 的可见性各家不同，落为 §7 的 capability 维度与 `doctor-caps.ts` 的"装了 vs 用过"三态；测不出来的一态印 `?`/`−` 而不是 0。
 
 > 每项各产出一篇 `docs/research/<agent>.md`（含脱敏样本 + 可重跑的 probe 脚本），作为对应 Adapter 的 fixtures 来源。第 1 项在 M1 结束前不得跳过。
 
