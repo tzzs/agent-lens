@@ -9,7 +9,7 @@ import { insertEvents, recordParseFailure, setAgentAggregations, updateSourcePro
 import type { DatabaseSync } from 'node:sqlite'
 import type { FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
-import { makeHostCtx } from '../context.ts'
+import { makeHostCtx, redactHome } from '../context.ts'
 import { adapterAggregations, getAdapters } from '../adapters.ts'
 import { table } from '../render.ts'
 
@@ -19,6 +19,18 @@ export interface ScanOutcome {
   events: number
   failures: number
   notDetected: string[]
+  /**
+   * Stores the scan walked away from rather than opened — §18 row 7's WAL rule. They are
+   * neither `failures` (nothing failed to parse) nor silent (§5.2), so they ride along
+   * separately for `scan`, `watch` and `--serve` to report.
+   */
+  refusals: SourceRefusal[]
+}
+
+export interface SourceRefusal {
+  agentId: string
+  path: string
+  reason: string
 }
 
 function savedState(db: DatabaseSync, sourceId: string): SavedSourceState {
@@ -76,7 +88,7 @@ export async function runScan(
   const only = flags.list('agent')
   const contentEnabled = !flags.bool('no-content')
   const adapters = await getAdapters()
-  const outcome: ScanOutcome = { adaptersFound: 0, sourcesScanned: 0, events: 0, failures: 0, notDetected: [] }
+  const outcome: ScanOutcome = { adaptersFound: 0, sourcesScanned: 0, events: 0, failures: 0, notDetected: [], refusals: [] }
   for (const adapter of adapters) {
     if (only.length > 0 && !only.includes(adapter.id)) continue
     const hostCtx = makeHostCtx(ctx)
@@ -108,6 +120,7 @@ export async function runScan(
       outcome.sourcesScanned++
       outcome.events += result.events
       outcome.failures += result.failures
+      if (result.refusal) outcome.refusals.push({ agentId: adapter.id, path: source.path, reason: result.refusal })
       onSource?.(adapter.id, source, result.events, result.failures, result.action)
     }
   }
@@ -132,5 +145,13 @@ export async function cmdScan(db: DatabaseSync, flags: FlagView, ctx: Ctx): Prom
     ctx.out('✓ up to date — no new rows since last scan')
   }
   ctx.out(`${outcome.sourcesScanned} sources scanned · ${outcome.events} events ingested · ${outcome.failures} parse failures`)
+  for (const line of refusalLines(outcome, ctx)) ctx.out(line)
   return 0
+}
+
+/** §18 row 7 stores left alone on purpose, spelled out rather than folded into "failures". */
+export function refusalLines(outcome: ScanOutcome, ctx: { homedir: string }): string[] {
+  return outcome.refusals.map(
+    (r) => `! ${r.agentId} ${redactHome(r.path, ctx.homedir)} not read: ${redactHome(r.reason, ctx.homedir)}`,
+  )
 }

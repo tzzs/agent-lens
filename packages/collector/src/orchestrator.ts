@@ -21,7 +21,7 @@ import type {
 import { isParseFailure } from '@agentlens/event-model'
 import { needsRescan, statSource } from './incremental.ts'
 import { isParseErrorRecord, PARSE_ERROR_KEY, resolveOccurredAt, truncate } from './parse-jsonl.ts'
-import { readSqliteIncremental } from './sqlite-source.ts'
+import { readSqliteIncremental, WalModeRefusedError, type SqliteChunk } from './sqlite-source.ts'
 
 export interface SourceCommit {
   id: string
@@ -81,6 +81,12 @@ export interface ScanResult {
   failures: number
   nextOffset: number
   nextSeq: number
+  /**
+   * Set when the source was left alone on purpose rather than read — today only
+   * §18 row 7's WAL refusal. `action` stays `'skip'`, and the reason is recorded
+   * on the source row so `agl status` and `doctor` can show it later (§5.2).
+   */
+  refusal?: string
 }
 
 /** §5.3: parser_version mismatch ⇒ full rescan from 0, safe only because writes are idempotent (§4.2). */
@@ -193,12 +199,43 @@ function scanSqliteSource(
     }
     const cols = ctx.sqlite ?? { rowidColumn: 'rowid', column: 'value' }
     const fromRowid = drift ? 0 : ctx.saved.lastOffset
-    const chunk = readSqliteIncremental(source.path, {
-      table: source.sqliteTable,
-      rowidColumn: cols.rowidColumn,
-      column: cols.column,
-      fromRowid,
-    })
+    let chunk: SqliteChunk
+    try {
+      chunk = readSqliteIncremental(source.path, {
+        table: source.sqliteTable,
+        rowidColumn: cols.rowidColumn,
+        column: cols.column,
+        fromRowid,
+      })
+    } catch (err) {
+      if (!(err instanceof WalModeRefusedError)) throw err
+      // §5.2: a store we will not open is a reported fact, not a dead scan. The offset
+      // stays where it was because nothing was read.
+      const stat = await statSource(source.path)
+      ctx.sink.commitSource({
+        id: source.id,
+        path: source.path,
+        lastOffset: fromRowid,
+        inode: stat?.inode ?? 0,
+        size: stat?.size ?? 0,
+        mtimeMs: stat?.mtimeMs ?? 0,
+        parserVersion: adapter.parserVersion,
+        rowsIngested: 0,
+        scanStartedAt: startedAt,
+        scanFinishedAt: ctx.now(),
+        status: 'error',
+        lastError: err.message,
+      })
+      return {
+        action: 'skip',
+        linesConsumed: 0,
+        events: 0,
+        failures: 0,
+        nextOffset: fromRowid,
+        nextSeq: ctx.saved.linesConsumed + 1,
+        refusal: err.message,
+      }
+    }
     const stat = await statSource(source.path)
     const normalizeCtx = buildNormalizeCtx(ctx, source)
     const events: AgentEvent[] = []

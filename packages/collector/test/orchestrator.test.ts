@@ -288,4 +288,36 @@ describe('scanSource', () => {
     expect(sink.events.at(-1)!.metadata).toEqual({ text: 'msg-3' })
     expect(sink.commits.at(-1)!.lastOffset).toBe(3)
   })
+
+  it('sqlite source in WAL mode: reported as a refusal, offset untouched, nothing created', async () => {
+    const { DatabaseSync } = await import('node:sqlite')
+    const path = await tmpPath('agent-wal.db')
+    const db = new DatabaseSync(path)
+    db.exec('PRAGMA journal_mode=WAL')
+    db.exec('CREATE TABLE messages (payload TEXT)')
+    db.prepare('INSERT INTO messages (payload) VALUES (?)').run(rec(1))
+    // Checkpoint and close so the store is WAL by header with no sidecar on disk: the
+    // only thing that would let a reader in is the sidecar this scan must not create.
+    db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+    db.close()
+    const rmSync = (await import('node:fs')).rmSync
+    rmSync(`${path}-wal`, { force: true })
+    rmSync(`${path}-shm`, { force: true })
+
+    const source: SourceSpec = { id: 'src-wal', path, kind: 'sqlite', sqliteTable: 'messages' }
+    const sink = new FakeSink()
+    const ctx = { ...ctxFor(sink, source), sqlite: { rowidColumn: 'rowid', column: 'payload' } }
+    const result = await scanSource(fakeAdapter(), source, ctx)
+
+    expect(result.events).toBe(0)
+    expect(result.action).toBe('skip')
+    expect(result.refusal).toMatch(/WAL mode/)
+    const commit = sink.commits.at(-1)!
+    expect(commit.status).toBe('error')
+    expect(commit.lastOffset).toBe(0) // §4.2: nothing was read, so nothing advances
+    expect(commit.lastError).toMatch(/WAL mode/)
+    const { existsSync } = await import('node:fs')
+    expect(existsSync(`${path}-wal`)).toBe(false)
+    expect(existsSync(`${path}-shm`)).toBe(false)
+  })
 })
