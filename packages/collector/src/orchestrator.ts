@@ -60,6 +60,12 @@ export interface SavedSourceState {
   parserVersion: number
   /** Complete lines consumed so far; `firstSeq` for the next scan is this + 1. */
   linesConsumed: number
+  /**
+   * False when the `sources` table holds no row for this source. Without it a first
+   * ingest reads `parser_version 0` as a mismatch and reports `version-drift` — a
+   * reason nothing drifted (§5.2: report what happened, not a guess).
+   */
+  seen?: boolean
 }
 
 export interface ScanCtx {
@@ -96,9 +102,10 @@ export interface ScanResult {
 /** §5.3: parser_version mismatch ⇒ full rescan from 0, safe only because writes are idempotent (§4.2). */
 export function rescanSourceOnVersionDrift(
   adapter: Pick<AgentAdapter, 'parserVersion'>,
-  savedParserVersion: number,
+  saved: Pick<SavedSourceState, 'parserVersion' | 'seen'>,
 ): boolean {
-  return adapter.parserVersion !== savedParserVersion
+  if (saved.seen === false) return false
+  return adapter.parserVersion !== saved.parserVersion
 }
 
 export async function scanSource(
@@ -107,7 +114,7 @@ export async function scanSource(
   ctx: ScanCtx,
 ): Promise<ScanResult> {
   const startedAt = ctx.now()
-  const drift = rescanSourceOnVersionDrift(adapter, ctx.saved.parserVersion)
+  const drift = rescanSourceOnVersionDrift(adapter, ctx.saved)
   if (drift && source.kind !== 'sqlite' && (await statSource(source.path)) === null) {
     return commitGone(adapter, source, ctx, startedAt)
   }

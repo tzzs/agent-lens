@@ -39,6 +39,7 @@ function savedState(db: DatabaseSync, sourceId: string): SavedSourceState {
     mtimeMs: Number(row?.mtime_ms ?? 0),
     parserVersion: Number(row?.parser_version ?? 0),
     linesConsumed: Number(row?.rows_ingested ?? 0),
+    seen: row !== undefined,
   }
 }
 

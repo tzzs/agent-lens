@@ -285,12 +285,35 @@ describe('scanSource', () => {
     const source = sourceFor(path)
     const sink = new FakeSink()
     await scanSource(fakeAdapter(1), source, ctxFor(sink, source))
-    expect(rescanSourceOnVersionDrift(fakeAdapter(2), 1)).toBe(true)
-    expect(rescanSourceOnVersionDrift(fakeAdapter(2), 2)).toBe(false)
+    expect(rescanSourceOnVersionDrift(fakeAdapter(2), { parserVersion: 1 })).toBe(true)
+    expect(rescanSourceOnVersionDrift(fakeAdapter(2), { parserVersion: 2 })).toBe(false)
     const result = await scanSource(fakeAdapter(2), source, ctxFor(sink, source))
     expect(result.action).toBe('version-drift')
     expect(result.linesConsumed).toBe(3) // whole file, not just new bytes
     expect(sink.commits.at(-1)!.parserVersion).toBe(2)
+  })
+
+  it('reports a first ingest as an append, and a version-0 row that has progress as drift (§5.3)', async () => {
+    const path = await tmpPath('first.jsonl')
+    await writeFile(path, [rec(1), rec(2)].map((s) => s + '\n').join(''))
+    const source = sourceFor(path)
+    const sink = new FakeSink()
+    // No `sources` row yet: parser_version 0 is the absence of a record, not a mismatch.
+    const first = await scanSource(
+      fakeAdapter(3),
+      source,
+      { ...ctxFor(sink, source), saved: { ...sink.persisted, parserVersion: 0, seen: false } },
+    )
+    expect(first.action).toBe('append')
+    expect(first.linesConsumed).toBe(2)
+    // A row that did make progress under an older parser still has to be re-read whole.
+    const legacy = await scanSource(
+      fakeAdapter(3),
+      source,
+      { ...ctxFor(sink, source), saved: { ...sink.persisted, parserVersion: 0, seen: true } },
+    )
+    expect(legacy.action).toBe('version-drift')
+    expect(legacy.linesConsumed).toBe(2)
   })
 
   it('sqlite source: rowid high-water mark replaces byte offsets', async () => {
