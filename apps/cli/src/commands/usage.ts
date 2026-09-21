@@ -67,7 +67,7 @@ export function cmdUsage(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath: st
     limit: flags.num('limit'),
   }
   if (flags.bool('explain')) ctx.out(describeQuery(spec) + '\n')
-  const res = query(db, spec, queryDeps(dbPath, ctx))
+  const res = query(db, spec, queryDeps(db, dbPath, ctx))
 
   const headers = [...dims.map((d) => HEADER[d] ?? d), ...USAGE_METRICS.map((m) => HEADER[m] ?? m)]
   const rows = res.rows.map((r) => [

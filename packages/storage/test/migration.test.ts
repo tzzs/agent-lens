@@ -7,10 +7,10 @@ import { tempDir } from './helpers.ts'
 describe('migrations', () => {
   it('applies every migration exactly once and is a no-op on the second run', () => {
     const db = openDatabase(':memory:')
-    expect(migrate(db)).toEqual(['001_init.sql', '002_measurement_round_two.sql'])
+    expect(migrate(db)).toEqual(['001_init.sql', '002_measurement_round_two.sql', '003_aggregation_policy_per_agent.sql'])
     expect(migrate(db)).toEqual([])
     const applied = db.prepare('SELECT id FROM schema_migrations').all()
-    expect(applied.map((r) => r.id)).toEqual(['001_init.sql', '002_measurement_round_two.sql'])
+    expect(applied.map((r) => r.id)).toEqual(['001_init.sql', '002_measurement_round_two.sql', '003_aggregation_policy_per_agent.sql'])
     db.close()
   })
 

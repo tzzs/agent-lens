@@ -2,11 +2,15 @@
  * Adapter contract (docs/plan-v2.md §5.1). Adapters are pure translators: they never
  * open the database, never price a model, and never mutate a source file (§5.2).
  */
-import type { NormalizeResult } from './types.ts'
+import type { AggregationPolicy, NormalizeResult } from './types.ts'
 
 export interface HostContext {
-  /** Absolute path to the agent's data root, e.g. `~/.claude`. */
-  dataRoot: string
+  /**
+   * Absolute path to THIS agent's data root, e.g. `~/.claude`. `null` until `detect` has
+   * resolved it: a caller that seeds this with the home directory makes every adapter look
+   * for `<home>/projects` and report "not installed" on a machine that has the agent.
+   */
+  dataRoot: string | null
   homedir: string
   env: NodeJS.ProcessEnv
   /** Restricted to reads; adapters must not create or modify anything here. */
@@ -100,6 +104,12 @@ export interface AgentAdapter {
   readonly displayName: string
   /** Bump when parsing rules change; a mismatch triggers a full rescan of that source (§5.3). */
   readonly parserVersion: number
+  /**
+   * How this agent's usage must be folded before summing (§18 row 2). Required rather than
+   * defaulted: an adapter that stays silent gets `request_max`, which is exactly the rule
+   * that doubles Codex-style cumulative logs — the mistake has to be impossible to make.
+   */
+  readonly aggregation: AggregationPolicy
   detect(ctx: HostContext): Promise<Detection>
   discover(ctx: HostContext): AsyncIterable<SourceSpec>
   /** The single framing entry point (§5.1): bytes → `RawRecord`s, ending in a `ParseTail`. */

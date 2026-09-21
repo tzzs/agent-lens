@@ -1,7 +1,7 @@
 import { deflateSync } from 'node:zlib'
 import { Buffer } from 'node:buffer'
 import type { DatabaseSync } from 'node:sqlite'
-import type { AgentEvent, ModelRef, ParseFailure } from '@agentlens/event-model'
+import { assertAggregationMode, type AgentEvent, type AggregationPolicy, type ModelRef, type ParseFailure } from '@agentlens/event-model'
 
 /** §3.2 — content layer is off unless explicitly enabled (`--no-content` default). */
 const DEFAULT_MAX_PAYLOAD_BYTES = 32 * 1024
@@ -371,4 +371,38 @@ export function withTransaction<T>(db: DatabaseSync, fn: () => T): T {
     if (db.isTransaction) db.exec('ROLLBACK')
     throw err
   }
+}
+
+/**
+ * Persist the aggregation rule each adapter declares (§18 row 2), keyed by agent id.
+ * Read back by every query, so the rule that produced stored rows keeps applying to them.
+ */
+export function setAgentAggregations(db: DatabaseSync, policies: Record<string, AggregationPolicy>): void {
+  withTransaction(db, () => {
+    const stmt = db.prepare(`
+      INSERT INTO agents (id, aggregation_mode, subagents_included) VALUES (?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        aggregation_mode   = excluded.aggregation_mode,
+        subagents_included = excluded.subagents_included
+    `)
+    for (const [agentId, policy] of Object.entries(policies)) {
+      stmt.run(agentId, policy.mode, policy.subagentsIncluded ? 1 : 0)
+    }
+  })
+}
+
+/** Agents with no persisted policy are absent, so the caller's default applies. */
+export function loadAgentAggregations(db: DatabaseSync): Record<string, AggregationPolicy> {
+  const rows = db
+    .prepare('SELECT id, aggregation_mode, subagents_included FROM agents WHERE aggregation_mode IS NOT NULL')
+    .all()
+    .map((r) => ({ ...r })) as { id: string; aggregation_mode: string; subagents_included: number }[]
+  const out: Record<string, AggregationPolicy> = {}
+  for (const r of rows) {
+    out[r.id] = {
+      mode: assertAggregationMode(r.aggregation_mode),
+      subagentsIncluded: r.subagents_included === 1,
+    }
+  }
+  return out
 }

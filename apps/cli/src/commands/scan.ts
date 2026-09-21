@@ -5,12 +5,12 @@
 import { basename } from 'node:path'
 import { projectIdForCwd, type AgentAdapter, type SourceSpec } from '@agentlens/event-model'
 import { scanSource, type EventSink, type SavedSourceState, type SourceCommit } from '@agentlens/collector'
-import { insertEvents, recordParseFailure, updateSourceProgress, type SourceProgress } from '@agentlens/storage'
+import { insertEvents, recordParseFailure, setAgentAggregations, updateSourceProgress, type SourceProgress } from '@agentlens/storage'
 import type { DatabaseSync } from 'node:sqlite'
 import type { FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
 import { makeHostCtx } from '../context.ts'
-import { getAdapters } from '../adapters.ts'
+import { adapterAggregations, getAdapters } from '../adapters.ts'
 import { table } from '../render.ts'
 
 export interface ScanOutcome {
@@ -92,6 +92,9 @@ export async function runScan(
       continue
     }
     outcome.adaptersFound++
+    // Recorded before that adapter's first row lands, so the stored fold rule covers every
+    // row it writes even if the scan dies half-way (§18 row 2).
+    setAgentAggregations(db, adapterAggregations([adapter]))
     for await (const source of adapter.discover(makeHostCtx(ctx, detected.dataRoot ?? null))) {
       const saved = savedState(db, source.id)
       const result = await scanSource(adapter, source, {

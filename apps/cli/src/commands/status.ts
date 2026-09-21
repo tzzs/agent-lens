@@ -52,7 +52,7 @@ export async function cmdStatus(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbP
   const res = query(
     db,
     { metrics: ['events', 'sessions', 'tokens_total', 'cost_api_equiv'], filter: { since } },
-    queryDeps(dbPath, ctx),
+    queryDeps(db, dbPath, ctx),
   )
   const t = res.totals
   ctx.out(

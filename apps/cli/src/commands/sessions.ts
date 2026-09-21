@@ -24,7 +24,7 @@ export function cmdSessions(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath:
       dims: ['session'],
       filter: filter(db, ctx, flags),
     },
-    queryDeps(dbPath, ctx),
+    queryDeps(db, dbPath, ctx),
   )
   const bySession = new Map(res.rows.map((r) => [String(r.session), r]))
   const meta = rowsOf(

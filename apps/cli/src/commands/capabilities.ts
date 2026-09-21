@@ -40,7 +40,7 @@ export async function cmdCapability(db: DatabaseSync, flags: FlagView, ctx: Ctx,
       order: 'metric:events:desc',
       limit: flags.num('limit') ?? 30,
     },
-    queryDeps(dbPath, ctx),
+    queryDeps(db, dbPath, ctx),
   )
   const errs = query(db, {
     metrics: ['events'],
@@ -90,7 +90,7 @@ async function firstDiscoverCtx(a: Awaited<ReturnType<typeof getAdapters>>[numbe
 /** §9 tree: project row + per-agent indented sub-rows. */
 export function cmdProjects(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath: string): number {
   const baseFilter = filter(db, ctx, flags)
-  const deps = queryDeps(dbPath, ctx)
+  const deps = queryDeps(db, dbPath, ctx)
   const top = query(
     db,
     { metrics: ['sessions', 'tokens_total', 'cost_api_equiv'], dims: ['project'], filter: baseFilter, order: 'metric:tokens_total:desc', limit: flags.num('limit') ?? 30 },
