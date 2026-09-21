@@ -32,12 +32,13 @@ importers:
 
   adapters/opencode:
     dependencies:
-      '@agentlens/collector':
-        specifier: workspace:*
-        version: link:../../packages/collector
       '@agentlens/event-model':
         specifier: workspace:*
         version: link:../../packages/event-model
+    devDependencies:
+      '@agentlens/collector':
+        specifier: workspace:*
+        version: link:../../packages/collector
 
   adapters/pi:
     dependencies:
@@ -59,12 +60,13 @@ importers:
 
   adapters/zcode:
     dependencies:
-      '@agentlens/collector':
-        specifier: workspace:*
-        version: link:../../packages/collector
       '@agentlens/event-model':
         specifier: workspace:*
         version: link:../../packages/event-model
+    devDependencies:
+      '@agentlens/collector':
+        specifier: workspace:*
+        version: link:../../packages/collector
 
   apps/cli:
     dependencies:
