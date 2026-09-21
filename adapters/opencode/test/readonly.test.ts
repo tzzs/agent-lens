@@ -1,7 +1,7 @@
 /**
- * §18 row 7 — the hard read-only rule. Two halves: our opens must be side-effect
- * free, and a WAL store whose `-wal`/`-shm` machinery is not already on disk must
- * be refused outright (that is exactly the WorkBuddy write we were shown not to do).
+ * §18 row 7 — the hard read-only rule, stated the same way the collector states it:
+ * a WAL store is never opened, whether or not its `-wal`/`-shm` siblings already
+ * exist (attaching rewrites them), and our own opens stay side-effect free.
  */
 import { readdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -43,19 +43,24 @@ describe('read-only guarantee (§5.2 rule 3)', () => {
     }
   })
 
-  it('attaches to a WAL store whose sidecars the app already created', async () => {
+  it('refuses a WAL store even when the app already created its -wal/-shm', async () => {
+    // The state OpenCode's live store is actually in, and the one an earlier revision of
+    // this adapter treated as safe to attach to: attaching rewrites the app's -shm, so it
+    // is a write into the data directory either way (§18 row 7).
     const host = await buildHost({ wal: true, retainWriter: true })
     try {
       expect(await readJournalMode(host.dbPath)).toBe('wal')
       expect(await exists(join(host.root, 'opencode.db-wal'))).toBe(true)
       const detection = await openCodeAdapter.detect(hostCtx(host.root))
       expect(detection.present).toBe(true)
-      expect(detection.reason).toBeNull()
+      expect(detection.reason).toBe(WAL_REASON)
+      expect(detection.agentVersion).toBeNull()
+      // The sources are still listed: a store the scan walks away from has to stay visible
+      // (§5.2), and dropping it here would make the agent look merely absent.
       const sources: string[] = []
       for await (const spec of openCodeAdapter.discover(hostCtx(host.root))) sources.push(spec.sqliteTable ?? '')
       expect(sources).toEqual(['session', 'message', 'part'])
-      const scanned = await scanSource(host.dbPath, 'part', 0)
-      expect(scanned.events.length).toBeGreaterThan(0)
+      expect(await openCodeAdapter.capabilities?.(hostCtx(host.root))).toEqual([])
       expect(await exists(join(host.root, 'opencode.db-wal'))).toBe(true)
     } finally {
       await host.close()
@@ -81,7 +86,7 @@ describe('read-only guarantee (§5.2 rule 3)', () => {
       discovered++
       expect(spec.kind).toBe('sqlite')
     }
-    expect(discovered).toBe(0)
+    expect(discovered).toBe(3)
     expect(await openCodeAdapter.capabilities?.(hostCtx(root))).toEqual([])
 
     // The refusal is real: nothing appeared next to the database.

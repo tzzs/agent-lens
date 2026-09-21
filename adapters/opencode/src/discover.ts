@@ -17,17 +17,22 @@ export async function* discover(ctx: HostContext): AsyncIterable<SourceSpec> {
   if (store === null) return
   const { dbPath } = store
   let tables: string[]
-  try {
-    // §18 row 7: an unsafe store yields no sources at all, so the collector can
-    // never walk into a WAL database we refused to open.
-    if (!(await assessReadOnly(dbPath)).safe) return
-    tables = await withReadOnlyDb(dbPath, (db) =>
-      (db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as { name: string }[]).map(
-        (r) => r.name,
-      ),
-    )
-  } catch {
-    return
+  const safety = await assessReadOnly(dbPath)
+  if (!safety.safe) {
+    // §18 row 7: this store will not be opened, and neither will the collector's. Listing
+    // the tables anyway keeps it on the map — the scan reports one refusal per source —
+    // while returning nothing here would make the agent look simply absent (§5.2).
+    tables = [...TABLES]
+  } else {
+    try {
+      tables = await withReadOnlyDb(dbPath, (db) =>
+        (db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as { name: string }[]).map(
+          (r) => r.name,
+        ),
+      )
+    } catch {
+      return
+    }
   }
   const present = new Set(tables)
   for (const table of TABLES) {
