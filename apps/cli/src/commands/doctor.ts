@@ -17,6 +17,7 @@ import { stat } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { deriveSessionId, type AgentAdapter, type Detection, type HostContext, type SourceSpec } from '@agentlens/event-model'
+import { parserVersionDrift, sourceRetention, subagentOrphans } from '@agentlens/storage'
 import { isMissingPrice, PRICE_MISSING, PricingGaps, type PriceEntry } from '@agentlens/pricing'
 import type { FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
@@ -307,28 +308,14 @@ export function renderParsing(db: DatabaseSync, rctx: Ctx, probes: readonly Adap
 
   // §5.3 drift: a source whose stored parser_version is not the adapter's current one gets
   // re-read in full by the next scan — safe only because writes are idempotent (§4.2).
-  // A NULL parser_version is an FK placeholder for a source that was never scanned: drift
-  // is undefined for it, so it must not be counted as stale.
-  const versions = new Map(probes.map((p) => [p.adapter.id, p.adapter.parserVersion]))
-  const byVersion = rowsOf(
+  // The counting is shared with `GET /api/doctor` (storage's `parserVersionDrift`); a NULL
+  // parser_version is an FK placeholder for a source that was never scanned, so drift stays
+  // undefined for it and is not counted as stale.
+  const drift = parserVersionDrift(
     db,
-    `SELECT COALESCE(agent_id, '') AS agent, parser_version AS v, COUNT(*) AS n FROM sources
-     WHERE parser_version IS NOT NULL GROUP BY agent, v`,
+    Object.fromEntries(probes.map((p) => [p.adapter.id, p.adapter.parserVersion])),
   )
-  const unscanned = countOf(db, 'SELECT COUNT(*) AS n FROM sources WHERE parser_version IS NULL')
-  let checked = 0
-  let drifted = 0
-  let unmapped = 0
-  for (const r of byVersion) {
-    const n = Number(r.n)
-    const current = versions.get(String(r.agent))
-    if (current === undefined) {
-      unmapped += n
-      continue
-    }
-    checked += n
-    if (Number(r.v) !== current) drifted += n
-  }
+  const { checked, drifted, unmapped, unscanned } = drift
   const noteUnmapped = (): void => {
     if (unmapped > 0) {
       rctx.out(`${GLYPH.none} ${formatCount(unmapped)} further source(s) belong to agents with no adapter in this build — drift unknowable for them`)
@@ -444,33 +431,24 @@ async function renderHistoryCoverage(db: DatabaseSync, rctx: Ctx, probes: readon
 
 /** §4.4 row 8: the subagent parent link is a time heuristic with no foreign key behind it. */
 export function renderSubagentLinkage(db: DatabaseSync, rctx: Ctx): void {
-  const rows = rowsOf(
-    db,
-    `SELECT COALESCE(agent_id, '') AS agent, COUNT(*) AS total,
-            SUM(CASE WHEN parent_event_id IS NULL THEN 1 ELSE 0 END) AS orphan
-     FROM events
-     WHERE type IN ('subagent.start', 'subagent.end') OR capability_type = 'subagent'
-        OR json_extract(metadata, '$.subagentThread') IS 1
-     GROUP BY agent ORDER BY total DESC`,
-  )
+  const rows = subagentOrphans(db)
   if (rows.length === 0) {
     rctx.out(`${GLYPH.none} no subagent events ingested — nothing to link, so the heuristic's accuracy is untested here`)
     return
   }
   for (const r of rows) {
-    const total = Number(r.total)
-    const orphan = Number(r.orphan)
     rctx.out(
-      `${orphan === 0 ? GLYPH.ok : GLYPH.warn} ${String(r.agent)}: ${formatCount(orphan)} of ${formatCount(total)} subagent events ` +
-        `(${pct(orphan, total)}) have parent_event_id NULL — §4.4 row 8 links to "the nearest preceding Agent call" with no foreign key to fall back on`,
+      `${r.orphan === 0 ? GLYPH.ok : GLYPH.warn} ${r.agentId}: ${formatCount(r.orphan)} of ${formatCount(r.total)} subagent events ` +
+        `(${pct(r.orphan, r.total)}) have parent_event_id NULL — §4.4 row 8 links to "the nearest preceding Agent call" with no foreign key to fall back on`,
     )
-    if (orphan > 0) rctx.out('  → their tokens and cost ARE counted; only the timeline tree placement is unknown')
+    if (r.orphan > 0) rctx.out('  → their tokens and cost ARE counted; only the timeline tree placement is unknown')
   }
 }
 
 export function renderRetention(db: DatabaseSync, rctx: Ctx): void {
-  const gone = countOf(db, "SELECT COUNT(*) AS n FROM sources WHERE status IN ('gone', 'rotated')")
-  const active = countOf(db, "SELECT COUNT(*) AS n FROM sources WHERE status = 'active'")
+  // Shared with `GET /api/doctor`: the same two status counts, one implementation (§14).
+  const { gone: goneCount, rotated, active } = sourceRetention(db)
+  const gone = goneCount + rotated
   if (gone > 0) {
     rctx.out(`${GLYPH.warn} ${formatCount(gone)} known source(s) no longer readable (gone/rotated) — the events already ingested from them stay, nothing new can arrive`)
   }

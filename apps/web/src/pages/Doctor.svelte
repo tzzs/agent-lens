@@ -28,6 +28,59 @@
   })
   const d = $derived(q.state.data)
 
+  /*
+   * §11's deeper doctor fields, declared locally: `lib/api.ts` is a frozen hand-copy of the
+   * wire types, so widening the report here is the only way to show what `agl doctor` already
+   * prints. Each one mirrors a CLI line, and the numbers come from the same storage-side
+   * checks the CLI calls, so the two ends cannot disagree (§14).
+   */
+  type FoldMode = 'request_max' | 'per_record_sum' | 'last_call_sum'
+  interface Policy {
+    mode: FoldMode
+    subagentsIncluded: boolean
+  }
+  interface PerAgentQuality {
+    agentId: string
+    events: number
+    reported: number
+    estimated: number
+    missing: number
+    noRequestId: number
+    noRequestIdWithUsage: number
+    usageRows: number
+    naive: number
+    folded: number
+    modelFolded: number
+    globalFolded: number
+    groups: number
+    policy: Policy
+    policySource: 'persisted' | 'default'
+    declared: Policy | null
+    agrees: boolean
+  }
+  interface DoctorDepth {
+    parsing: { parserDrift?: { checked: number; drifted: number; unmapped: number; unscanned: number; stale: { agentId: string; parserVersion: number; sources: number }[] } }
+    usageQuality: { modes?: FoldMode[]; perAgent?: PerAgentQuality[] }
+    subagents?: { agentId: string; total: number; orphan: number; orphanPct: number }[]
+    retention?: { gone: number; rotated: number; active: number }
+  }
+  const depth = $derived(d as unknown as DoctorDepth | undefined)
+  const perAgent = $derived(depth?.usageQuality.perAgent ?? [])
+  const foldModes = $derived(depth?.usageQuality.modes ?? [])
+  const drift = $derived(depth?.parsing.parserDrift ?? null)
+  const subagents = $derived(depth?.subagents ?? [])
+  const retention = $derived(depth?.retention ?? null)
+  const share = (n: number, total: number): string => (total === 0 ? '0.0%' : `${((n / total) * 100).toFixed(1)}%`)
+  /** The CLI's own wording for the fold rule, so both reports say the same thing (§14). */
+  function foldSentence(a: PerAgentQuality): string {
+    return a.policy.mode === 'request_max'
+      ? `request_id dedup ${a.naive > a.folded ? 'active' : 'not needed'}: raw sum ${formatCompact(a.naive)} → ` +
+        `${formatCompact(a.folded)} tokens · ${formatInt(a.groups)} folded groups from ${formatInt(a.usageRows)} usage rows`
+      : `no request_id dedup: raw sum ${formatCompact(a.naive)} = ${formatCompact(a.folded)} · ` +
+        `${formatInt(a.usageRows)} usage rows summed once each`
+  }
+  const foldTone = (a: PerAgentQuality): 'green' | 'neutral' => (a.policy.mode === 'request_max' && a.naive > a.folded ? 'green' : 'neutral')
+
   // Agent status in words, never a bare glyph or colour.
   const STATUS_LABEL: Record<DoctorAgentRow['status'], string> = {
     ok: 'OK',
@@ -96,12 +149,12 @@
       {/snippet}
     </InsightCard>
 
-    <InsightCard label="Dedup inflation avoided" info="Tokens are de-duplicated per request_id (MAX per request, then SUM — §3.1). This is how much a naive sum would have over-counted.">
+    <InsightCard label="Dedup inflation avoided" info="Each agent's tokens are folded under the policy persisted with its own rows (§18 row 2) — request_max folds per request_id, the others never deduplicate. This is how much a raw per-record sum would have over-counted.">
       <div class={figure}>{d.usageQuality.inflationAvoidedPct.toFixed(1)}%</div>
       {#snippet detail()}
         {#if d.usageQuality.dedupActive}
           <p class="text-xs text-ink-3">
-            Raw <span class="nums">{formatCompact(d.usageQuality.naiveTokens)}</span> → <span class="nums">{formatCompact(d.usageQuality.dedupedTokens)}</span> tokens after dedup
+            Raw <span class="nums">{formatCompact(d.usageQuality.naiveTokens)}</span> → <span class="nums">{formatCompact(d.usageQuality.dedupedTokens)}</span> tokens after each agent's own fold
           </p>
         {:else}
           <p class="text-xs text-ink-3">No request_id duplication observed</p>
@@ -172,6 +225,32 @@
           </div>
           <div class={dlRow}><dt class="text-ink-3">Unknown event types</dt><dd class="nums text-ink">{formatInt(d.parsing.unknownTypes)}</dd></div>
         </dl>
+        {#if drift}
+          {#if drift.checked === 0}
+            <p class="mt-3 text-xs text-ink-3">
+              Parser-version drift can't be evaluated — <span class="nums">{formatInt(drift.unmapped)}</span> source(s) belong to
+              agents with no adapter in this build, <span class="nums">{formatInt(drift.unscanned)}</span> carry no version yet.
+            </p>
+          {:else if drift.drifted > 0}
+            <p class="mt-3 text-xs text-orange">
+              <span class="nums">{formatInt(drift.drifted)}</span> of <span class="nums">{formatInt(drift.checked)}</span> sources
+              carry a stale parser_version — the next scan re-reads them in full (§5.3).
+            </p>
+            <div class="mt-1.5 flex flex-wrap gap-1.5">
+              {#each drift.stale as s, i (i)}
+                <Chip mono title="{s.agentId}: {formatInt(s.sources)} source(s) stored by parser v{formatInt(s.parserVersion)}">{s.agentId} v{formatInt(s.parserVersion)}</Chip>
+              {/each}
+            </div>
+          {:else}
+            <p class="mt-3 text-xs text-ink-2">
+              <Chip tone="green">Parser current</Chip> <span class="nums">{formatInt(drift.checked)}</span> source(s) match their
+              adapter's parser version{drift.unscanned ? ` · ${formatInt(drift.unscanned)} not yet scanned` : ''}.
+            </p>
+          {/if}
+          {#if drift.unmapped > 0 && drift.checked > 0}
+            <p class="mt-1.5 text-xs text-ink-3"><span class="nums">{formatInt(drift.unmapped)}</span> further source(s) belong to agents with no adapter here — drift unknowable for them.</p>
+          {/if}
+        {/if}
       </Surface>
 
       <Surface
@@ -197,6 +276,62 @@
           </p>
         {:else}
           <p class="mt-3 text-xs text-ink-3">No request_id duplication observed in this data.</p>
+        {/if}
+        {#if foldModes.length > 1}
+          <div class="mt-3">
+            <Alert tone="orange" title="Mixed folds in one database —">
+              <span class="nums">{foldModes.join(', ')}</span>: every figure below is that agent's own fold. No global rule was
+              applied, and none would be correct (§18 row 2).
+            </Alert>
+          </div>
+        {/if}
+        {#if perAgent.length}
+          <ul class="mt-3 divide-y divide-line-soft border-t border-line-soft">
+            {#each perAgent as a (a.agentId)}
+              <li class="py-2">
+                <div class="flex min-w-0 items-center gap-2">
+                  <span class="truncate text-[13px] font-medium text-ink" title={a.agentId}>{a.agentId}</span>
+                  <Chip tone={foldTone(a)} title="The fold persisted with this agent's stored rows">{a.policy.mode}</Chip>
+                  <Chip tone="neutral" dashed={!a.policy.subagentsIncluded}>
+                    {a.policy.subagentsIncluded ? 'subagents counted' : 'subagents excluded'}
+                  </Chip>
+                  {#if a.policySource === 'default'}
+                    <Chip tone="orange" title="No policy was persisted for this agent, so the cube's most conservative default applied">defaulted</Chip>
+                  {/if}
+                </div>
+                <div class="nums mt-0.5 text-xs text-ink-3">
+                  reported {share(a.reported, a.events)} · estimated {share(a.estimated, a.events)} · missing {share(a.missing, a.events)}
+                  {#if a.noRequestId > 0}
+                    · <span title="Records the per-request fallback key had to cover, counted individually">{formatInt(a.noRequestId)} without a request_id{a.noRequestIdWithUsage > 0 ? ` (${formatInt(a.noRequestIdWithUsage)} with usage)` : ''}</span>
+                  {/if}
+                </div>
+                <div class="mt-0.5 text-xs {a.agrees ? 'text-ink-2' : 'text-red'}">{foldSentence(a)}</div>
+                {#if !a.agrees}
+                  <p class="mt-1 text-xs text-red">
+                    Cube and event-model disagree for this agent (<span class="nums">{formatCompact(a.folded)}</span> vs
+                    <span class="nums">{formatCompact(a.modelFolded)}</span>) — one path is wrong, so every token and cost figure for
+                    it is untrustworthy until they match.
+                  </p>
+                {/if}
+                {#if a.policy.mode !== 'request_max' && a.globalFolded !== a.folded}
+                  <p class="mt-1 text-xs text-orange">
+                    This agent declares {a.policy.mode}: one global request_max would have reported
+                    <span class="nums">{formatCompact(a.globalFolded)}</span> instead of <span class="nums">{formatCompact(a.folded)}</span> (§18 row 2).
+                  </p>
+                {/if}
+                {#if a.declared && (a.declared.mode !== a.policy.mode || a.declared.subagentsIncluded !== a.policy.subagentsIncluded)}
+                  <p class="mt-1 text-xs text-orange">
+                    Its installed adapter now declares <span class="nums">{a.declared.mode}</span>{a.declared.subagentsIncluded ? '' : ' with subagents excluded'},
+                    but the stored rows are folded <span class="nums">{a.policy.mode}</span>{a.policy.subagentsIncluded ? '' : ' with subagents excluded'} —
+                    the figures describe the rows, not the next scan.
+                  </p>
+                {/if}
+                {#if !a.declared}
+                  <p class="mt-1 text-xs text-ink-3">No adapter in this build declares a policy for it — nothing above is a claim about the next scan.</p>
+                {/if}
+              </li>
+            {/each}
+          </ul>
         {/if}
       </Surface>
     </div>
@@ -241,8 +376,50 @@
           </div>
         {/if}
 
+        {#if retention}
+          <div class="border-t border-line-soft pt-3">
+            {#if retention.gone + retention.rotated > 0}
+              <p class="text-xs text-orange">
+                <span class="nums">{formatInt(retention.gone + retention.rotated)}</span> known source(s) no longer readable
+                (gone <span class="nums">{formatInt(retention.gone)}</span> · rotated
+                <span class="nums">{formatInt(retention.rotated)}</span>) — the events already ingested from them stay, nothing new
+                can arrive.
+              </p>
+            {/if}
+            <p class="{retention.gone + retention.rotated > 0 ? 'mt-1 ' : ''}text-xs text-ink-3">
+              <span class="nums">{formatInt(retention.active)}</span> source(s) read to their end · coverage stops where upstream
+              retention stops (§4.4 row 4).
+            </p>
+          </div>
+        {/if}
+
         <p class="border-t border-line-soft pt-3 text-xs text-ink-3">{d.coverage.limits}</p>
       </div>
+    </Surface>
+
+    <Surface
+      title="Subagent links"
+      info="§4.4 row 8: a subagent event is attached to the nearest preceding parent call by time, with no foreign key behind it, so some links cannot be resolved."
+    >
+      {#if subagents.length === 0}
+        <p class="text-[13px] text-ink-3">No subagent events ingested — the link heuristic is untested on this data.</p>
+      {:else}
+        <dl class="text-[13px]">
+          {#each subagents as s (s.agentId)}
+            <div class={dlRow}>
+              <dt class="min-w-0 truncate text-ink-2" title={s.agentId}>{s.agentId}</dt>
+              <dd class="nums shrink-0 {s.orphan > 0 ? 'text-orange' : 'text-ink'}">
+                {formatInt(s.orphan)} of {formatInt(s.total)} unlinked <span class="text-ink-3">({s.orphanPct.toFixed(1)}%)</span>
+              </dd>
+            </div>
+          {/each}
+        </dl>
+        {#if subagents.some((s) => s.orphan > 0)}
+          <p class="mt-3 text-xs text-ink-3">
+            Their tokens and cost ARE counted; only the timeline's tree placement is unknown.
+          </p>
+        {/if}
+      {/if}
     </Surface>
 
     <div class="flex min-w-0 flex-col gap-4">
@@ -291,8 +468,8 @@
     <Surface title="Cost" subtitle="In the selected window">
       <dl class="text-[13px]">
         <div class={dlRow}>
-          <dt class="text-ink-3">Actual, after billing mode</dt>
-          <dd><CostFigure value={d.cost.actualUsd} basis="actual" partial={d.cost.actualPartial} /></dd>
+          <dt class="text-ink-3">Actual, reported where known</dt>
+          <dd><CostFigure value={d.cost.totalUsd} basis="actual" partial={d.cost.totalPartial} /></dd>
         </div>
         <div class={dlRow}>
           <dt class="text-ink-3">API-equivalent estimate</dt>
