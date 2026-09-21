@@ -12,6 +12,7 @@ import { rowToEvent } from '@agentlens/storage'
 import { resolveSince } from '@agentlens/query'
 import { UsageError, type FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
+import { formatCount } from '../render.ts'
 import { filter, rowsOf } from './shared.ts'
 
 // Frozen: names and order of the columns already shipped never move; new fields append.
@@ -147,7 +148,19 @@ function otlpBody(events: AgentEvent[]): string {
   })
 }
 
-async function pushOtlp(events: AgentEvent[], target: PushTarget, ctx: Ctx): Promise<void> {
+/**
+ * The tally line both sinks print. `--limit` changes how much goes out, so the count has
+ * to be the number actually written/sent, and the cap it came from has to be visible
+ * (§18 row 3's rule for a changed basis: say so rather than let the number stand alone).
+ */
+interface ExportTally {
+  /** ` of 501` when a `--limit` cut the export short, '' when it did not. */
+  ofTotal: string
+  /** `, --limit 7` alongside the format label, '' when no cap was asked for. */
+  limitNote: string
+}
+
+async function pushOtlp(events: AgentEvent[], target: PushTarget, ctx: Ctx, tally: ExportTally): Promise<void> {
   let sent = 0
   for (let i = 0; i < events.length; i += OTLP_MAX_SPANS_PER_REQUEST) {
     const batch = events.slice(i, i + OTLP_MAX_SPANS_PER_REQUEST)
@@ -173,10 +186,16 @@ async function pushOtlp(events: AgentEvent[], target: PushTarget, ctx: Ctx): Pro
     }
     sent += batch.length
   }
-  ctx.err(`# ${sent} events pushed to ${target.url} (otel)`)
+  ctx.err(`# ${formatCount(sent)}${tally.ofTotal} events pushed to ${target.url} (otel${tally.limitNote})`)
 }
 
 /* ---------------------------------------------------------------------------- command */
+
+/** How many rows the same filters select in total — only asked when a cap hides some. */
+function countMatching(db: DatabaseSync, whereSql: string, params: unknown[]): number {
+  const row = rowsOf(db, `SELECT COUNT(*) AS n FROM events e ${whereSql}`, ...params)[0]
+  return Number(row?.n ?? 0)
+}
 
 export async function cmdExport(db: DatabaseSync, flags: FlagView, ctx: Ctx): Promise<number> {
   const format = flags.str('format')
@@ -206,13 +225,26 @@ export async function cmdExport(db: DatabaseSync, flags: FlagView, ctx: Ctx): Pr
   pushIn('e.type', f.type)
   // events stores a model rowid, so the join is what makes the map's gen_ai.*model attributes
   // and the CSV model/provider columns carry anything at all.
+  //
+  // §9: `--limit` is a documented flag, so it has to bind here too — it shipped ignored, and
+  // a `--limit 5` push sent 370,493 spans. The cap goes into the SQL (not a post-filter slice)
+  // so every format, and the OTLP batches, read the same first N rows in the same order.
+  const limit = flags.num('limit')
+  const order = 'ORDER BY e.timestamp, e.raw_seq, e.id'
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const cap = limit === undefined ? '' : ' LIMIT ?'
+  const capRows = limit === undefined ? [] : [Math.trunc(limit)]
   const sql = `SELECT e.*, m.provider AS model_provider, m.name AS model_name, m.tier AS model_tier
     FROM events e LEFT JOIN models m ON m.rowid = e.model_rowid
-    ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY e.timestamp, e.raw_seq, e.id`
-  const events = rowsOf(db, sql, ...params).map(eventFromRow)
+    ${whereSql} ${order}${cap}`
+  const events = rowsOf(db, sql, ...params, ...capRows).map(eventFromRow)
+  const tally: ExportTally = {
+    ofTotal: limit === undefined ? '' : ` of ${formatCount(countMatching(db, whereSql, params))}`,
+    limitNote: limit === undefined ? '' : `, --limit ${formatCount(limit)}`,
+  }
 
   if (push) {
-    await pushOtlp(events, push, ctx)
+    await pushOtlp(events, push, ctx, tally)
     return 0
   }
   if (format === 'jsonl') {
@@ -225,6 +257,6 @@ export async function cmdExport(db: DatabaseSync, flags: FlagView, ctx: Ctx): Pr
       ctx.out(JSON.stringify({ name: otelSpanName(e), timestamp: e.timestamp, attributes: toOtelAttributes(e) }))
     }
   }
-  ctx.err(`# ${events.length} events exported (${format})`)
+  ctx.err(`# ${formatCount(events.length)}${tally.ofTotal} events exported (${format}${tally.limitNote})`)
   return 0
 }

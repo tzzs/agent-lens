@@ -160,6 +160,74 @@ describe('export formats', () => {
   })
 })
 
+describe('export --limit (§9: a flag the CLI takes must bind, and its count must be true)', () => {
+  /** The measured defect: `--limit 5` against a 370k-event store pushed 370,493 spans. */
+  const spanCount = (): number =>
+    (seen as Captured[]).reduce(
+      (n, r) => n + (JSON.parse(r.body) as OtlpRequest).resourceSpans.reduce(
+        (m, rs) => m + rs.scopeSpans[0]!.spans.length, 0),
+      0,
+    )
+
+  it('caps jsonl, csv and otel at the same N rows and reports that number', async () => {
+    const jsonl = await run(dbPath, 'export', '--format', 'jsonl', '--limit', '2')
+    expect(jsonl.code).toBe(0)
+    expect(jsonl.out).toHaveLength(2)
+    expect(jsonl.err.join('\n')).toContain('2 of 3 events exported (jsonl, --limit 2)')
+
+    const csv = await run(dbPath, 'export', '--format', 'csv', '--limit', '2')
+    expect(csv.out).toHaveLength(3) // header + 2 rows: the cap counts events, not lines
+    expect(csv.err.join('\n')).toContain('2 of 3 events exported (csv, --limit 2)')
+
+    const otel = await run(dbPath, 'export', '--format', 'otel', '--limit', '2')
+    expect(otel.out).toHaveLength(2)
+    expect(otel.err.join('\n')).toContain('2 of 3 events exported (otel, --limit 2)')
+
+    // One ordering, one cap: every format ships the same first N rows (§12's single mapping).
+    expect(otel.out.map((l) => JSON.parse(l).attributes['agentlens.raw_seq'])).toEqual([1, 2])
+    expect(csv.out.slice(1).map((l) => l.split(',')[0])).toEqual(
+      jsonl.out.map((l) => JSON.parse(l).id),
+    )
+  })
+
+  it('caps what goes over the wire, before the batching, and says how many it sent', async () => {
+    const { code, err } = await run(bulkPath, 'export', '--format', 'otel', '--limit', '7', '--push', endpoint)
+    expect(code).toBe(0)
+    expect(seen).toHaveLength(1) // 7 spans never become a 501-span request
+    expect(spanCount()).toBe(7)
+    expect(err.join('\n')).toContain(`7 of ${BULK} events pushed to ${endpoint} (otel, --limit 7)`)
+  })
+
+  it('exports nothing for --limit 0 and keeps the csv header contract', async () => {
+    const jsonl = await run(dbPath, 'export', '--format', 'jsonl', '--limit', '0')
+    expect(jsonl.out).toHaveLength(0)
+    expect(jsonl.err.join('\n')).toContain('0 of 3 events exported (jsonl, --limit 0)')
+    const csv = await run(dbPath, 'export', '--format', 'csv', '--limit', '0')
+    expect(csv.out).toHaveLength(1)
+  })
+
+  it('leaves an uncapped export exactly as it was', async () => {
+    const { out, err } = await run(dbPath, 'export', '--format', 'jsonl')
+    expect(out).toHaveLength(3)
+    expect(err.join('\n')).toContain('3 events exported (jsonl)')
+    expect(err.join('\n')).not.toContain('--limit')
+  })
+
+  it('treats a fractional cap as whole events and rejects a negative one', async () => {
+    const frac = await run(dbPath, 'export', '--format', 'jsonl', '--limit', '1.9')
+    expect(frac.out).toHaveLength(1)
+    const negative = await run(dbPath, 'export', '--format', 'jsonl', '--limit', '-1')
+    expect(negative.code).toBe(2)
+    expect(negative.err.join('\n')).toContain('non-negative number')
+  })
+
+  it('caps the same rows a filter selected, not the first N of the whole store', async () => {
+    const { out, err } = await run(dbPath, 'export', '--format', 'jsonl', '--agent', 'nope', '--limit', '5')
+    expect(out).toHaveLength(0)
+    expect(err.join('\n')).toContain('0 of 0 events exported')
+  })
+})
+
 describe('export --push (OTLP/HTTP ingest)', () => {
   it('posts the same spans an otel export prints, wrapped in one OTLP/JSON request', async () => {
     const { code, out, err } = await run(
