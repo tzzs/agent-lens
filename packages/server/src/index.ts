@@ -28,7 +28,7 @@ export type {
 export { ApiError, toErrorBody, type ErrorBody, type ErrorKind } from './errors.ts'
 export { parseSpec, strParam, listParam } from './request-spec.ts'
 export { overview, type OverviewResponse } from './overview.ts'
-export { listSessions, sessionDetail, type SessionDetailResponse, type SessionListResponse } from './sessions.ts'
+export { listSessions, nodePayloads, sessionDetail, sessionDetailOptions, type SessionDetailOptions, type SessionDetailResponse, type SessionListResponse } from './sessions.ts'
 export { capabilities, catalogSummary, type CapabilityResponse, type CatalogView } from './capabilities.ts'
 export { projects, type ProjectsResponse } from './projects.ts'
 export { agents, type AgentsResponse } from './agents.ts'

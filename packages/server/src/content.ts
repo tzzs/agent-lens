@@ -40,9 +40,33 @@ function decode(blob: unknown): string {
   }
 }
 
-function chunk<T>(items: T[], size: number): T[][] {
+export function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = []
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size))
+  return out
+}
+
+/**
+ * How many payload rows back each of these events — WITHOUT reading any text.
+ *
+ * The timeline wants to badge "this row has content" on every render, and the only honest
+ * way to do that over a content layer that may be off is to count. Counting is cheap;
+ * inflating 135k blobs to answer a question about a handful of them is what made a session
+ * page cost 48 MB.
+ */
+export function payloadCountByEvent(db: DatabaseSync, eventIds: string[]): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const group of chunk(eventIds, 500)) {
+    if (group.length === 0) continue
+    const placeholders = group.map(() => '?').join(', ')
+    for (const r of rowsOf(
+      db,
+      `SELECT event_id, COUNT(*) AS n FROM payloads WHERE event_id IN (${placeholders}) GROUP BY event_id`,
+      ...group,
+    )) {
+      out.set(String(r.event_id), Number(r.n ?? 0))
+    }
+  }
   return out
 }
 

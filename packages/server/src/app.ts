@@ -12,14 +12,14 @@ import type { Context, Hono } from 'hono'
 import { Hono as HonoClass } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { billingConfigPath, liveBillingModes, type BillingMode } from '@agentlens/pricing'
-import { describeQuery, query } from '@agentlens/query'
+import { createFoldCache, describeQuery, query } from '@agentlens/query'
 import { migrate } from '@agentlens/storage'
 import type { ServerCtx, ServerDeps } from './types.ts'
 import { ApiError, toErrorBody } from './errors.ts'
 import { BillingSettings, readJsonBody } from './settings.ts'
-import { parseSpec } from './request-spec.ts'
+import { listParam, parseSpec } from './request-spec.ts'
 import { overview } from './overview.ts'
-import { listSessions, sessionDetail } from './sessions.ts'
+import { listSessions, nodePayloads, sessionDetail, sessionDetailOptions } from './sessions.ts'
 import { capabilities } from './capabilities.ts'
 import { projects } from './projects.ts'
 import { agents } from './agents.ts'
@@ -62,6 +62,8 @@ export function createContext(deps: ServerDeps): ServerCtx {
       ...(deps.priceResolver ? { priceResolver: deps.priceResolver } : {}),
       ...(billingModeFor ? { billingModeFor } : {}),
       ...(deps.aggregation ? { aggregation: deps.aggregation } : {}),
+      // Same clock the routes stamp their window with, so a hand-built ctx is consistent too.
+      now: deps.now,
     },
     changeSource: deps.changeSource ?? (() => pollChangeSource(deps.db, deps.now)),
   }
@@ -75,13 +77,35 @@ export function createApp(deps: ServerDeps): Hono {
   const ctx = createContext(deps)
   const app = new HonoClass()
 
+  /**
+   * One stage-1 fold cache AND one clock per request.
+   *
+   * The cache: a dashboard page asks the cube the same folded question a dozen times
+   * (per-day tokens, per-agent tokens, per-project cost…); without it each call re-folds the
+   * whole window. `node:sqlite` is synchronous, so a handler's cube calls never interleave
+   * with another's and a materialised fold can never be older than the request that built it.
+   *
+   * The clock is what makes the cache hit at all: `since=30d` resolves against `now()` on
+   * every cube call, so eight calls produced eight windows milliseconds apart and eight
+   * "different" queries. Pinned, the fold is shared — and the page's cards, trend and splits
+   * are then provably about the same span, which `generatedAt` already claimed.
+   *
+   * `/api/events` is deliberately not routed through here: its keepalive loop needs the real
+   * wall clock for as long as the stream lives.
+   */
   const route = <T>(handler: (ctx: ServerCtx, sp: URLSearchParams, c: Context) => T | Promise<T>) =>
     async (c: Context): Promise<Response> => {
+      const stamp = ctx.now()
+      const now = (): number => stamp
+      const foldCache = createFoldCache(ctx.db)
+      const scoped: ServerCtx = { ...ctx, now, cubeDeps: { ...ctx.cubeDeps, now, foldCache } }
       try {
-        return c.json(await handler(ctx, searchParams(c), c))
+        return c.json(await handler(scoped, searchParams(c), c))
       } catch (err) {
         const { status, body } = toErrorBody(err)
         return c.json(body, status as ContentfulStatusCode)
+      } finally {
+        foldCache.dispose()
       }
     }
 
@@ -114,11 +138,19 @@ export function createApp(deps: ServerDeps): Hono {
 
   app.get('/api/overview', route((c, sp) => overview(c, sp)))
   app.get('/api/sessions', route((c, sp) => listSessions(c, sp)))
-  app.get('/api/sessions/:id', route((c, _sp, hc) => {
+  app.get('/api/sessions/:id', route((c, sp, hc) => {
     const wanted = hc.req.param('id')
     if (!wanted) throw ApiError.badRequest('missing session id in path')
-    return sessionDetail(c, wanted)
+    return sessionDetail(c, wanted, sessionDetailOptions(sp))
   }))
+  /**
+   * Payload text for one or more timeline nodes. The waterfall asks for a node's content
+   * when it is opened instead of carrying every node's content on page load — with the
+   * content layer on, that was the single largest response the server produced (§3.2).
+   */
+  app.get('/api/sessions/:id/nodes/:nodeId/payloads', route((c, sp, hc) =>
+    nodePayloads(c, hc.req.param('id') ?? '', listParam(sp, 'node') ?? [hc.req.param('nodeId') ?? '']),
+  ))
   app.get('/api/capabilities', route((c, sp) => capabilities(c, sp)))
   app.get('/api/projects', route((c, sp) => projects(c, sp)))
   app.get('/api/agents', route((c, sp) => agents(c, sp)))
