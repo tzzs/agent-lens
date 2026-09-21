@@ -63,6 +63,8 @@ function usd(values: (number | null)[]): number | null {
 }
 
 export function costView(ctx: ServerCtx, filter?: QueryFilter): CostView {
+  // With a DB file, createContext already wired billingModeFor to the `config.json`
+  // declarations (§8); this literal 'api' only stands for a DB-less in-process ctx.
   const modeFor = ctx.billingModeFor ?? ((): BillingMode => 'api')
   // One cube call carries all three cost facts (raw reported, priced, and the §18 row 1
   // fusion) so the route pays one stage-1 fold per slice, not three, and the three

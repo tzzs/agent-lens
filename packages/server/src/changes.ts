@@ -1,10 +1,11 @@
 /**
  * SSE transport for GET /api/events (§13: SSE over WebSocket — one-way is enough).
  *
- * M4 ships the transport; M6 only has to replace the SOURCE of change ticks:
- * the default below re-polls MAX(events.timestamp) every couple of seconds,
- * because the file watcher is not wired to the server yet. Nothing else in the
- * chain (frame format, keep-alive, `?since=`) changes when it is.
+ * `pollChangeSource` below IS the live source the SSE wires by default: app.ts's
+ * `changeSource` falls back to it whenever no transport is injected. It re-polls
+ * MAX(events.timestamp) every couple of seconds because there is no file watcher in
+ * the server yet (M6 adds one); when it arrives, only this default swaps — the
+ * frame format, keep-alive and `?since=` handling of the chain above stay as they are.
  */
 import type { DatabaseSync } from 'node:sqlite'
 import type { ChangeSource, ChangeTick } from './types.ts'

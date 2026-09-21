@@ -11,7 +11,7 @@ import { homedir as osHomedir } from 'node:os'
 import type { Context, Hono } from 'hono'
 import { Hono as HonoClass } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { billingConfigPath } from '@agentlens/pricing'
+import { billingConfigPath, liveBillingModes, type BillingMode } from '@agentlens/pricing'
 import { describeQuery, query } from '@agentlens/query'
 import { migrate } from '@agentlens/storage'
 import type { ServerCtx, ServerDeps } from './types.ts'
@@ -36,11 +36,20 @@ export const SERVER_NAME = '@agentlens/server'
 
 export function createContext(deps: ServerDeps): ServerCtx {
   const homedir = deps.homedir ?? osHomedir()
+  // §8/§14: with no override injected, the server reads the same `config.json` beside
+  // the DB that the CLI writes and the settings route declares into. liveBillingModes
+  // re-reads on file change, so a declaration through the API or the terminal folds
+  // into the NEXT request — no restart, no `'api'`-fallback silence.
+  const declaredModes =
+    deps.billingModeFor || !deps.dbPath ? null : liveBillingModes(billingConfigPath(deps.dbPath))
+  const billingModeFor =
+    deps.billingModeFor ??
+    (declaredModes ? (agentId: string): BillingMode => declaredModes[agentId] ?? 'api' : undefined)
   return {
     db: deps.db,
     now: deps.now,
     ...(deps.priceResolver ? { priceResolver: deps.priceResolver } : {}),
-    ...(deps.billingModeFor ? { billingModeFor: deps.billingModeFor } : {}),
+    ...(billingModeFor ? { billingModeFor } : {}),
     ...(deps.aggregation ? { aggregation: deps.aggregation } : {}),
     ...(deps.priceTableSize ? { priceTableSize: deps.priceTableSize } : {}),
     ...(deps.staticDir ? { staticDir: deps.staticDir } : {}),
@@ -51,7 +60,7 @@ export function createContext(deps: ServerDeps): ServerCtx {
     homedir,
     cubeDeps: {
       ...(deps.priceResolver ? { priceResolver: deps.priceResolver } : {}),
-      ...(deps.billingModeFor ? { billingModeFor: deps.billingModeFor } : {}),
+      ...(billingModeFor ? { billingModeFor } : {}),
       ...(deps.aggregation ? { aggregation: deps.aggregation } : {}),
     },
     changeSource: deps.changeSource ?? (() => pollChangeSource(deps.db, deps.now)),

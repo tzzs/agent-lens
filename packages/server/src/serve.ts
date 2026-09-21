@@ -9,10 +9,17 @@
  */
 import { openDatabase } from '@agentlens/storage'
 import { serve, type ServerType } from '@hono/node-server'
+import { existsSync, readFileSync } from 'node:fs'
 import { createApp, createContext } from './app.ts'
 import type { ServerCtx, ServerDeps } from './types.ts'
 import { migrate } from '@agentlens/storage'
-import { bundledSnapshot, PricingTable, readSnapshotFile, type PriceSnapshot } from '@agentlens/pricing'
+import {
+  bundledSnapshot,
+  PricingTable,
+  readSnapshotFile,
+  type PriceEntry,
+  type PriceSnapshot,
+} from '@agentlens/pricing'
 
 export const DEFAULT_PORT = 7317
 export const DEFAULT_HOST = '127.0.0.1'
@@ -51,13 +58,35 @@ export interface RunningServer {
   close: () => Promise<void>
 }
 
-/** Prices from `<db dir>/price-snapshot.json` when present, else the bundled snapshot (§8). */
+/**
+ * Prices from `<db dir>/price-snapshot.json` when present, else the bundled snapshot,
+ * then the user's `<db dir>/pricing-overrides.jsonl` is merged on top — always, because
+ * §8 says overrides win and the CLI's doctor counts that merged table, not the snapshot
+ * (§14). This mirrors `loadPricing` in apps/cli/src/pricing-store.ts line for line:
+ * @agentlens/pricing exposes no shared loader for the jsonl yet (it exports
+ * `PricingTable.withOverride` and `readSnapshotFile` only), so the merge lives here
+ * until a `loadMergedPricing` helper moves it into the pricing package — and the
+ * agreement test in packages/server/test/pricing-overrides.test.ts pins both ends until then.
+ */
 export function priceTableFor(dbPath?: string): { table: PricingTable; snapshot: PriceSnapshot | null } {
-  if (dbPath) {
-    const found = readSnapshotFile(`${dbPath.replace(/\/[^/]*$/, '')}/price-snapshot.json`)
-    if (found) return { table: PricingTable.fromSnapshot(found), snapshot: found }
+  // Same `dirname(dbPath)` the CLI's pricing-store uses; a bare "x.db" means the cwd.
+  const dir = dbPath === undefined ? null : dbPath.includes('/') ? dbPath.slice(0, dbPath.lastIndexOf('/') || 1) : '.'
+  const overrideFile = dir === null ? null : `${dir}/pricing-overrides.jsonl`
+  const found = dir ? readSnapshotFile(`${dir}/price-snapshot.json`) : null
+  const snapshot = found ?? bundledSnapshot()
+  return { table: withOverrides(PricingTable.fromSnapshot(snapshot), overrideFile), snapshot }
+}
+
+/** One `PriceEntry` per line, later lines win; same file, same order as the CLI (§14). */
+function withOverrides(table: PricingTable, path: string | null): PricingTable {
+  if (!path || !existsSync(path)) return table
+  let out = table
+  for (const line of readFileSync(path, 'utf8').split('\n')) {
+    const t = line.trim()
+    if (!t) continue
+    out = out.withOverride(JSON.parse(t) as PriceEntry)
   }
-  return { table: PricingTable.fromSnapshot(bundledSnapshot()), snapshot: bundledSnapshot() }
+  return out
 }
 
 export function startServer(options: StartOptions = {}): RunningServer {
@@ -93,6 +122,17 @@ export function startServer(options: StartOptions = {}): RunningServer {
   })
 
   const server: ServerType = serve({ fetch: createApp(ctx).fetch, hostname: host, port })
+  // `serve()` returns before the socket is listening, and closing a server that never
+  // listened wedges it permanently (`Server is not running.` on every later close). A
+  // SIGINT in the first tick would take down `agl --serve` that way, so `close` waits
+  // for the bind — or for its error, which surfaces from `server.close` as usual.
+  const bound = new Promise<void>((resolve) => {
+    if (server.listening) resolve()
+    else {
+      server.once('listening', () => resolve())
+      server.once('error', () => resolve())
+    }
+  })
   const url = `http://${host}:${port}`
   return {
     port,
@@ -100,6 +140,7 @@ export function startServer(options: StartOptions = {}): RunningServer {
     url,
     ctx,
     close: async () => {
+      await bound
       await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())))
       if (ownsDb) db.close()
     },

@@ -47,6 +47,8 @@ export function agents(ctx: ServerCtx, sp: URLSearchParams): AgentsResponse {
     ctx.cubeDeps,
   )
   const meta = rowsOf(ctx.db, 'SELECT id, display_name, detected_version, data_root FROM agents')
+  // Same rule as cost.ts: ctx.billingModeFor is file-backed whenever a DB path is known;
+  // the literal 'api' only covers a DB-less in-process ctx.
   const modeFor = ctx.billingModeFor ?? ((): string => 'api')
 
   const rows: AgentRow[] = perAgent.rows.map((r) => {
