@@ -571,7 +571,7 @@ Dashboard → http://localhost:7317
 验收：① 对一个假造 JSONL，重扫两次 → DB 状态字节级一致；② 一条"多 block 重复 usage"的假造记录，聚合结果等于单份 usage（**去重必须有独立单测**）。
 > 不写任何真实 Adapter。
 
-**状态**：✅ 完成（2026-09-21）。`event-model`（`validate.ts`/`otel-map.ts`/`dedupe.ts`/`project.ts`）+ `storage`（迁移 `001`–`003`）+ `sources` 增量器（`collector/src/incremental.ts`）+ Adapter 接口/`ParseFailure` 均在；验收①见 `storage/test/idempotency.test.ts`，②（多 block 重复 usage→单份）见 `event-model/test/dedupe.test.ts`。
+**状态**：✅ 完成（2026-09-21）。`event-model`（`validate.ts`/`otel-map.ts`/`dedupe.ts`/`project.ts`）+ `storage`（迁移 `001`–`005`（`004` 是 §4.3 的 `sources.sqlite_table`，`005` 是 §2 的 `machine` 单例））+ `sources` 增量器（`collector/src/incremental.ts`）+ Adapter 接口/`ParseFailure` 均在；验收①见 `storage/test/idempotency.test.ts`，②（多 block 重复 usage→单份）见 `event-model/test/dedupe.test.ts`。
 
 ### M1 · 单 Adapter 打通（2–4 天）— 全局风险最高的一步
 只做 `claude-code`（含 `host_id` 的 desktop/cli 拆分）。跑通 detect → discover → 增量 parse → normalize → SQLite → CLI `usage`。
@@ -614,7 +614,9 @@ SSE 增量、MCP 插件的 `capabilities()` 静态清单（`skills`/`mcp` 命令
 **状态**：✅ 完成。`collector/src/watch.ts`（`node:fs.watch` + 每轮 discover）、`server/src/sse.ts`（SSE）、`capabilities()` 静态清单（`doctor-caps.ts`）均在；`watch.e2e.test.ts`/`watch-idempotency.test.ts` 钉住。
 
 ### M7 及以后
-Replay · 导出（OTel/Langfuse）· 告警（"agentx 今日成本 +240%"）· 效率分析（按 skill/phase 归因）· 单二进制分发 · Team。
+Replay · 告警（"agentx 今日成本 +240%"）· 效率分析（按 skill/phase 归因）· 单二进制分发 · Team。
+
+导出（§12，OTel/CSV/jsonl + OTLP push）**已提前交付**，不在 M7 列表里：它是 M4 那轮补 §14 口径时顺手把欺扬的最后一条腿补齐的（导出走 `SELECT * FROM events` 而 `events` 只有 `model_rowid` ⇒ 每行 provider/model 全空，见 §19）。
 
 ---
 
