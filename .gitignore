@@ -9,3 +9,8 @@ coverage/
 *.db
 *.db-wal
 *.db-shm
+
+# Synthetic fixture stores are test inputs, not local data; the rules above exist for real agent databases.
+!adapters/*/fixtures/**/*.db
+!adapters/*/fixtures/**/*.db-wal
+!adapters/*/fixtures/**/*.db-shm
