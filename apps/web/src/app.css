@@ -242,3 +242,28 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Session waterfall rows and their header share one grid: name | bar | dur | tokens | time.
+ * Below md the bar and token columns drop out so the name keeps its room. */
+.tl-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 36%) 64px 52px 64px;
+  column-gap: 12px;
+}
+@media (max-width: 767px) {
+  .tl-grid {
+    grid-template-columns: minmax(0, 1fr) 56px 64px;
+  }
+  .tl-track,
+  .tl-tokens {
+    display: none;
+  }
+}
+
+/* Horizontal overflow that scrolls by touch/trackpad without a visible bar (header filters). */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
