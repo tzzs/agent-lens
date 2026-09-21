@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { formatCompact, formatInt } from '../lib/format.ts'
+  import { formatCompact, formatInt, formatMs } from '../lib/format.ts'
   import { range } from '../lib/filter.svelte.js'
   import Card from '../components/Card.svelte'
   import StatePanel from '../components/StatePanel.svelte'
@@ -33,7 +33,10 @@
   const capBars = $derived(
     d
       ? d.capabilities
-          .map((r: any) => ({ label: String(r.capability_type), value: Number(r.events ?? 0), note: `${formatCompact(Number(r.duration ?? 0))}ms total` }))
+          .map((r: any) => {
+            const ms = Number(r.duration ?? 0)
+            return { label: String(r.capability_type), value: Number(r.events ?? 0), note: ms > 0 ? `${formatMs(ms)} total` : undefined }
+          })
           .sort((a: any, b: any) => b.value - a.value)
       : [],
   )

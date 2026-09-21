@@ -1,10 +1,12 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte'
   let {
     title = '',
     subtitle = '',
     note = '',
     padded = true,
-  }: { title?: string; subtitle?: string; note?: string; padded?: boolean } = $props()
+    children,
+  }: { title?: string; subtitle?: string; note?: string; padded?: boolean; children?: Snippet } = $props()
 </script>
 
 <section class="rounded-card border border-line bg-ink-900/60">
@@ -18,6 +20,6 @@
     </header>
   {/if}
   <div class={padded ? 'p-4' : ''}>
-    <slot />
+    {@render children?.()}
   </div>
 </section>

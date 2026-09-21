@@ -12,16 +12,16 @@
   import StatePanel from '../components/StatePanel.svelte'
   import CostFigure from '../components/CostFigure.svelte'
 
-  const { state, run } = loader(() => api.capabilities({ ...filterParams(), names: 15 }))
+  const q = loader(() => api.capabilities({ ...filterParams(), names: 15 }))
   $effect(() => {
     void range.since
     void range.agent
     void range.host
     void live.lastTick
-    run()
+    q.run()
   })
 
-  const d = $derived(state.status === 'ready' ? state.data : null)
+  const d = $derived(q.state.status === 'ready' ? q.state.data : null)
 
   const typeBy = $derived(new Map((d?.types ?? []).map((t: any) => [t.type, t])))
   // For each type: which agents report it at all, and which explicitly don't.
@@ -43,8 +43,8 @@
   <p class="text-xs text-mist-500">which tool / skill / MCP / hook / subagent burned what — usage, duration, failures</p>
 </div>
 
-{#if state.status !== 'ready'}
-  <StatePanel status={state.status} error={state.error} kind={state.kind} />
+{#if q.state.status !== 'ready'}
+  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} />
 {:else if d}
   <Card padded={false}>
     <div class="overflow-x-auto">

@@ -12,15 +12,15 @@
   import StatePanel from '../components/StatePanel.svelte'
   import CostFigure from '../components/CostFigure.svelte'
 
-  const { state, run } = loader(() => api.agents(filterParams()))
+  const q = loader(() => api.agents(filterParams()))
   $effect(() => {
     void range.since
     void range.agent
     void range.host
     void live.lastTick
-    run()
+    q.run()
   })
-  const d = $derived(state.status === 'ready' ? state.data : null)
+  const d = $derived(q.state.status === 'ready' ? q.state.data : null)
   let open = $state<string | null>(null)
 </script>
 
@@ -29,8 +29,8 @@
   <p class="text-xs text-mist-500">each agent shown with its host split (§18 item 6) · cost is a computed estimate</p>
 </div>
 
-{#if state.status !== 'ready'}
-  <StatePanel status={state.status} error={state.error} kind={state.kind} />
+{#if q.state.status !== 'ready'}
+  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} />
 {:else if d}
   <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
     {#each d.rows as a (a.agentId)}

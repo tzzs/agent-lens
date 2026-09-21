@@ -5,6 +5,7 @@
   // the source's own raw_seq order, nested by parent_event_id.
   import { formatCompact, formatMs, formatClock } from '../lib/format.ts'
   import Payload from './Payload.svelte'
+  import TimelineNode from './TimelineNode.svelte'
 
   let {
     node,
@@ -124,6 +125,6 @@
   {/if}
 
   {#each children as child (child.id)}
-    <svelte:self node={child} {childrenMap} depth={depth + 1} {contentAvailable} />
+    <TimelineNode node={child} {childrenMap} depth={depth + 1} {contentAvailable} />
   {/each}
 </div>

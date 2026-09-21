@@ -11,15 +11,15 @@
   import StatePanel from '../components/StatePanel.svelte'
   import CostFigure from '../components/CostFigure.svelte'
 
-  const { state, run } = loader(() => api.doctor(filterParams()))
+  const q = loader(() => api.doctor(filterParams()))
   $effect(() => {
     void range.since
     void range.agent
     void range.host
     void live.lastTick
-    run()
+    q.run()
   })
-  const d = $derived(state.status === 'ready' ? state.data : null)
+  const d = $derived(q.state.status === 'ready' ? q.state.data : null)
 
   const icon: Record<string, string> = { ok: '✓', 'ingested-only': '◔', 'not-detected': '—', error: '✗' }
   const iconColor: Record<string, string> = { ok: 'text-ok', 'ingested-only': 'text-mist-400', 'not-detected': 'text-mist-500', error: 'text-danger' }
@@ -30,8 +30,8 @@
   <p class="text-xs text-mist-500">diagnostics for "can I trust these numbers" (§11){d ? ` · generated ${formatDate(d.generatedAt)}` : ''}</p>
 </div>
 
-{#if state.status !== 'ready'}
-  <StatePanel status={state.status} error={state.error} kind={state.kind} loadingText="running diagnostics…" />
+{#if q.state.status !== 'ready'}
+  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} loadingText="running diagnostics…" />
 {:else if d}
   <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
     <Card title="Agents" subtitle={d.adaptersInstalled ? '' : 'no adapters installed in this build'} padded={false}>

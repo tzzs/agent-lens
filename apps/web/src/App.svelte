@@ -37,7 +37,11 @@
 
   // Filter options for the header selects: populated from the agent directory,
   // hosts folded from each agent's host breakdown.
+  // Single-flight like `loader`: a tick mid-request is dropped, not queued.
+  let optionsInFlight = false
   async function refreshOptions() {
+    if (optionsInFlight) return
+    optionsInFlight = true
     try {
       const a = await api.agents()
       options.agents = a.rows.map((r) => ({ agentId: r.agentId, displayName: r.displayName }))
@@ -46,6 +50,8 @@
       options.hosts = [...hosts].sort()
     } catch {
       /* options are best-effort; a failure just shrinks the filter dropdowns */
+    } finally {
+      optionsInFlight = false
     }
   }
 
@@ -56,7 +62,6 @@
   let es: EventSource | null = null
   onMount(() => {
     const stop = initRouter()
-    refreshOptions()
 
     // SSE drives the live indicator + tells every page to refetch. Relative URL:
     // same-origin only, per the local-first rule.
@@ -100,6 +105,11 @@
     void range.host
     void live.lastTick
     ov.run()
+  })
+
+  // Filter options only change when new data lands, not when the user re-filters.
+  $effect(() => {
+    void live.lastTick
     refreshOptions()
   })
 </script>

@@ -35,7 +35,7 @@
     }),
   )
 
-  const { state, run } = loader(() => api.query(querySpec))
+  const q = loader(() => api.query(querySpec))
 
   // A caller-set capabilityType that contradicts the selected dim can match no row.
   // Running it would drop the restriction (an empty list is not a filter) and count
@@ -57,7 +57,7 @@
     void live.lastTick
     void nonce
     if (dimConflict) return
-    const t = setTimeout(run, 150)
+    const t = setTimeout(q.run, 150)
     return () => clearTimeout(t)
   })
 
@@ -126,10 +126,10 @@
       <Card><p class="text-sm text-warn">this capability dim contradicts the capability-type filter, so no event can match it.</p></Card>
     {:else if metrics.length === 0}
       <Card><p class="text-sm text-warn">select at least one metric.</p></Card>
-    {:else if state.status !== 'ready'}
-      <StatePanel status={state.status} error={state.error} kind={state.kind} />
-    {:else}
-      {@const res = state.data}
+    {:else if q.state.status !== 'ready'}
+      <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} />
+    {:else if q.state.data}
+      {@const res = q.state.data}
       <Card padded={false} title={res.rows.length + ' rows'} note={nameDims.length ? `rows restricted to capability type ${nameDims.join(', ')} · ${res.truncated ? 'truncated by limit' : 'not truncated'}` : res.truncated ? 'truncated by limit' : ''}>
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs">

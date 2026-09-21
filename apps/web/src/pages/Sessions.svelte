@@ -8,14 +8,14 @@
   import StatePanel from '../components/StatePanel.svelte'
   import CostFigure from '../components/CostFigure.svelte'
 
-  const { state, run } = loader(() => api.sessions({ ...filterParams(), limit: 100 }))
+  const q = loader(() => api.sessions({ ...filterParams(), limit: 100 }))
 
   $effect(() => {
     void range.since
     void range.agent
     void range.host
     void live.lastTick
-    run()
+    q.run()
   })
 </script>
 
@@ -24,13 +24,13 @@
   <p class="text-xs text-mist-500">most recent first — open one for the waterfall timeline</p>
 </div>
 
-{#if state.status !== 'ready'}
-  <StatePanel status={state.status} error={state.error} kind={state.kind} />
-{:else}
-  {@const rows = state.data.rows}
+{#if q.state.status !== 'ready'}
+  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} />
+{:else if q.state.data}
+  {@const rows = q.state.data.rows}
   <div class="mb-3 flex items-center justify-between text-xs text-mist-400">
-    <span>{formatInt(state.data.totalSessions)} sessions matched{state.data.truncated ? ' (truncated)' : ''}</span>
-    {#if !state.data.content.available}
+    <span>{formatInt(q.state.data.totalSessions)} sessions matched{q.state.data.truncated ? ' (truncated)' : ''}</span>
+    {#if !q.state.data.content.available}
       <span class="text-warn">content layer off — details will be metrics-only</span>
     {/if}
   </div>

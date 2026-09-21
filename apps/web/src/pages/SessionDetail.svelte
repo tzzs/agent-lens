@@ -14,14 +14,14 @@
 
   let { id }: { id: string } = $props()
 
-  const { state, run } = loader(() => api.session(id))
+  const q = loader(() => api.session(id))
   $effect(() => {
     void id
     void live.lastTick
-    run()
+    q.run()
   })
 
-  const d = $derived(state.status === 'ready' ? state.data : null)
+  const d = $derived(q.state.status === 'ready' ? q.state.data : null)
 
   // parent_event_id forest. Nodes whose parent is absent (or NULL) are roots; the
   // server returns them in raw_seq order so a root's subtree reads like the log.
@@ -42,28 +42,32 @@
     return { roots, childrenMap }
   })
 
-  const orphanCount = $derived(d ? state.data.nodes.filter((n: any) => n.parentEventId && !new Set(state.data.nodes.map((x: any) => x.id)).has(n.parentEventId)).length : 0)
+  const orphanCount = $derived.by(() => {
+    if (!d) return 0
+    const ids = new Set(d.nodes.map((n: any) => n.id))
+    return d.nodes.filter((n: any) => n.parentEventId && !ids.has(n.parentEventId)).length
+  })
 </script>
 
-{#if state.status === 'error'}
+{#if q.state.status === 'error'}
   <div class="mb-4">
     <a href="#/sessions" class="text-xs text-signal hover:underline">← back to sessions</a>
   </div>
   <Card title="Session unavailable">
-    <p class="text-sm text-mist-300">{state.error}</p>
-    {#if state.kind === 'conflict' && state.details?.matches}
+    <p class="text-sm text-mist-300">{q.state.error}</p>
+    {#if q.state.kind === 'conflict' && q.state.details?.matches}
       <p class="mt-2 text-xs text-mist-500">The id prefix matched more than one session — pick one:</p>
       <ul class="nums mt-2 space-y-1 text-sm">
-        {#each state.details.matches as m (m)}
+        {#each q.state.details.matches as m (m)}
           <li><a class="text-signal hover:underline" href="#/sessions/{encodeURIComponent(m)}">{m}</a></li>
         {/each}
       </ul>
-    {:else if state.kind === 'not_found'}
+    {:else if q.state.kind === 'not_found'}
       <p class="mt-2 text-xs text-mist-500">No session id (or prefix) <span class="nums">{id}</span> exists in this database.</p>
     {/if}
   </Card>
-{:else if state.status !== 'ready'}
-  <StatePanel status={state.status} error={state.error} kind={state.kind} />
+{:else if q.state.status !== 'ready'}
+  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} />
 {:else if d}
   <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
     <div class="min-w-0">

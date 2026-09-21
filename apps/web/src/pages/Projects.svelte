@@ -11,28 +11,28 @@
   import StatePanel from '../components/StatePanel.svelte'
   import CostFigure from '../components/CostFigure.svelte'
 
-  const { state, run } = loader(() => api.projects({ ...filterParams(), limit: 50 }))
+  const q = loader(() => api.projects({ ...filterParams(), limit: 50 }))
   $effect(() => {
     void range.since
     void range.agent
     void range.host
     void live.lastTick
-    run()
+    q.run()
   })
 
-  const d = $derived(state.status === 'ready' ? state.data : null)
+  const d = $derived(q.state.status === 'ready' ? q.state.data : null)
   let open = $state<string | null>(null)
 </script>
 
 <div class="mb-4 flex items-end justify-between">
   <div>
     <h1 class="text-lg font-semibold">Projects</h1>
-    <p class="text-xs text-mist-500">cross-agent grouping · {formatInt(state.data?.rows.length ?? 0)} projects in window</p>
+    <p class="text-xs text-mist-500">cross-agent grouping · {formatInt(q.state.data?.rows.length ?? 0)} projects in window</p>
   </div>
 </div>
 
-{#if state.status !== 'ready'}
-  <StatePanel status={state.status} error={state.error} kind={state.kind} />
+{#if q.state.status !== 'ready'}
+  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} />
 {:else if d}
   <p class="mb-3 text-[11px] text-mist-500">{d.note}</p>
   <div class="space-y-2">

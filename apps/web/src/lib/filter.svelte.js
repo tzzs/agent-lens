@@ -21,7 +21,9 @@ export const range = $state({
 })
 
 /** Params for the entity/stats routes (they share the same querystring filter). */
+/** @returns {Record<string, string>} */
 export function filterParams() {
+  /** @type {Record<string, string>} */
   const p = {}
   if (range.since) p.since = range.since
   if (range.agent) p.agent = range.agent
