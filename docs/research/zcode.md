@@ -106,8 +106,9 @@ v2/tasks-index.sqlite.tasks.task_id  →  cli/db/db.sqlite.session.id     10/10 
 - 子代理归属是**确定性外键**，不需要 Claude 式时间启发：`query_source='subagent'` ⟺ `session.parent_id IS NOT NULL`，实测 367/367 完全一致；`agents/*/metadata.json.parentToolUseId` 还能指回派生它的那次 `Agent` 工具调用。
 - `message.data.semantics`（1,603 条全覆盖）：`origin` ∈ `real_user`/`agent_runtime`/`system`，`kind` 分布：`assistant_response` 1,385 / `todo_reminder` 94 / `user_prompt` 89 / `timeline_event` 29 / `background_notification` 5 / `system_reminder` 1，另带 `uiVisibility`/`providerVisibility`/`transcriptVisibility`。
   - ⚠️ **按 `role` 映射会把用户轮次虚报 2.12×**：`role='user'` 有 189 条，其中真实用户输入只有 89 条，其余 100 条是 todo/system/background 注入。规则：`origin='real_user'` → `message.user`；`assistant_response` → `message.assistant`；其余 4 类 → `type='unknown'` + `subtype=kind`（§5.3 保留 subtype 而非丢弃，Timeline 看得见注入，Turn 计数不被污染）。
+  - ⚠️ **同一条规则必须同时管住 `part` 的内容行**：那 100 条注入消息各自带着 **1 条自己的 `text` part**（94+5+1=100，实测）。若 part 侧仍按"父消息 role"分派，内容层就在 message 层的 2.12× 之上再翻一倍。实现里两处共用 `semantics` 判定，`fixtures` 与测试各钉一条。
 - `part.data.type`：`tool` 1,851 / `step-start` 1,385 / `step-finish` 1,355 / `text` 1,004 / `reasoning` 928 / `timeline` 29 / `file` 4；`part.data` 最大 185,959 B（read/write 类工具的整页正文都在这）⇒ 内容层沿用 OpenCode 的 `FILE_BODY_*_TOOLS` 排除表与 4KiB/32KiB 截断。
-- 能力面（比 Claude 多一列）：`tool_usage` 除 `tool_name` 外带 `read_only` / `destructive` / `side_effect_scope ∈ {system 672, workspace 593, none 463, session 99, network 19, userInteraction 3}` / `exit_code` / `output_bytes` / `truncated` / `duration_ms`。`approval_status` 恒 `none`（yolo 模式）。工具名是 **Claude Code 方言**（Bash/Edit/Read/Write/TodoWrite/Agent/WebFetch/Skill/AskUserQuestion/ExitPlanMode/TaskOutput/TaskStop）+ `mcp__server__tool` 两级与 `mcp__plugin_<plugin>_<server>__<tool>` 三级并存。
+- 能力面（比 Claude 多一列）：`tool_usage` 除 `tool_name` 外带 `read_only` / `destructive` / `side_effect_scope ∈ {system 672, workspace 593, none 464, session 99, network 19, userInteraction 4}`（合计 1,851 = 全表；写这份简报时把 none/userInteraction 各记少 1，已按重测改正，词表不变） / `exit_code` / `output_bytes` / `truncated` / `duration_ms`。`approval_status` 恒 `none`（yolo 模式）。工具名是 **Claude Code 方言**（Bash/Edit/Read/Write/TodoWrite/Agent/WebFetch/Skill/AskUserQuestion/ExitPlanMode/TaskOutput/TaskStop）+ `mcp__server__tool` 两级与 `mcp__plugin_<plugin>_<server>__<tool>` 三级并存。
 - **工具结果只从 `tool_usage` 读，不读 `part` 里的 tool state**：`part` 行 rowid 会被 UPDATE 复用（pending→completed），增量扫描重读不到；`tool_usage` 是 insert-only，且 1,851 行的 `tool_call_id` 与 `part.data.callID` **1:1 完全对齐**（实测 `eq=1851/1851`）。⇒ `part.tool` 出 `tool.start`（能力 + 入参），`tool_usage` 出 `tool.end`/`tool.result`（状态、耗时、退出码、副作用分类）。
 
 ## 六、rollout / 日志通道：为什么都不采
@@ -126,14 +127,15 @@ v2/tasks-index.sqlite.tasks.task_id  →  cli/db/db.sqlite.session.id     10/10 
 |---|---|
 | `session`（38） | `session.start`（title/mode/version/rollup 进 metadata）；子代理会话再出 `subagent.start`；`time_archived` 非空才出 `session.end`（本机 0 条） |
 | `message`（1,603） | 按 §五 的 `semantics` 规则；`data.error` 出 `error` 事件；**不带 usage**（副本 #3） |
-| `part`（6,556） | `step-start`→`generation.start`；`tool`→`tool.start`（`Agent`→`subagent.start`，`Skill`→`skill.invoke`，`mcp__*`→`mcp.invoke`）；`text`/`reasoning`→内容事件；`step-finish`→`unknown`+`subtype='step-finish-duplicate-of-model_usage'`（**不产 usage**，留漂移证据）；`timeline`/`file`→`unknown`+subtype |
+| `part`（6,556） | `step-start`→`generation.start`；`tool`→`tool.start`（`Agent`→`subagent.start`，`Skill`→`skill.invoke`，`mcp__*`→`mcp.invoke`）；`text`/`reasoning`→内容事件（**按 §五 的 `semantics` 分派，不看 role**）；`step-finish`→`unknown`+`subtype='step-finish'`+`metadata.duplicate_of='model_usage'`（**不产 usage**，留漂移证据，且 subtype 保持短枚举、出处写在 metadata 里才可 grep）；`timeline`/`file`→`unknown`+subtype |
 | `model_usage`（1,395） | `generation.end`：唯一 usage 载体，`requestId=logical_request_id`，`threadId=turn_id`，`metadata.subagentThread` 由 `session.parent_id` 决定，`status/error_type/error_code` + `deriveErrorFingerprint`，`duration_ms`/`time_to_first_token_ms` 进 metadata |
 | `tool_usage`（1,851） | `tool.end` + `tool.result`：`parentEventId` 由 `tool_call_id` 反查 `part.tool` 的事件 id；带 `exit_code`/`output_bytes`/`side_effect_scope`/`read_only`/`destructive` |
 
 - **`turn_usage` / `session_target` / `agents/*/metadata.json` 不是源**（rollup，§三）。
 - 宿主：`host_id = 'zcode'`（§二）。项目：`session.directory`/`session.path` 喂 `ctx.resolveProject`（本机 2 个目录 = cable-info 35 + picko 3 会话），native `project_id`（`proj_users-tanzz-workspaces-cable-info`）记进 metadata 供对账，不参与归一化（§4.1 三步归一仍是权威）。
 - `ParserVersion = 1`；`aggregation = { mode: 'per_record_sum', subagentsIncluded: true }` —— `mode` 的依据是"`model_usage` 每请求恰一行、每行只说这一次调用"（`request_max` 在此算术等价，但声明要说清粒度，且未来出现重试行时 `per_record_sum` 不会把真实花费折没）。
-- 会话表里 `session.version` 只记到 `0.16.5` ⇒ `Detection.agentVersion` 取 `schema_migration.app_version`，同时把 `v2/setting.json` 的桌面版本留在 metadata（漂移证据跨版本采集，§5.3）。
+- **`session` 表并不与 OpenCode 同构**（本文开头"三表是 OpenCode 形状"那句只对 `message`/`part` 成立）：ZCode 的 `session` **没有** `mode`/`agent`/`model`/`cost`/`tokens_*` 列。三个后果都已在实现里处理：(a) 模式要从 `permission` 这个 JSON 列里取（`{"mode":"yolo"}`，38/38）；(b) 由 session 行产出的 `subagent.start` **叫不出子代理的种类**（`zcode-Explore` / `zcode-general-purpose` 只存在于逐请求的 `model_usage.agent`），故 capability 名固定为 `subagent`、provider 标 `session.parent_id`，不臆造；(c) `session.start` 的 `metadata.rollup` 没有 cost/token 可带，只能放 `summary_*` 那几个（本机全 NULL）计数器。
+- 版本：`Detection.agentVersion` 取 `schema_migration.app_version`（取不到时回落 `session.version`）。本机两个库都是 WAL ⇒ 探测期开不了库，`agl doctor` 如实显示 `v?` 并列出"5 个 SQLite 源只嗅探头部、一个都没打开"——这与 OpenCode 在同一台机器上的表现**逐字一致**（§18 row 7 的既定代价，不是 zcode 的缺陷）；逐会话真实版本 `0.16.5` 在摄入时由 `session.version` 落到 `session.start.metadata`。桌面 App 的版本（`3.11.2`/`3.12.1`）只属于那台机器上那个 App，挂到逐会话事件上就是臆造的范围 ⇒ **不采**，只在本文备案。
 
 ## 八、待实测确认（下一轮）
 
@@ -141,3 +143,26 @@ v2/tasks-index.sqlite.tasks.task_id  →  cli/db/db.sqlite.session.id     10/10 
 2. `variant='disabled'`(9) 与 `reasoning_tokens` 恒 0 的关系；`GLM-5.3-Flash` 的思考模式是否落到 `part.data.reasoning` 而非 token 桶。
 3. 非套餐（`account:*` 之外是否有按量付费 provider）下 `cost` 是否变非零 —— 若变，`costSource='reported'` 的分支要提前留好，并注意套餐/按量混用时 `0` 与 `null` 的语义差别。
 4. `session_task_link`/`workflow_*`/`dwf_*` 五张表本机全空（自动化/off-peak 功能），启用后是不是第 6 份用量口径；`off_peak_tasks` 在桌面库里已有表结构。
+5. **`parent_event_id` 全 NULL（3,433/3,433 子代理事件）**，`agl doctor` 因此按 §4.4 row 8 的通用文案报"没有外键可退"。这条文案对 zcode **说反了**：zcode 的父子是确定性外键（`session.parent_id`），只是事件级的父锚点 `Agent` 工具调用活在**另一个源**（`part`），而 `deriveEventId` 要的是父行的 `rawSeq`/`timestamp`——`session` 行拿不到。可做的改法是 `parse` 的 session SELECT 自连接 `parent_id` 取回父行 rowid/time，再由子会话的 `subagent.start` 反推父 `session.start` 的事件 id（同源、可确定，不像跨源那样脆）。**本轮不做**：`sessionId` 已折叠到根会话，时间线在会话粒度上已经是对的，缺的只是树边；为一条边引入自连接属于 §"不做超出要求的事" 排除的范围。
+6. **对账回归未进 CI**：claude-code 有 `apps/cli/test/reconcile-ccusage.test.ts`（真语料、零偏差、含"naive 求和必然虚高"的反证）。zcode 现在只有 `docs/research/reconcile-zcode-ccusage.mjs` 手动一等 + 单元测试里的 fixture 总量断言，缺同形态的 CI 项。补它要在 CI 里放一份脱敏的 zcode 库快照（真实库 30MB 且含提示词正文，不能进仓库），所以这是**夹具工程**而不是脚本工程。
+
+## 九、端到端对账（已执行，2026-09-22，真库 +  shipped 适配器）
+
+`ZCODE_HOME` 指向 `~/.zcode/cli/db/db.sqlite` 的**副本**（含 `-wal`、不含 `-shm`），`agl scan` 写进一个临时 AgentLens 库，再用 `node docs/research/reconcile-zcode-ccusage.mjs ccusage-zcode-baseline.json --agentlens-db <db>` 判定：
+
+| 项 | 结果 |
+|---|---|
+| 摄入 | 5 个 SQLite 源、**11,491 事件、0 解析失败**；`sources` 5 行全 `active` |
+| 四桶 vs ccusage 基线 | `input 7,382,171` / `cacheRead 158,848,192` / `output 1,363,621` / 合计 `167,593,984` ⇒ **逐位相同，偏差 0（0.0000%）** |
+| 承载 usage 的行 | 1,395 行 = 1,395 个不同 `request_id`（1:1，无重复计数） |
+| 成本 | `cost_reported` 行数 **0**、`cost_source` 全 `none` ⇒ 恒 0 的套餐 `cost` 没被当成 $0 发布；`agl projects` 读作 `n/a`（未定价），ccusage 同窗亦 `unpricedModels: GLM-5.3-Flash` |
+| 五种口径对照 | A 逐字段照搬 **+94.8%** · B 减缓存（采纳）**命中** · C 再读 `turn_usage` **+100.0%** · D 再读 `step-finish` 副本 **+100.0%** · E 排除 subagent **−9.3%** |
+| 项目归组 | 2 个项目、0 条 `unattributed`：`cable-info` 9 会话 158.4M、`picko` 1 会话 9.2M（`agl projects` 直接印目录名，§4.1 通路正常） |
+| 粒度 | `session_id` 10 个（根会话）· `thread_id` 38 个（含子代理）⇒ 产品粒度与源粒度按 §18 row 3 分开 |
+| 能力四维 | `tool` 11 种名 / `subagent` 3 / `mcp` 5 / `skill` 3（`mcp.invoke` 6、`skill.invoke` 2 条事件），无一维被伪报为 0 |
+| 状态 | `generation.end` 1,365 `ok` + 30 `error`（error 行 token 为 0，与库里 `input_zero=30` 一致） |
+| 幂等 | 第二次 `scan`：zcode 五个源各 `append 0`，总量不变（11,491 / 167,593,984 / 1,395）⇒ §4.2 + rowid 高水位在真库规模上成立 |
+| 副作用 | 全程 `~/.zcode` 的 `size`/`mtime` 逐字节不变（脚本每次自检并打印 ✅），WAL 拒开由 `doctor` 如实列出 |
+
+`unknown` 事件 1,617 条的 subtype 分布（`step-finish` 1,355 / `todo_reminder` 188 / `timeline_event` 29 / `timeline` 29 / `background_notification` 10 / `file` 4 / `system_reminder` 2）——注意 `todo_reminder` 的 188 = 94 条 message 行 + 94 条自带 text part，正是 §五 那条"注入有两个载体"的实测形状；`message.user` 只有 178 条而非按 role 直映的 378 条，2.12× 的虚报被规则挡在外面。
+
