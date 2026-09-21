@@ -2,7 +2,7 @@
   // Detail for the selected waterfall event (Beautiful UI inspector card): the
   // metric facts first, then content-layer payloads and raw metadata. Keeping
   // detail out of the list is what lets the list use fixed-height rows.
-  import type { TimelineNode } from '../lib/api.ts'
+  import type { PayloadView, TimelineNode } from '../lib/api.ts'
   import { eventKind } from '../lib/eventKinds.ts'
   import { formatCompact, formatDateTime, formatMs } from '../lib/format.ts'
   import Payload from './Payload.svelte'
@@ -10,7 +10,24 @@
   import Chip from './ui/Chip.svelte'
   import Icon from './ui/Icon.svelte'
 
-  let { node, contentAvailable, onClose }: { node: TimelineNode; contentAvailable: boolean; onClose: () => void } = $props()
+  /**
+   * `payloads` arrives separately from `node`: the timeline is fetched without content text
+   * and the page loads it here when a row is opened. Undefined means "not fetched yet",
+   * an empty array means "this node genuinely has no content".
+   */
+  let {
+    node,
+    contentAvailable,
+    payloads,
+    loadingPayloads = false,
+    onClose,
+  }: {
+    node: TimelineNode
+    contentAvailable: boolean
+    payloads?: PayloadView[]
+    loadingPayloads?: boolean
+    onClose: () => void
+  } = $props()
 
   const kind = $derived(eventKind(node.type))
   const usage = $derived(
@@ -72,13 +89,19 @@
       </div>
     {/if}
 
-    {#if contentAvailable && node.payloads.length}
+    {#if !contentAvailable}
+      <p class="rounded-lg bg-inset px-3 py-2 text-xs text-ink-3 ring-1 ring-line-soft">Content layer is off — metrics only for this event.</p>
+    {:else if payloads === undefined}
+      <p class="rounded-lg bg-inset px-3 py-2 text-xs text-ink-3 ring-1 ring-line-soft">
+        {loadingPayloads || node.payloadCount ? 'Loading this event’s content…' : 'This event logged no content.'}
+      </p>
+    {:else if payloads.length}
       <div class="space-y-2">
         <h3 class="text-xs font-medium text-ink-3">Content</h3>
-        {#each node.payloads as p, i (i)}<Payload {p} />{/each}
+        {#each payloads as p, i (i)}<Payload {p} />{/each}
       </div>
-    {:else if !contentAvailable}
-      <p class="rounded-lg bg-inset px-3 py-2 text-xs text-ink-3 ring-1 ring-line-soft">Content layer is off — metrics only for this event.</p>
+    {:else}
+      <p class="rounded-lg bg-inset px-3 py-2 text-xs text-ink-3 ring-1 ring-line-soft">This event logged no content.</p>
     {/if}
 
     {#if node.metadata}
