@@ -1,0 +1,7 @@
+{"timestamp":"2026-09-15T21:00:00.000Z","type":"session_meta","payload":{"session_id":"sess-turns","id":"01JTURNRRRRRRRRRRRRRRRRRRR","cwd":"/work/turns","originator":"Codex Desktop","cli_version":"0.155.0","model_provider":"openai","thread_source":"user"}}
+{"timestamp":"2026-09-15T21:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Synthetic user prompt: summarise the diff."}]}}
+{"timestamp":"2026-09-15T21:00:02.000Z","type":"response_item","payload":{"type":"reasoning","summary_content":[{"type":"summary_text","text":"Synthetic reasoning summary."}],"content":[]}}
+{"timestamp":"2026-09-15T21:00:03.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Synthetic assistant answer."}]}}
+{"timestamp":"2026-09-15T21:00:04.000Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"Synthetic injected environment instructions."}]}}
+{"timestamp":"2026-09-15T21:00:05.000Z","type":"turn_context","payload":{"turn_id":"turn-1","model":"gpt-5.6-sol","cwd":"/work/turns/nested"}}
+{"timestamp":"2026-09-15T21:00:06.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":3000,"cached_input_tokens":2900,"cache_write_input_tokens":0,"output_tokens":200,"reasoning_output_tokens":80,"total_tokens":3280},"total_token_usage":{"input_tokens":3000,"cached_input_tokens":2900,"output_tokens":200,"reasoning_output_tokens":80,"total_tokens":3280}}}}

@@ -1,0 +1,9 @@
+{"timestamp":"2026-09-15T17:00:00.000Z","type":"session_meta","payload":{"session_id":"sess-dynamic","id":"01JDYNAMICMMMMMMMMMMMMMMMM","cwd":"/work/zeta","originator":"Codex Desktop","cli_version":"0.155.0","model_provider":"openai","thread_source":"user","dynamic_tools":[{"name":"read_thread_terminal","namespace":"codex_app"},{"name":"install_plugin","namespace":"plugin_management"}]}}
+{"timestamp":"2026-09-15T17:00:01.000Z","type":"turn_context","payload":{"turn_id":"turn-1","model":"gpt-5.5"}}
+{"timestamp":"2026-09-15T17:00:02.000Z","type":"response_item","payload":{"type":"function_call","name":"read_thread_terminal","arguments":"{}","call_id":"call-dyn-1"}}
+{"timestamp":"2026-09-15T17:00:03.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call-dyn-1","output":"terminal buffer (synthetic)"}}
+{"timestamp":"2026-09-15T17:00:04.000Z","type":"response_item","payload":{"type":"function_call","name":"plugin_management:install_plugin","arguments":"{\"id\":\"acme\"}","call_id":"call-dyn-2"}}
+{"timestamp":"2026-09-15T17:00:05.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call-dyn-2","output":"installed"}}
+{"timestamp":"2026-09-15T17:00:06.000Z","type":"response_item","payload":{"type":"tool_search_call","query":"deploy to staging"}}
+{"timestamp":"2026-09-15T17:00:07.000Z","type":"response_item","payload":{"type":"tool_search_output","output":[{"name":"ship_it","namespace":"codex_app"}]}}
+{"timestamp":"2026-09-15T17:00:08.000Z","type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"{\"cmd\":\"make check\"}","call_id":"call-plain-1"}}

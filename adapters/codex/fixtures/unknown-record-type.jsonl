@@ -1,0 +1,6 @@
+{"timestamp":"2026-09-15T18:00:00.000Z","type":"session_meta","payload":{"session_id":"sess-drift","id":"01JUNKNOWNNNNNNNNNNNNNNNNN","cwd":"/work/drift","originator":"codex-tui","cli_version":"0.160.0","model_provider":"openai","thread_source":"user"}}
+{"timestamp":"2026-09-15T18:00:01.000Z","type":"quantum_flux_sample","payload":{"span":{"trace_id":"deadbeef","name":"synthetic"},"note":"A record type this parser has never seen (§5.3)."}}
+{"timestamp":"2026-09-15T18:00:02.000Z","type":"response_item","payload":{"type":"holographic_memory_dump","blob":{"entries":3},"prompt":"A very long synthetic prompt body that must be redacted in metadata."}}
+{"timestamp":"2026-09-15T18:00:03.000Z","type":"event_msg","payload":{"type":"agent_frozen","reason":"synthetic"}}
+{"timestamp":"2026-09-15T18:00:04.000Z","type":"inter_agent_communication_metadata","payload":{"sender_thread_id":"01JUNKNOWNNNNNNNNNNNNNNNNN","message_id":"msg-9"}}
+{"timestamp":"2026-09-15T18:00:05.000Z","type":"quantum_flux_sample","payload":{"span":{"trace_id":"cafe0000","name":"synthetic-2"}}}

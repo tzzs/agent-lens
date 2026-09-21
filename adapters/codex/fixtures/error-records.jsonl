@@ -1,0 +1,5 @@
+{"timestamp":"2026-09-15T15:00:00.000Z","type":"session_meta","payload":{"session_id":"sess-errors","id":"01JERROREEEEEEEEEEEEEEEEEE","cwd":"/work/delta","originator":"codex_cli_rs","cli_version":"0.155.0","model_provider":"openai","thread_source":"user"}}
+{"timestamp":"2026-09-15T15:00:01.000Z","type":"event_msg","payload":{"type":"turn_aborted","turn_id":"turn-1","reason":"user interrupt"}}
+{"timestamp":"2026-09-15T15:00:02.000Z","type":"event_msg","payload":{"type":"error","message":"Stream disconnected before completion (attempt 2 of 5)"}}
+{"timestamp":"2026-09-15T15:00:03.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","settings":{"model":"gpt-5.5"}}}
+{"timestamp":"2026-09-15T15:00:04.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call-missing-1","error":"tool returned an error object","is_error":true}}

@@ -1,0 +1,7 @@
+{"timestamp":"2026-09-15T14:00:00.000Z","type":"session_meta","payload":{"session_id":"sess-compaction","id":"01JCOMPACTDDDDDDDDDDDDDDDD","cwd":"/work/gamma","originator":"codex_exec","cli_version":"0.140.0","model_provider":"openai","thread_source":"user"}}
+{"timestamp":"2026-09-15T14:00:01.000Z","type":"turn_context","payload":{"turn_id":"turn-1","model":"gpt-5.2-codex"}}
+{"timestamp":"2026-09-15T14:00:02.000Z","type":"compacted","payload":{"trigger":"auto","duration_ms":1234,"model_context_window":272000,"replacement_history":[{"role":"user","content":"Synthetic compressed history entry one."},{"role":"assistant","content":"Synthetic compressed history entry two."}]}}
+{"timestamp":"2026-09-15T14:00:03.000Z","type":"response_item","payload":{"type":"compaction","item":[{"type":"summary","text":"Synthetic wrapped compaction summary."}]}}
+{"timestamp":"2026-09-15T14:00:04.000Z","type":"world_state","payload":{"agents_md":"Synthetic AGENTS.md project instructions body, long enough to matter.","timezone":"Asia/Shanghai","environment":{"os":"darwin"}}}
+{"timestamp":"2026-09-15T14:00:05.000Z","type":"thread_goal_updated","payload":{"goal":"ship M2","status":"in_progress"}}
+{"timestamp":"2026-09-15T14:00:06.000Z","type":"event_msg","payload":{"type":"thread_goal_updated","turn_id":"turn-1","goal_status":"achieved"}}

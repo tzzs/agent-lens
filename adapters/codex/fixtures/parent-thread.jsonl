@@ -1,0 +1,4 @@
+{"timestamp":"2026-09-16T09:00:00.000Z","type":"session_meta","payload":{"session_id":"sess-spanned","id":"01JPARENTSSSSSSSSSSSSSSSSS","cwd":"/work/spanned","originator":"Codex Desktop","cli_version":"0.155.0","model_provider":"openai","thread_source":"user"}}
+{"timestamp":"2026-09-16T09:00:01.000Z","type":"turn_context","payload":{"turn_id":"turn-1","model":"gpt-5.5"}}
+{"timestamp":"2026-09-16T09:00:02.000Z","type":"response_item","payload":{"type":"function_call","name":"spawn_agent","arguments":"{\"role\":\"reviewer\"}","call_id":"call-spawn-parent"}}
+{"timestamp":"2026-09-16T09:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":2000,"cached_input_tokens":1500,"cache_write_input_tokens":0,"output_tokens":300,"reasoning_output_tokens":0,"total_tokens":2300},"total_token_usage":{"input_tokens":2000,"cached_input_tokens":1500,"output_tokens":300,"total_tokens":2300}}}}
