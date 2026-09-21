@@ -21,7 +21,7 @@ import { cmdUsage } from './commands/usage.ts'
 import { cmdSession, cmdSessions } from './commands/sessions.ts'
 import { cmdCapability, cmdProjects, isCapabilityCommand } from './commands/capabilities.ts'
 import { cmdExport } from './commands/export.ts'
-import { cmdPricingOverride, cmdPricingUpdate, cmdPrune } from './commands/admin.ts'
+import { cmdPricing, cmdPrune } from './commands/admin.ts'
 import { query } from '@agentlens/query'
 import { queryDeps } from './context.ts'
 import { serveDashboard } from './serve.ts'
@@ -33,30 +33,38 @@ export const DASHBOARD_URL = 'http://localhost:7317'
 const HELP = `agentlens (agl) — the activity monitor for AI agents
 
 Usage:
-  agentlens                        scan registered adapters, print summary (§14)
+  agentlens                        scan, print the §14 summary, then serve the dashboard
   agentlens scan [--agent X]       manual incremental scan
   agentlens watch [--agent X] [--interval <ms>]
                                    scan once, then stay resident printing new activity (§9)
   agentlens status                 agent discovery + source counts + today's totals
   agentlens doctor                 data-trust report (§11)
-  agentlens usage  [--agent --host --project --model --since --until --by <dim> [--limit N] [--explain]]
-                                   §7 cube; --by takes any dim or comma-list of dims
+  agentlens usage  [--agent --host --project --model --since --until --by <dim> [--limit N]
+                   [--no-subagents] [--explain]]
+                                   §7 cube; --by takes any dim or comma-list of dims,
+                                   --no-subagents drops subagent threads from the totals (§18)
   agentlens sessions [--agent --project --limit N]
   agentlens session <id>           ordered timeline (metrics-only when content layer is off)
   agentlens tools|skills|mcp|plugins|connectors|subagents|hooks
                                    capability views (same cube, capability dims)
   agentlens projects               cross-agent project tree (§9)
   agentlens export --format jsonl|csv|otel [--since ...] [--agent ...]
+                     --format otel [--push <otlp-url>] [--push-header "Name: value"]
+                     (§12: the OTel mapping, optionally POSTed to a Langfuse/Phoenix collector)
   agentlens pricing update         refresh litellm price snapshot
   agentlens pricing override --model M --input N --output N [--cache-read N] [--cache-write N]
                              [--reasoning N] [--provider P] [--effective-from MS]
+  agentlens pricing billing list   show each agent's declared §8 billing mode
+  agentlens pricing billing set <agent> api|subscription|local
+  agentlens pricing billing clear <agent>
   agentlens prune [--older-than 90d]
 
 Global flags:
   --db <path>          database file (default ~/.agentlens/agentlens.db)
   --content            store the content layer (payloads) during scan — off by default (§6)
   --no-content         force the content layer off, even alongside --content
-  --serve              with bare command, print the dashboard URL (server itself is a later milestone)
+  --serve              bare command: serve the dashboard even when stdout is not a terminal
+  --no-serve           bare command: stop after the summary (§9 serves by default)
   -h, --help           this text
   -V, --version        print version
 
@@ -158,7 +166,10 @@ async function cmdBare(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath: stri
     `today: ${formatTokens(today.tokens_total)} tokens · ${formatUsd(today.cost_api_equiv)} api-equiv`,
   )
   for (const line of bannerWarnings(db, ctx)) ctx.out(line)
-  if (flags.bool('serve')) {
+  // §9: the bare command is scan + serve + browser. A pipe or CI run gets the summary
+  // alone, because a server nobody can see — or interrupt — is worse than none.
+  const wantsServe = flags.bool('serve') || (ctx.interactive && !flags.bool('no-serve'))
+  if (wantsServe) {
     const handle = await (ctx.serve ?? serveDashboard)(db, dbPath, flags, ctx, deps)
     ctx.out('')
     ctx.out(`Dashboard → ${handle.url}`)
@@ -197,12 +208,8 @@ function dispatch(
       return cmdProjects(db, flags, ctx, dbPath)
     case 'export':
       return cmdExport(db, flags, ctx)
-    case 'pricing': {
-      const sub = rest[0]
-      if (sub === 'update') return cmdPricingUpdate(dbPath, ctx)
-      if (sub === 'override') return cmdPricingOverride(dbPath, flags, ctx)
-      throw new UsageError('pricing requires `update` or `override`')
-    }
+    case 'pricing':
+      return cmdPricing(db, dbPath, rest, flags, ctx)
     case 'prune':
       return cmdPrune(db, flags, ctx)
     default:

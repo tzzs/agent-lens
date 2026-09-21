@@ -22,6 +22,11 @@ export interface Ctx {
   env: NodeJS.ProcessEnv
   now: () => number
   /**
+   * §9: the bare command serves the dashboard, but only where a person can read the
+   * URL and press Ctrl-C. Tests and pipes leave it unset, which reads as "not interactive".
+   */
+  interactive?: boolean
+  /**
    * Where a WAL-mode third-party store is copied to before anything reads it
    * (§18 row 7, `sqlite-snapshot.ts`). Unset ⇒ such stores stay refused.
    */
@@ -41,6 +46,7 @@ export function defaultCtx(argv: string[]): Ctx {
     homedir: osHomedir(),
     env: process.env,
     now: Date.now,
+    interactive: process.stdout.isTTY === true,
   }
 }
 
