@@ -15,13 +15,13 @@ import type {
   ParseCtx,
   ParseFailure,
   ParseTail,
-  RawRecord,
+  RecordStream,
   SourceSpec,
 } from '@agentlens/event-model'
 import { isParseFailure } from '@agentlens/event-model'
 import { needsRescan, statSource } from './incremental.ts'
-import { isParseErrorRecord, PARSE_ERROR_KEY, resolveOccurredAt, truncate } from './parse-jsonl.ts'
-import { readSqliteIncremental, WalModeRefusedError, type SqliteChunk } from './sqlite-source.ts'
+import { isParseErrorRecord, PARSE_ERROR_KEY } from './parse-jsonl.ts'
+import { WalModeRefusedError, journalModeOf } from './sqlite-source.ts'
 
 export interface SourceCommit {
   id: string
@@ -69,8 +69,6 @@ export interface ScanCtx {
   resolveProject(cwd: string | null | undefined): string | null
   now(): number
   signal?: AbortSignal
-  /** Required for `kind: 'sqlite'` sources: which columns carry the rowid and the payload. */
-  sqlite?: { rowidColumn: string; column: string }
   maxLineBytes?: number
 }
 
@@ -124,20 +122,58 @@ export async function scanSource(
   const firstSeq = fullRescan ? 1 : ctx.saved.linesConsumed + 1
 
   const normalizeCtx = buildNormalizeCtx(ctx, source)
+
+  // §5.1: framing is the adapter's job — `parse` is the only entry point for source → records.
+  const stream = adapter.parse(source, { offset: fromOffset, firstSeq }, buildParseCtx(ctx, source))
+  const batch = await consumeRecords(stream, adapter, source, ctx, normalizeCtx)
+  const { tail, events } = batch
+
+  if (events.length > 0) ctx.sink.writeEvents(events)
+  // Only now may the offset move forward (§4.2).
+  ctx.sink.commitSource({
+    id: source.id,
+    path: source.path,
+    lastOffset: tail.nextOffset,
+    inode: statted.inode,
+    size: statted.size,
+    mtimeMs: statted.mtimeMs,
+    parserVersion: adapter.parserVersion,
+    rowsIngested: batch.linesConsumed,
+    scanStartedAt: startedAt,
+    scanFinishedAt: ctx.now(),
+    status: decision === 'rotated' ? 'rotated' : 'active',
+    lastError: null,
+  })
+  return {
+    action: drift && decision !== 'rotated' ? 'version-drift' : decision,
+    linesConsumed: batch.linesConsumed,
+    events: events.length,
+    failures: batch.failures,
+    nextOffset: tail.nextOffset,
+    nextSeq: tail.nextSeq,
+  }
+}
+
+/**
+ * The single record-consuming loop behind both source kinds, so they cannot drift:
+ * parse-error markers and `normalize` failures go to the sink as `ParseFailure`s
+ * (§5.2 rule 1), everything else becomes events that wait for one batched
+ * `writeEvents` before `commitSource` (§4.2).
+ */
+async function consumeRecords(
+  stream: RecordStream,
+  adapter: AgentAdapter,
+  source: SourceSpec,
+  ctx: ScanCtx,
+  normalizeCtx: NormalizeCtx,
+): Promise<{ tail: ParseTail; linesConsumed: number; events: AgentEvent[]; failures: number }> {
   const events: AgentEvent[] = []
   let linesConsumed = 0
   let failures = 0
-
-  // §5.1: framing is the adapter's job — `parse` is the only entry point for bytes → records.
-  const stream = adapter.parse(source, { offset: fromOffset, firstSeq }, buildParseCtx(ctx, source))
-  let tail: ParseTail
   while (true) {
     const r = await stream.next()
-    if (r.done) {
-      tail = r.value
-      break
-    }
-    if (ctx.signal?.aborted) throw new Error(`scanSource: aborted at offset ${fromOffset}`)
+    if (r.done) return { tail: r.value, linesConsumed, events, failures }
+    if (ctx.signal?.aborted) throw new Error(`scanSource: aborted at offset ${r.value.offset}`)
     const record = r.value
     linesConsumed++
     if (isParseErrorRecord(record.value)) {
@@ -159,141 +195,82 @@ export async function scanSource(
       events.push(...result.events)
     }
   }
-
-  if (events.length > 0) ctx.sink.writeEvents(events)
-  // Only now may the offset move forward (§4.2).
-  ctx.sink.commitSource({
-    id: source.id,
-    path: source.path,
-    lastOffset: tail.nextOffset,
-    inode: statted.inode,
-    size: statted.size,
-    mtimeMs: statted.mtimeMs,
-    parserVersion: adapter.parserVersion,
-    rowsIngested: linesConsumed,
-    scanStartedAt: startedAt,
-    scanFinishedAt: ctx.now(),
-    status: decision === 'rotated' ? 'rotated' : 'active',
-    lastError: null,
-  })
-  return {
-    action: drift && decision !== 'rotated' ? 'version-drift' : decision,
-    linesConsumed,
-    events: events.length,
-    failures,
-    nextOffset: tail.nextOffset,
-    nextSeq: tail.nextSeq,
-  }
 }
 
-function scanSqliteSource(
+async function scanSqliteSource(
   adapter: AgentAdapter,
   source: SourceSpec,
   ctx: ScanCtx,
   startedAt: number,
   drift: boolean,
 ): Promise<ScanResult> {
-  return (async () => {
-    if (!source.sqliteTable) {
-      throw new Error(`scanSource: sqlite source ${source.id} has no sqliteTable`)
-    }
-    const cols = ctx.sqlite ?? { rowidColumn: 'rowid', column: 'value' }
-    const fromRowid = drift ? 0 : ctx.saved.lastOffset
-    let chunk: SqliteChunk
-    try {
-      chunk = readSqliteIncremental(source.path, {
-        table: source.sqliteTable,
-        rowidColumn: cols.rowidColumn,
-        column: cols.column,
-        fromRowid,
-      })
-    } catch (err) {
-      if (!(err instanceof WalModeRefusedError)) throw err
-      // §5.2: a store we will not open is a reported fact, not a dead scan. The offset
-      // stays where it was because nothing was read.
-      const stat = await statSource(source.path)
-      ctx.sink.commitSource({
-        id: source.id,
-        path: source.path,
-        lastOffset: fromRowid,
-        inode: stat?.inode ?? 0,
-        size: stat?.size ?? 0,
-        mtimeMs: stat?.mtimeMs ?? 0,
-        parserVersion: adapter.parserVersion,
-        rowsIngested: 0,
-        scanStartedAt: startedAt,
-        scanFinishedAt: ctx.now(),
-        status: 'error',
-        lastError: err.message,
-      })
-      return {
-        action: 'skip',
-        linesConsumed: 0,
-        events: 0,
-        failures: 0,
-        nextOffset: fromRowid,
-        nextSeq: ctx.saved.linesConsumed + 1,
-        refusal: err.message,
-      }
-    }
+  if (!source.sqliteTable) {
+    throw new Error(`scanSource: sqlite source ${source.id} has no sqliteTable`)
+  }
+  // §4.3: for sqlite sources `last_offset` is the rowid high-water mark; rotation and
+  // inode/size heuristics do not apply, and §5.3 drift restarts the stream from 0.
+  const fromRowid = drift ? 0 : ctx.saved.lastOffset
+  const firstSeq = drift ? 1 : ctx.saved.linesConsumed + 1
+  if (journalModeOf(source.path) === 'wal') {
+    // §5.2: a store we will not open is a reported fact, not a dead scan. The offset
+    // stays where it was because nothing was read.
+    const err = new WalModeRefusedError(source.path)
     const stat = await statSource(source.path)
-    const normalizeCtx = buildNormalizeCtx(ctx, source)
-    const events: AgentEvent[] = []
-    let failures = 0
-    for (const row of chunk.rows) {
-      if (ctx.signal?.aborted) throw new Error(`scanSource: aborted at rowid ${row.rowid}`)
-      let value: unknown
-      try {
-        value = JSON.parse(row.value)
-      } catch (err) {
-        failures++
-        ctx.sink.writeParseFailure({
-          path: source.path,
-          reason: `json-parse: ${String(err)}`,
-          rawLine: truncate(row.value),
-          offset: row.rowid,
-          rawSeq: row.rowid,
-        })
-        continue
-      }
-      const record: RawRecord = {
-        seq: row.rowid,
-        offset: row.rowid, // for sqlite sources the "offset" is the rowid
-        occurredAt: resolveOccurredAt(value, stat?.mtimeMs ?? ctx.now()),
-        value,
-      }
-      const result = await adapter.normalize(record, normalizeCtx)
-      if (isParseFailure(result)) {
-        failures++
-        ctx.sink.writeParseFailure({ ...result.failure, path: source.path })
-      } else {
-        events.push(...result.events)
-      }
-    }
-    if (events.length > 0) ctx.sink.writeEvents(events)
     ctx.sink.commitSource({
       id: source.id,
       path: source.path,
-      lastOffset: chunk.nextRowid,
+      lastOffset: fromRowid,
       inode: stat?.inode ?? 0,
       size: stat?.size ?? 0,
       mtimeMs: stat?.mtimeMs ?? 0,
       parserVersion: adapter.parserVersion,
-      rowsIngested: chunk.rows.length,
+      rowsIngested: 0,
       scanStartedAt: startedAt,
       scanFinishedAt: ctx.now(),
-      status: 'active',
-      lastError: null,
+      status: 'error',
+      lastError: err.message,
     })
     return {
-      action: drift ? 'version-drift' : 'append',
-      linesConsumed: chunk.rows.length,
-      events: events.length,
-      failures,
-      nextOffset: chunk.nextRowid,
-      nextSeq: chunk.nextRowid,
+      action: 'skip',
+      linesConsumed: 0,
+      events: 0,
+      failures: 0,
+      nextOffset: fromRowid,
+      nextSeq: ctx.saved.linesConsumed + 1,
+      refusal: err.message,
     }
-  })()
+  }
+  const stat = await statSource(source.path)
+  const normalizeCtx = buildNormalizeCtx(ctx, source)
+  // §5.1: framing is the adapter's job for row stores too — only its `parse` can
+  // produce the joined row shape its `normalize` expects.
+  const stream = adapter.parse(source, { offset: fromRowid, firstSeq }, buildParseCtx(ctx, source))
+  const batch = await consumeRecords(stream, adapter, source, ctx, normalizeCtx)
+
+  if (batch.events.length > 0) ctx.sink.writeEvents(batch.events)
+  // Only now may the high-water mark move forward (§4.2).
+  ctx.sink.commitSource({
+    id: source.id,
+    path: source.path,
+    lastOffset: batch.tail.nextOffset,
+    inode: stat?.inode ?? 0,
+    size: stat?.size ?? 0,
+    mtimeMs: stat?.mtimeMs ?? 0,
+    parserVersion: adapter.parserVersion,
+    rowsIngested: batch.linesConsumed,
+    scanStartedAt: startedAt,
+    scanFinishedAt: ctx.now(),
+    status: 'active',
+    lastError: null,
+  })
+  return {
+    action: drift ? 'version-drift' : 'append',
+    linesConsumed: batch.linesConsumed,
+    events: batch.events.length,
+    failures: batch.failures,
+    nextOffset: batch.tail.nextOffset,
+    nextSeq: batch.tail.nextSeq,
+  }
 }
 
 function commitGone(

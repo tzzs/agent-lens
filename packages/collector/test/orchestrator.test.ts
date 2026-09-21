@@ -120,6 +120,32 @@ function sourceFor(path: string): SourceSpec {
   return { id: 'src-1', path, kind: 'jsonl' }
 }
 
+/** §5.1 sqlite framing done the way a real adapter does it: `parse` runs the row
+ * query (rowid high-water in, rowid-keyed records out); the orchestrator never reads columns. */
+function sqliteParseAdapter(parserVersion = 1): AgentAdapter {
+  const base = fakeAdapter(parserVersion)
+  return {
+    ...base,
+    parse: (source, from) =>
+      (async function* () {
+        const { DatabaseSync } = await import('node:sqlite')
+        const db = new DatabaseSync(source.path, { open: true, readOnly: true })
+        let lastRowid = from.offset
+        try {
+          const sql = `SELECT rowid AS r, payload AS p FROM "${source.sqliteTable}" WHERE rowid > ? ORDER BY rowid ASC`
+          for (const row of db.prepare(sql).iterate(from.offset) as Iterable<{ r: number; p: string }>) {
+            const rowid = Number(row.r)
+            if (rowid > lastRowid) lastRowid = rowid
+            yield { seq: rowid, offset: rowid, occurredAt: 1700000000000 + rowid, value: JSON.parse(String(row.p)) }
+          }
+        } finally {
+          db.close()
+        }
+        return { nextOffset: lastRowid, nextSeq: lastRowid }
+      })(),
+  }
+}
+
 function ctxFor(sink: FakeSink, source: SourceSpec) {
   return {
     sink,
@@ -276,14 +302,14 @@ describe('scanSource', () => {
     db.close()
     const source: SourceSpec = { id: 'src-sql', path, kind: 'sqlite', sqliteTable: 'messages' }
     const sink = new FakeSink()
-    const ctx = { ...ctxFor(sink, source), sqlite: { rowidColumn: 'rowid', column: 'payload' } }
-    const r1 = await scanSource(fakeAdapter(), source, ctx)
+    const ctx = ctxFor(sink, source)
+    const r1 = await scanSource(sqliteParseAdapter(), source, ctx)
     expect(r1.events).toBe(2)
     expect(sink.commits.at(-1)!.lastOffset).toBe(2) // rowid high-water
     const db2 = new DatabaseSync(path)
     db2.prepare('INSERT INTO messages (payload) VALUES (?)').run(rec(3))
     db2.close()
-    const r2 = await scanSource(fakeAdapter(), source, { ...ctx, saved: sink.persisted })
+    const r2 = await scanSource(sqliteParseAdapter(), source, { ...ctx, saved: sink.persisted })
     expect(r2.events).toBe(1)
     expect(sink.events.at(-1)!.metadata).toEqual({ text: 'msg-3' })
     expect(sink.commits.at(-1)!.lastOffset).toBe(3)
@@ -306,8 +332,8 @@ describe('scanSource', () => {
 
     const source: SourceSpec = { id: 'src-wal', path, kind: 'sqlite', sqliteTable: 'messages' }
     const sink = new FakeSink()
-    const ctx = { ...ctxFor(sink, source), sqlite: { rowidColumn: 'rowid', column: 'payload' } }
-    const result = await scanSource(fakeAdapter(), source, ctx)
+    const ctx = ctxFor(sink, source)
+    const result = await scanSource(sqliteParseAdapter(), source, ctx)
 
     expect(result.events).toBe(0)
     expect(result.action).toBe('skip')

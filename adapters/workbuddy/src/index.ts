@@ -14,12 +14,11 @@
  * diagnostic for `agentlens doctor` — see `sqlite.ts`. The token numbers this adapter
  * produces therefore come from the trace source only.
  *
- * Where the guard belongs: `discover()` could not safely yield a `kind: 'sqlite'` source
- * because the collector's `scanSqliteSource` calls `readSqliteIncremental`, which opens
- * whatever path it is handed. The durable fix is a journal-mode check inside
- * `packages/collector` so every WAL-capable agent is protected, not just this one; until
- * that lands the adapter withholds the source. That is the one cross-package change this
- * adapter needs from its owner and it is deliberately not made here.
+ * Where the guard belongs: the collector frames `kind: 'sqlite'` sources through the
+ * adapter's own `parse` (§5.1), so yielding one would put this adapter in charge of
+ * opening `workbuddy.db` — which §18 row 7 forbids. `packages/collector` keeps its own
+ * journal-mode guard for adapters that do read row stores; here the adapter withholds
+ * the source and `sqlite.ts` reports why.
  */
 import type { AgentAdapter, AggregationPolicy } from '@agentlens/event-model'
 import { detect } from './detect.ts'

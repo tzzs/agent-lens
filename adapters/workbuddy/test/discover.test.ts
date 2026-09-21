@@ -1,8 +1,8 @@
 /**
  * §5.1 `discover` + §18 row 7: the trace directory is the only thing this adapter
  * advertises. Its absence of a SQLite source is an assertion rather than an accident —
- * a `kind: 'sqlite'` spec is handed to the collector's `readSqliteIncremental`, and
- * opening this store is what created `-wal`/`-shm` in the user's data directory.
+ * a `kind: 'sqlite'` spec is framed by this adapter's own `parse` (§5.1), and opening
+ * this store is what created `-wal`/`-shm` in the user's data directory.
  */
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'

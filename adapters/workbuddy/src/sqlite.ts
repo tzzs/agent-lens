@@ -110,10 +110,10 @@ function diagnosticBase(dbPath: string): Pick<SqliteSourceDiagnostic, 'path' | '
 /**
  * (a) Discovers the primary store, (b) refuses to open it, and (c) explains itself in a
  * machine-readable shape for doctor. This is the SQLite half of §5.1 `discover` without
- * a `SourceSpec`: yielding `kind: 'sqlite'` would hand the collector's
- * `readSqliteIncremental` a path and open it with `node:sqlite` — the exact side effect
- * §18 row 7 forbids. Until a WAL-aware guard exists at that layer, a WAL store must not
- * be advertised as a source at all (see the report note in index.ts).
+ * a `SourceSpec`: yielding `kind: 'sqlite'` would route the store through this adapter's
+ * own `parse` (§5.1), which would have to open it with `node:sqlite` — the exact side
+ * effect §18 row 7 forbids. Until this adapter grows a WAL-safe row framing of its own,
+ * a WAL store must not be advertised as a source at all (see the report note in index.ts).
  */
 export async function assessSqliteSource(
   dbPath: string,
