@@ -105,6 +105,16 @@ describe('agentlens usage --by model (e2e against a temp db file)', () => {
     expect(out).toContain('request_max')
   })
 
+  // §19: the price snapshot is undated on purpose, so `--explain` owes the user the
+  // retroactive-price caveat — the live `agl usage --by model --explain` printed none.
+  it('--explain says undated prices are applied retroactively, in doctor\'s words (§19)', async () => {
+    const { ctx, lines } = makeCtx(['usage', '--by', 'model', '--explain', '--db', dbPath])
+    expect(await runCli(ctx)).toBe(0)
+    const out = lines.join('\n')
+    expect(out).toContain("today's price would have cost, not what was paid (§8)")
+    expect(out).toContain('`agl pricing update`')
+  })
+
   it('unknown command exits 2; unknown flag exits 2', async () => {
     expect(await runCli(makeCtx(['frobnicate', '--db', dbPath]).ctx)).toBe(2)
     expect(await runCli(makeCtx(['usage', '--nope', 'x', '--db', dbPath]).ctx)).toBe(2)
