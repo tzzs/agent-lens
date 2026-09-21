@@ -10,9 +10,10 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterAll, describe, expect, it } from 'vitest'
 import { projectIdForCwd, UNATTRIBUTED_PROJECT_ID, type AgentEvent } from '@agentlens/event-model'
-import { insertEvents, migrate, upsertProject } from '@agentlens/storage'
+import { insertEvents, migrate, openDatabase, upsertProject } from '@agentlens/storage'
 import { makeProjectResolver, recordProjectRoots } from '../src/commands/scan.ts'
 import { resolveProjectIds } from '../src/context.ts'
+import { runCli } from '../src/index.ts'
 import type { Ctx } from '../src/context.ts'
 
 const tmp = mkdtempSync(join(tmpdir(), 'agentlens-projects-'))
@@ -120,3 +121,73 @@ describe('project labels (§7)', () => {
     db.close()
   })
 })
+
+/**
+ * The measured drift: `agl projects` printed `picko` while `agl sessions` printed
+ * `d42d99c330` for the very same digest — because the list rendered `sessions.project_id`
+ * itself instead of going through the cube's label. §14 forbids the two screens disagreeing,
+ * and §7 forbids a second renderer, so both must land on `event-model/projectLabel`.
+ */
+describe('agl sessions / session print the label, not the digest (§14)', () => {
+  const repoProjectId = projectIdForCwd(repo)
+
+  function seeded(name: string, projectId: string): string {
+    const path = join(tmp, `${name}.db`)
+    const db = openDatabase(path)
+    migrate(db)
+    const projects = makeProjectResolver()
+    const id = projectId === repoProjectId ? (projects.resolveProject(join(repo, 'packages', 'cli')) ?? '') : projectId
+    insertEvents(db, [eventAt(id, 1), eventAt(id, 2)])
+    if (projectId === repoProjectId) recordProjectRoots(db, projects.roots)
+    db.close()
+    return path
+  }
+
+  async function run(db: string, ...argv: string[]): Promise<string> {
+    const lines: string[] = []
+    const ctx: Ctx = {
+      argv: [...argv, '--db', db],
+      out: (l) => lines.push(l),
+      err: (l) => lines.push(l),
+      homedir: tmp,
+      env: {},
+      now: () => Date.UTC(2026, 8, 21),
+    }
+    expect(await runCli(ctx)).toBe(0)
+    return lines.join('\n')
+  }
+
+  it('shows the same word projects does, and that word is what --project accepts back', async () => {
+    const path = seeded('sessions-labelled', repoProjectId)
+    const projects = await run(path, 'projects')
+    const sessions = await run(path, 'sessions')
+    const detail = await run(path, 'session', 'sess-1')
+
+    expect(projects).toContain('my-repo') // the baseline this command had to match
+    expect(sessions).toContain('my-repo')
+    expect(detail).toContain('project=my-repo')
+    for (const screen of [sessions, detail]) {
+      expect(screen).not.toContain(repoProjectId.slice(0, 10))
+      expect(screen).not.toContain(repoProjectId)
+    }
+
+    // Round trip: the label on screen is a filter the same command understands (§9).
+    const filtered = await run(path, 'sessions', '--project', 'my-repo')
+    expect(filtered).toContain('my-repo')
+    expect(filtered).toContain('1 of 1 sessions')
+  })
+
+  it('spells out the unattributed bucket instead of printing its digest', async () => {
+    const sessions = await run(seeded('sessions-unattributed', UNATTRIBUTED_PROJECT_ID), 'sessions')
+    expect(sessions).toContain('unattributed')
+    expect(sessions).not.toContain(UNATTRIBUTED_PROJECT_ID.slice(0, 10))
+  })
+
+  it('keeps a digest that has nothing to shorten it from readable, never a 64-char column', async () => {
+    const unknown = 'f'.repeat(64)
+    const sessions = await run(seeded('sessions-unlabelled', unknown), 'sessions')
+    expect(sessions).toContain(unknown.slice(0, 10))
+    expect(sessions).not.toContain(unknown)
+  })
+})
+
