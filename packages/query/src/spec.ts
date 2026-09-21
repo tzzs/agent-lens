@@ -104,6 +104,14 @@ export interface QuerySpec {
   /** `metric:cost_api_equiv:desc` | `dim:project:asc` */
   order?: string
   limit?: number
+  /**
+   * Default true. Set false to skip the `totals` fold, which is a SECOND full pass over
+   * stage 1 with the dims stripped: a caller that reads only `rows` — a per-project model
+   * mix, a banner — would pay ~5 s at 343k events for a number it throws away. `totals`
+   * then comes back as `{}`, which is deliberately empty rather than zero-filled: an
+   * omitted total must not be readable as a measured one (§5.2).
+   */
+  totals?: boolean
 }
 
 export type Row = Record<string, unknown>
@@ -111,7 +119,7 @@ export type Row = Record<string, unknown>
 export interface QueryResult {
   rows: Row[]
   columns: string[]
-  /** Same metric keys aggregated over the whole filtered set (ignoring dims). */
+  /** Same metric keys aggregated over the whole filtered set (ignoring dims); empty when `totals: false`. */
   totals: Record<string, number | null>
   /** True when `limit` cut rows away. */
   truncated: boolean

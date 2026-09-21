@@ -23,6 +23,7 @@ export function cmdSessions(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath:
       metrics: ['events', 'duration', 'tokens_total', 'cost_api_equiv'],
       dims: ['session'],
       filter: filter(db, ctx, flags),
+      totals: false,
     },
     queryDeps(db, dbPath, ctx),
   )

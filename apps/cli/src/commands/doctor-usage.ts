@@ -84,7 +84,7 @@ export function measureUsageQuality(db: DatabaseSync, adapters: readonly AgentAd
     { metrics: ['events', 'tokens_total'], dims: ['agent'] },
     { aggregation: persisted },
   )
-  const srcRes = query(db, { metrics: ['events'], dims: ['agent', 'usage_source'] })
+  const srcRes = query(db, { metrics: ['events'], dims: ['agent', 'usage_source'], totals: false })
   const eventCounts = new Map<string, { reported: number; estimated: number; missing: number }>()
   for (const r of srcRes.rows) {
     const agent = String(r.agent)

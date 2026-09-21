@@ -44,10 +44,10 @@ export async function doctor(ctx: ServerCtx, sp: URLSearchParams): Promise<Docto
   const naive = tokenSum(agg.naive)
   const deduped = tokenSum(agg.deduped)
 
-  const caps = query(ctx.db, { metrics: ['events'], dims: ['capability_type'], filter }, ctx.cubeDeps)
-  const capErrs = query(ctx.db, { metrics: ['events'], dims: ['capability_type'], filter: { ...filter, status: ['error'] } }, ctx.cubeDeps)
+  const caps = query(ctx.db, { metrics: ['events'], dims: ['capability_type'], filter, totals: false }, ctx.cubeDeps)
+  const capErrs = query(ctx.db, { metrics: ['events'], dims: ['capability_type'], filter: { ...filter, status: ['error'] }, totals: false }, ctx.cubeDeps)
   const errBy = new Map(capErrs.rows.map((r) => [String(r.capability_type), Number(r.events ?? 0)]))
-  const supportRows = query(ctx.db, { metrics: ['events'], dims: ['agent', 'capability_type'], filter }, ctx.cubeDeps)
+  const supportRows = query(ctx.db, { metrics: ['events'], dims: ['agent', 'capability_type'], filter, totals: false }, ctx.cubeDeps)
   const support = new Map<string, string[]>()
   for (const r of supportRows.rows) {
     if (!String(r.capability_type)) continue

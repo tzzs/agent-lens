@@ -32,7 +32,7 @@ export interface BannerPair {
 
 /** Per-agent host shares (§18 item 6: host is an identity dimension, not metadata). */
 export function hostSplitsByAgent(ctx: ServerCtx, filter?: QueryFilter): Map<string, HostShare[]> {
-  const res = query(ctx.db, { metrics: ['events'], dims: ['agent', 'host'], filter }, ctx.cubeDeps)
+  const res = query(ctx.db, { metrics: ['events'], dims: ['agent', 'host'], filter, totals: false }, ctx.cubeDeps)
   const byAgent = new Map<string, { host: string; events: number }[]>()
   for (const r of res.rows) {
     const agent = String(r.agent ?? '')

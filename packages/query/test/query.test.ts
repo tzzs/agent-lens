@@ -5,7 +5,7 @@ import { aggregateRequestTokens, aggregateUsage, UnknownAggregationError } from 
 import { hexSeed } from './fixtures.ts'
 import { insertEvents, migrate, openDatabase } from '@agentlens/storage'
 import type { PriceEntry } from '@agentlens/pricing'
-import { bucketTs, query, resolveSince, UnknownDimError, UnknownMetricError } from '@agentlens/query'
+import { bucketTs, query, resolveSince, UnknownDimError, UnknownMetricError, type QuerySpec } from '@agentlens/query'
 
 function seeded(events: AgentEvent[]): DatabaseSync {
   const db = openDatabase(':memory:')
@@ -198,6 +198,41 @@ describe('order / limit / truncated', () => {
     const res = query(db, { metrics: ['tokens_input'], dims: ['project'], order: 'dim:project:asc' })
     expect(res.rows.map((r) => r.project)).toEqual(['p0', 'p1', 'p2'])
     expect(res.truncated).toBe(false)
+  })
+})
+
+describe('totals: false (§7, the per-request cost of the grand-total fold)', () => {
+  const db = (): DatabaseSync =>
+    seeded(
+      [100, 300, 200].map((v, i) =>
+        hexSeed(
+          {
+            sessionId: `s${i}`,
+            projectId: `p${i}`,
+            requestId: `rq${i}`,
+            usage: { inputTokens: v, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 },
+          },
+          `t${i}`,
+        ),
+      ),
+    )
+
+  it('drops only `totals`; rows, order and truncated stay byte-identical', () => {
+    const spec: QuerySpec = { metrics: ['tokens_input'], dims: ['project'], order: 'metric:tokens_input:desc', limit: 2 }
+    const withTotals = query(db(), spec)
+    const without = query(db(), { ...spec, totals: false })
+    expect(without.rows).toEqual(withTotals.rows)
+    expect(without.truncated).toBe(withTotals.truncated)
+    expect(without.columns).toEqual(withTotals.columns)
+    // Empty, not zero-filled: an omitted total must never read as a measured 0 (§5.2).
+    expect(without.totals).toEqual({})
+    expect(withTotals.totals.tokens_input).toBe(600)
+  })
+
+  it('defaults to computing totals, so an omitted flag changes nothing', () => {
+    const a = query(db(), { metrics: ['tokens_input'], dims: ['project'] })
+    const b = query(db(), { metrics: ['tokens_input'], dims: ['project'], totals: true })
+    expect(b.totals).toEqual(a.totals)
   })
 })
 

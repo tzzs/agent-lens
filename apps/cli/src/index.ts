@@ -138,7 +138,7 @@ async function cmdBare(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath: stri
   }
   const deps = queryDeps(db, dbPath, ctx)
   const totals = query(db, { metrics: ['sessions', 'events', 'tokens_total', 'cost_api_equiv'] }, deps).totals
-  const caps = query(db, { metrics: ['events'], dims: ['capability_type'] })
+  const caps = query(db, { metrics: ['events'], dims: ['capability_type'], totals: false })
   const capBy = new Map(caps.rows.map((r) => [String(r.capability_type), Number(r.events)]))
   ctx.out('')
   ctx.out(

@@ -517,7 +517,7 @@ export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): Quer
   }
 
   const columns = [...dims, ...metrics]
-  const totals = computeTotals(db, reqs, deps)
+  const totals = spec.totals === false ? {} : computeTotals(db, reqs, deps)
   return { rows, columns, totals, truncated }
 }
 

@@ -42,14 +42,11 @@ export async function cmdCapability(db: DatabaseSync, flags: FlagView, ctx: Ctx,
       filter: typeFilter,
       order: 'metric:events:desc',
       limit: flags.num('limit') ?? 30,
+      totals: false,
     },
     queryDeps(db, dbPath, ctx),
   )
-  const errs = query(db, {
-    metrics: ['events'],
-    dims: [dim],
-    filter: { ...typeFilter, status: ['error'] },
-  })
+  const errs = query(db, { metrics: ['events'], dims: [dim], filter: { ...typeFilter, status: ['error'] }, totals: false })
   const errBy = new Map(errs.rows.map((r) => [String(r[dim]), Number(r.events)]))
 
   const rows = res.rows.map((r) => [
@@ -96,12 +93,12 @@ export function cmdProjects(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath:
   const deps = queryDeps(db, dbPath, ctx)
   const top = query(
     db,
-    { metrics: ['sessions', 'tokens_total', 'cost_api_equiv'], dims: ['project'], filter: baseFilter, order: 'metric:tokens_total:desc', limit: flags.num('limit') ?? 30 },
+    { metrics: ['sessions', 'tokens_total', 'cost_api_equiv'], dims: ['project'], filter: baseFilter, order: 'metric:tokens_total:desc', limit: flags.num('limit') ?? 30, totals: false },
     deps,
   )
   const sub = query(
     db,
-    { metrics: ['sessions', 'tokens_total', 'cost_api_equiv'], dims: ['project', 'agent'], filter: baseFilter },
+    { metrics: ['sessions', 'tokens_total', 'cost_api_equiv'], dims: ['project', 'agent'], filter: baseFilter, totals: false },
     deps,
   )
   const subByProject = new Map<string, { agents: string[]; rows: (string | number)[][] }>()

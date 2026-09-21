@@ -34,16 +34,16 @@ export interface AgentsResponse {
 export function agents(ctx: ServerCtx, sp: URLSearchParams): AgentsResponse {
   const filter = parseFilter(sp, ctx.db)
   const perAgent = query(ctx.db, { metrics: [...METRICS], dims: ['agent'], filter }, ctx.cubeDeps)
-  const hosts = query(ctx.db, { metrics: ['events', 'sessions'], dims: ['agent', 'host'], filter }, ctx.cubeDeps)
-  const caps = query(ctx.db, { metrics: ['events'], dims: ['agent', 'capability_type'], filter }, ctx.cubeDeps)
+  const hosts = query(ctx.db, { metrics: ['events', 'sessions'], dims: ['agent', 'host'], filter, totals: false }, ctx.cubeDeps)
+  const caps = query(ctx.db, { metrics: ['events'], dims: ['agent', 'capability_type'], filter, totals: false }, ctx.cubeDeps)
   const capErrs = query(
     ctx.db,
-    { metrics: ['events'], dims: ['agent', 'capability_type'], filter: { ...filter, status: ['error'] } },
+    { metrics: ['events'], dims: ['agent', 'capability_type'], filter: { ...filter, status: ['error'] }, totals: false },
     ctx.cubeDeps,
   )
   const modelMix = query(
     ctx.db,
-    { metrics: ['events', 'tokens_total', 'cost_api_equiv'], dims: ['agent', 'model'], filter, limit: 400 },
+    { metrics: ['events', 'tokens_total', 'cost_api_equiv'], dims: ['agent', 'model'], filter, limit: 400, totals: false },
     ctx.cubeDeps,
   )
   const meta = rowsOf(ctx.db, 'SELECT id, display_name, detected_version, data_root FROM agents')

@@ -43,13 +43,29 @@ export function projects(ctx: ServerCtx, sp: URLSearchParams): ProjectsResponse 
   if (!Number.isInteger(limit) || limit < 0) throw new RangeError(`invalid limit ${JSON.stringify(limitRaw)}`)
 
   const top = query(ctx.db, { metrics: [...METRICS], dims: ['project'], filter, limit }, ctx.cubeDeps)
+  // The three mixes below are read for their rows only, so each says `totals: false`:
+  // at 343k events a totals fold is a second full pass over stage 1, and here its result
+  // would be discarded four times per request.
   const sub = query(
     ctx.db,
-    { metrics: ['events', 'sessions', 'tokens_total', 'cost_api_equiv'], dims: ['project', 'agent'], filter },
+    {
+      metrics: ['events', 'sessions', 'tokens_total', 'cost_api_equiv'],
+      dims: ['project', 'agent'],
+      filter,
+      totals: false,
+    },
     ctx.cubeDeps,
   )
-  const modelMix = query(ctx.db, { metrics: ['events', 'tokens_total'], dims: ['project', 'model'], filter, limit: 600 }, ctx.cubeDeps)
-  const capMix = query(ctx.db, { metrics: ['events'], dims: ['project', 'capability_type'], filter, limit: 600 }, ctx.cubeDeps)
+  const modelMix = query(
+    ctx.db,
+    { metrics: ['events', 'tokens_total'], dims: ['project', 'model'], filter, limit: 600, totals: false },
+    ctx.cubeDeps,
+  )
+  const capMix = query(
+    ctx.db,
+    { metrics: ['events'], dims: ['project', 'capability_type'], filter, limit: 600, totals: false },
+    ctx.cubeDeps,
+  )
 
   const labels = projectLabelMap(ctx.db)
   const entities = rowsOf(ctx.db, 'SELECT id, canonical_root, display_name, source FROM projects')

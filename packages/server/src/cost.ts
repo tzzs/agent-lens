@@ -54,7 +54,7 @@ export function costView(ctx: ServerCtx, filter?: QueryFilter): CostView {
   const modeFor = ctx.billingModeFor ?? ((): BillingMode => 'api')
   // §18 row 1: reported cost needs no price table, so it is folded even when
   // pricing is not configured — it is the agent's own number, not ours.
-  const reported = query(ctx.db, { metrics: ['cost_reported'], dims: ['agent'], filter }, ctx.cubeDeps)
+  const reported = query(ctx.db, { metrics: ['cost_reported'], dims: ['agent'], filter, totals: false }, ctx.cubeDeps)
   const reportedByAgent = new Map(reported.rows.map((r) => [String(r.agent), numOrNull(r.cost_reported)]))
   const reportedTotal = usd([...reportedByAgent.values()])
   if (!ctx.priceResolver) {
@@ -76,7 +76,9 @@ export function costView(ctx: ServerCtx, filter?: QueryFilter): CostView {
       basis: 'no price table injected — api-equivalent and actual are n/a (§8: an unknown price must never render as $0)',
     }
   }
-  const res = query(ctx.db, { metrics: ['cost_api_equiv'], dims: ['agent'], filter }, ctx.cubeDeps)
+  // `apiEquivalentUsd` is the sum of the per-agent slices below, so the fold of the whole
+  // filtered set would be a second pass computing what `perAgent` already answers.
+  const res = query(ctx.db, { metrics: ['cost_api_equiv'], dims: ['agent'], filter, totals: false }, ctx.cubeDeps)
   const perAgent: CostSlice[] = res.rows.map((r) => {
     const agentId = String(r.agent ?? '')
     const billingMode = modeFor(agentId)
