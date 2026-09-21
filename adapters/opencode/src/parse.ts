@@ -83,7 +83,9 @@ function dataOf(row: UnknownRecord): { data: UnknownRecord | null; raw: string |
 
 export async function* parse(source: SourceSpec, from: ByteOffset, ctx: ParseCtx): RecordStream {
   const table = (source.sqliteTable ?? '') as OpenCodeTable
-  const handle = await openReadOnly(source.path)
+  // A WAL store reaches us as a rollback-mode copy in our own directory (§18 row 7);
+  // `source.path` is the app's file, which this guard must keep refusing.
+  const handle = await openReadOnly(ctx.storePath ?? source.path)
   const startOffset = Number.isFinite(from.offset) ? Math.max(0, Math.floor(from.offset)) : 0
   let lastRowid = startOffset
   try {
