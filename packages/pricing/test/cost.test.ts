@@ -43,14 +43,25 @@ describe('computeCost billing modes (§8)', () => {
     expect(c.gap).toBe(false)
   })
 
-  it('local: both numbers are $0 regardless of price', () => {
+  // §8 table, `local` row: "tokens have a price, cost is always $0" — the two halves
+  // of that sentence address different numbers. Contract corrected 2026-09-22: the
+  // earlier test pinned apiEquivalentUsd: 0, which threw away the token volume a
+  // local (Ollama/vLLM) agent burned and so contradicted the table.
+  it('local: actual cash is $0 while the tokens still price out as API-equivalent', () => {
     expect(computeCost(usage, sonnet, 'local')).toEqual({
       actualUsd: 0,
-      apiEquivalentUsd: 0,
+      apiEquivalentUsd: API_EQUIVALENT,
       mode: 'local',
-      pricedAt: null,
+      pricedAt: sonnet.effectiveFrom,
       gap: false,
     })
+  })
+
+  it('local with no price is n/a + gap, never $0 (§8: $0 would read as a priced free model)', () => {
+    const c = computeCost(usage, null, 'local')
+    expect(c.actualUsd).toBeNull()
+    expect(c.apiEquivalentUsd).toBeNull()
+    expect(c.gap).toBe(true)
   })
 })
 

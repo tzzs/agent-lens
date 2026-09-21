@@ -41,9 +41,9 @@
   let open = $state<Record<string, boolean>>({})
 
   const BILLING: Record<string, { label: string; note: string }> = {
-    api: { label: 'API', note: 'billed per token, so est. cost tracks real spend' },
-    subscription: { label: 'Subscription', note: 'flat plan: actual spend is $0 and est. cost is only the API equivalent' },
-    local: { label: 'Local', note: 'local model: actual spend is $0 and est. cost is only the API equivalent' },
+    api: { label: 'API', note: 'billed per token, so est. cost is the cash figure' },
+    subscription: { label: 'Subscription', note: 'flat plan: actual cash is $0, while est. cost prices the same tokens as an API call' },
+    local: { label: 'Local', note: 'nothing bills per token: actual cash is $0, while est. cost prices the same tokens as an API call (§8)' },
   }
   const billing = (mode: string) => BILLING[mode] ?? { label: mode, note: 'est. cost is the API equivalent' }
 
@@ -99,7 +99,7 @@
           {@const duration = num(a.metrics.duration)}
           <Surface title={name} subtitle={subtitle(a)} padded={false}>
             {#snippet actions()}
-              <Chip title="Declared billing mode — {mode.note}">{mode.label}</Chip>
+              <Chip title="Billing mode these figures use — declare it in Settings › Billing modes. {mode.note}">{mode.label}</Chip>
             {/snippet}
 
             <div class="px-4 py-3.5">
@@ -238,7 +238,7 @@
                 <h3 class="truncate text-[13px] font-semibold text-ink-2">{name}</h3>
                 {#if a.displayName && a.displayName !== a.agentId}<p class="nums mt-0.5 truncate text-xs text-ink-3">{a.agentId}</p>{/if}
               </div>
-              <Chip title="Declared billing mode — {mode.note}">{mode.label}</Chip>
+              <Chip title="Billing mode these figures use — declare it in Settings › Billing modes. {mode.note}">{mode.label}</Chip>
             </div>
             <div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
               <Chip dashed title="Known to AgentLens, but it logged no events in the selected range — shown instead of a row of zeros.">Not recorded in this window</Chip>

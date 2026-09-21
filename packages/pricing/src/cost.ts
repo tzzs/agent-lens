@@ -2,7 +2,9 @@ import type { Usage } from '@agentlens/event-model'
 import { isMissingPrice, type BillingMode, type PriceEntry } from './price-types.ts'
 
 export interface CostBreakdown {
+  /** Cash the mode actually costs: 0 for `subscription` and `local` (§8); null when unpriced. */
   actualUsd: number | null
+  /** tokens x list price in every mode — §8's "equivalent API value", shown beside actual. */
   apiEquivalentUsd: number | null
   mode: BillingMode
   pricedAt: number | null
@@ -21,12 +23,10 @@ const bucketPrices = (u: Usage, e: PriceEntry): number[] => {
 
 /** Full precision internally; presentation is `formatUsd`'s job. */
 export function computeCost(usage: Usage, entry: PriceEntry | null, mode: BillingMode): CostBreakdown {
-  if (mode === 'local') {
-    return { actualUsd: 0, apiEquivalentUsd: 0, mode, pricedAt: null, gap: false }
-  }
   if (!entry || bucketPrices(usage, entry).some(isMissingPrice)) {
     // Unknown price is null, never 0: $0 renders as "free local model" and silently
-    // understates spend (§8).
+    // understates spend (§8). That holds in every mode, `local` included — declaring a
+    // mode is not a price.
     return { actualUsd: null, apiEquivalentUsd: null, mode, pricedAt: entry?.effectiveFrom ?? null, gap: true }
   }
   // term() keeps zero-token buckets out of the math: 0 x PRICE_MISSING would be NaN.
@@ -38,8 +38,10 @@ export function computeCost(usage: Usage, entry: PriceEntry | null, mode: Billin
     term(usage.cacheReadTokens, entry.cacheReadPerMTok) +
     term(usage.cacheWriteTokens, entry.cacheWritePerMTok) +
     (entry.reasoningPerMTok != null ? term(usage.reasoningTokens, entry.reasoningPerMTok) : 0)
-  // Subscription real cash flow is the flat plan fee, not per-token spend (§8 table).
-  const actual = mode === 'subscription' ? 0 : api
+  // §8's table: only `api` bills tokens as cash. `subscription` pays a flat plan fee and
+  // `local` pays no per-token cash at all, so both show $0 actual while their tokens keep
+  // pricing out as the API-equivalent value the UI presents beside it.
+  const actual = mode === 'api' ? api : 0
   return { actualUsd: actual, apiEquivalentUsd: api, mode, pricedAt: entry.effectiveFrom, gap: false }
 }
 

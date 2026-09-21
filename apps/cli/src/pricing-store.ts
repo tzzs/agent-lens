@@ -5,16 +5,17 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import {
+  BILLING_MODES,
   bundledSnapshot,
+  liveBillingModes,
   PricingTable,
   readSnapshotFile,
+  writeBillingMode,
   writeSnapshotFile,
   type BillingMode,
   type PriceEntry,
   type PriceSnapshot,
 } from '@agentlens/pricing'
-
-const BILLING_MODES: readonly BillingMode[] = ['api', 'subscription', 'local']
 
 export function dataDir(dbPath: string): string {
   return dirname(dbPath)
@@ -76,21 +77,22 @@ export function appendOverride(dbPath: string, entry: PriceEntry): void {
   appendFileSync(overridesPath(dbPath), JSON.stringify(entry) + '\n')
 }
 
-/** §8 billing modes are a user declaration, kept in <dataDir>/config.json: {"billing": {agent: mode}}. */
+/**
+ * §8 billing modes are a user declaration, kept in <dataDir>/config.json:
+ * `{"billing": {agent: mode}}`. The returned view re-reads the file when it changes:
+ * `queryDeps()` runs once per command, but `--serve` holds its deps for the lifetime of
+ * the dashboard while the Settings page writes declarations into this same file (§14).
+ */
 export function loadBillingModes(dbPath: string): Record<string, BillingMode> {
-  const cp = configPath(dbPath)
-  if (!existsSync(cp)) return {}
-  let raw: unknown
-  try {
-    raw = JSON.parse(readFileSync(cp, 'utf8'))
-  } catch {
-    return {}
-  }
-  const billing = (raw as { billing?: unknown }).billing
-  if (typeof billing !== 'object' || billing === null) return {}
-  const out: Record<string, BillingMode> = {}
-  for (const [agent, mode] of Object.entries(billing as Record<string, unknown>)) {
-    if (typeof mode === 'string' && BILLING_MODES.includes(mode as BillingMode)) out[agent] = mode as BillingMode
-  }
-  return out
+  return liveBillingModes(configPath(dbPath))
+}
+
+/** Declare (`mode`) or undeclare (`null`) one agent; returns the validated declarations left. */
+export function setBillingMode(
+  dbPath: string,
+  agentId: string,
+  mode: BillingMode | null,
+): Record<string, BillingMode> {
+  ensureDataDir(dbPath)
+  return writeBillingMode(configPath(dbPath), agentId, mode)
 }

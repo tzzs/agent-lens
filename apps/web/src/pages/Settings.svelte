@@ -4,9 +4,9 @@
   // and /api/doctor, including the privacy-relevant facts (content layer on/off,
   // loopback-only bind, DB path) so a user can confirm the local-first guarantees.
   // Sections render as soon as their own route answers: /api/health is instant,
-  // /api/doctor scans every usage row. The theme is the one setting stored here, and
-  // it lives in this browser only.
-  import { api, type DoctorAgentRow } from '../lib/api.ts'
+  // /api/doctor scans every usage row. The theme is the one setting stored in this
+  // browser; the one thing written back to the server is the §8 billing declaration.
+  import { api, BILLING_MODES, type BillingAgentRow, type BillingMode, type DoctorAgentRow } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
   import { live } from '../lib/live.svelte.js'
   import { theme, setTheme } from '../lib/theme.svelte.js'
@@ -21,14 +21,17 @@
 
   const health = loader(() => api.health())
   const doctor = loader(() => api.doctor())
+  const billing = loader(() => api.billingSettings())
   $effect(() => {
     void live.lastTick
     health.run()
     doctor.run()
+    billing.run()
   })
 
   const h = $derived(health.state.data)
   const doc = $derived(doctor.state.data)
+  const b = $derived(billing.state.data)
 
   // Before either route has answered there is nothing to show: one panel, naming
   // whichever request failed. After that, each section waits only for its own route.
@@ -42,6 +45,37 @@
   // local copy. A local $state mirrored by an $effect fights every other writer (the
   // sidebar's switch): two such mirrors ping-pong until Svelte aborts the update.
   const pickTheme = (v: string) => setTheme(v === 'light' || v === 'dark' ? v : 'system')
+
+  // The §8 declaration editor. The select is uncontrolled — the row's value comes from
+  // the server and a write re-reads it, so no local copy can drift from what the cube
+  // actually folded (and a refused value snaps back instead of lying on screen).
+  const MODE_LABEL: Record<BillingMode, string> = {
+    api: 'API — tokens x price',
+    subscription: 'Subscription — $0 cash, priced as API equivalent',
+    local: 'Local — $0 cash, priced as API equivalent',
+  }
+  const agentLabel = (a: BillingAgentRow): string => a.displayName || a.agentId
+  let saving = $state<Record<string, boolean>>({})
+  let billingNote = $state<string | null>(null)
+  let billingError = $state<string | null>(null)
+
+  async function declare(agentId: string, value: string): Promise<void> {
+    const mode = value === '' ? null : (value as BillingMode)
+    saving[agentId] = true
+    billingNote = null
+    billingError = null
+    try {
+      const res = await api.setBilling({ agent: agentId, mode })
+      billingNote =
+        `saved: ${res.agent} = ${res.mode}` +
+        (mode === null ? ' (declaration cleared, so the api default applies again)' : '')
+    } catch (err) {
+      billingError = err instanceof Error ? err.message : String(err)
+    } finally {
+      delete saving[agentId]
+      void billing.run()
+    }
+  }
 
   const STATUS_LABEL: Record<DoctorAgentRow['status'], string> = {
     ok: 'OK',
@@ -69,7 +103,7 @@
 <PageHeader
   title="Settings"
   description="Adapters, pricing, data sources and privacy, as reported by the running server."
-  info="Nothing here is computed in the browser: it is the server's own report from /api/health and /api/doctor."
+  info="Nothing here is computed in the browser: it is the server's own report from /api/health and /api/doctor. The billing modes below are the one thing you can change here, and they are saved on the server."
   refreshing={health.state.refreshing || doctor.state.refreshing}
 />
 
@@ -185,6 +219,64 @@
           </div>
         </dl>
         <p class="mt-3 text-xs leading-relaxed text-ink-3">{doc.cost.basis}</p>
+      </Surface>
+
+      <Surface
+        title="Billing modes"
+        info="How each agent's tokens become money (§8). Cash and API-equivalent are two different numbers and the app keeps showing both: declaring a mode moves the cash figure, never the token value."
+      >
+        {#if billingError}
+          <div class="mb-3"><Alert tone="red" title="Declaration rejected.">{billingError}</Alert></div>
+        {/if}
+        {#if billingNote}
+          <div class="mb-3"><Alert tone="accent" title="Saved.">{billingNote}</Alert></div>
+        {/if}
+        {#if b}
+          <ul class="text-[13px]">
+            {#each b.agents as a (a.agentId)}
+              <li class="flex items-center justify-between gap-3 border-b border-line-soft py-2 last:border-0">
+                <div class="min-w-0">
+                  <span class="font-medium text-ink" title={a.agentId}>{agentLabel(a)}</span>
+                  <span class="ml-2 text-xs text-ink-3">{a.declared ? 'declared' : 'default'}</span>
+                </div>
+                <select
+                  class="h-7 shrink-0 rounded-full bg-hover-2/70 px-3 text-xs text-ink outline-none hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50"
+                  aria-label={`Billing mode for ${a.agentId}`}
+                  value={a.billingMode}
+                  disabled={saving[a.agentId] === true}
+                  onchange={(e) => void declare(a.agentId, e.currentTarget.value)}
+                >
+                  {#each BILLING_MODES as m (m)}
+                    <option value={m}>{MODE_LABEL[m]}</option>
+                  {/each}
+                  <option value="">Not declared (api default)</option>
+                </select>
+              </li>
+            {/each}
+          </ul>
+          {#if !b.agents.length}
+            <p class="py-1 text-xs leading-relaxed text-ink-3">No agents known yet — a scan registers them, then a mode can be declared here.</p>
+          {/if}
+          <p class="mt-3 text-xs leading-relaxed text-ink-3">
+            Saved in <span class="nums text-ink-2">{b.configFile}</span>, the same file <span class="nums text-ink-2">agl</span> reads, so the terminal
+            and this page can never disagree. A model with no price still reads n/a, never $0 — a billing mode is a statement about cash, not a
+            price (§8).
+          </p>
+        {:else}
+          <StatePanel
+            status={billing.state.status}
+            error={billing.state.error}
+            kind={billing.state.kind}
+            since={billing.state.since}
+            loadingText="Reading the billing declarations"
+          />
+          {#if billing.state.kind === 'not_implemented'}
+            <p class="mt-3 text-xs leading-relaxed text-ink-3">
+              This server was started without a database file, so it has nowhere to keep a declaration. Declare modes with
+              <span class="nums text-ink-2">agl pricing billing set &lt;agent&gt; &lt;mode&gt;</span> instead.
+            </p>
+          {/if}
+        {/if}
       </Surface>
 
       <Surface title="Data sources" info="Presence checks over the sources the collector has ingested — nothing here is a statistic.">

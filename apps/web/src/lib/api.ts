@@ -47,6 +47,27 @@ async function getJSON<T>(path: string, params?: Record<string, string | number 
   return parsed as T
 }
 
+/** The one write in the app: a JSON POST, same error contract as GET. */
+async function postJSON<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const text = await res.text()
+  let parsed: unknown = text
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    /* an error body that is not JSON is reported as its own text */
+  }
+  if (!res.ok) {
+    const err = parsed && typeof parsed === 'object' && 'error' in (parsed as object) ? parsed : { error: { kind: 'internal', message: text || res.statusText } }
+    throw new ApiError(res.status, err as ErrorBody)
+  }
+  return parsed as T
+}
+
 /** Builds a relative /api URL from a base path and optional params (arrays repeat). */
 export function buildURL(path: string, params?: Record<string, string | number | string[] | undefined>): string {
   const sp = new URLSearchParams()
@@ -164,8 +185,12 @@ export function capabilityDimCell(dim: string, value: unknown, selected: readonl
 export interface CostView {
   pricingConfigured: boolean
   apiEquivalentUsd: number | null
+  /** §18 row 1 resolved in the cube: what the agent reported where it did, priced cash where it did not. */
+  totalUsd: number | null
+  /** Mode-folded estimate that ignores reported facts — kept for the pricing view, not the spend. */
   actualUsd: number | null
   reportedUsd: number | null
+  totalPartial: boolean
   apiEquivalentPartial: boolean
   actualPartial: boolean
   unpricedAgents: string[]
@@ -173,6 +198,7 @@ export interface CostView {
     agentId: string
     billingMode: string
     apiEquivalentUsd: number | null
+    totalUsd: number | null
     actualUsd: number | null
     reportedUsd: number | null
   }[]
@@ -522,6 +548,34 @@ export interface DoctorReport {
 }
 
 /* ------------------------------------------------------------------ *
+ * Billing-mode declarations (§8)
+ * ------------------------------------------------------------------ */
+
+/** The three §8口径; the server validates against this union. */
+export type BillingMode = 'api' | 'subscription' | 'local'
+export const BILLING_MODES: readonly BillingMode[] = ['api', 'subscription', 'local']
+
+export interface BillingAgentRow {
+  agentId: string
+  displayName: string | null
+  /** The mode the cost figures are folded with right now. */
+  billingMode: BillingMode
+  /** False when the agent simply has no declaration and inherits the `api` default. */
+  declared: boolean
+}
+export interface BillingSettingsResponse {
+  configFile: string
+  modes: Record<string, BillingMode>
+  agents: BillingAgentRow[]
+}
+export interface BillingWriteResponse {
+  agent: string
+  /** Effective mode after the write: clearing returns the agent to `api`. */
+  mode: BillingMode
+  modes: Record<string, BillingMode>
+}
+
+/* ------------------------------------------------------------------ *
  * Route helpers — every path is relative to this origin.
  * ------------------------------------------------------------------ */
 
@@ -539,4 +593,8 @@ export const api = {
   models: (params?: FilterParams) => getJSON<ModelsResponse>('/api/models', params),
   doctor: (params?: FilterParams) => getJSON<DoctorReport>('/api/doctor', params),
   coverage: () => getJSON<CoverageReport>('/api/coverage'),
+  billingSettings: () => getJSON<BillingSettingsResponse>('/api/settings/billing'),
+  /** `mode: null` drops the declaration, so the agent falls back to the `api` default. */
+  setBilling: (body: { agent: string; mode: BillingMode | null }) =>
+    postJSON<BillingWriteResponse>('/api/settings/billing', body),
 }

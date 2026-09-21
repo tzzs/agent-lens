@@ -4,16 +4,19 @@
  * Every stats route is a thin wrapper over `query(db, spec)` (§7) with a fixed
  * dim/metric list, so no page can express an aggregation the CLI cannot and the
  * two ends cannot drift apart. Failures leave as structured JSON with a
- * meaningful status, including 501 for the scan route when no scanner is injected.
+ * meaningful status, including 501 for the two routes that need a capability this
+ * build may not have (an injected scanner, a database file to declare billing in).
  */
 import { homedir as osHomedir } from 'node:os'
 import type { Context, Hono } from 'hono'
 import { Hono as HonoClass } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
+import { billingConfigPath } from '@agentlens/pricing'
 import { describeQuery, query } from '@agentlens/query'
 import { migrate } from '@agentlens/storage'
 import type { ServerCtx, ServerDeps } from './types.ts'
 import { ApiError, toErrorBody } from './errors.ts'
+import { BillingSettings, readJsonBody } from './settings.ts'
 import { parseSpec } from './request-spec.ts'
 import { overview } from './overview.ts'
 import { listSessions, sessionDetail } from './sessions.ts'
@@ -130,6 +133,25 @@ export function createApp(deps: ServerDeps): Hono {
     const summary = await c.scan()
     return { startedAt: started, finishedAt: c.now(), summary }
   }))
+
+  /**
+   * §8's per-Agent billing declaration. This writes the same `<dir of --db>/config.json`
+   * the CLI's `billingModeFor` reads, so the page and the terminal state one fact (§14);
+   * with no database FILE there is nowhere honest to persist it — an in-memory DB would
+   * accept the write and lose it on restart, so the answer is 501, like the scanner.
+   */
+  const billing = deps.dbPath ? new BillingSettings(deps.db, billingConfigPath(deps.dbPath), ctx.homedir) : null
+  const billingStore = (): BillingSettings => {
+    if (!billing) {
+      throw ApiError.notImplemented('this server has no database file to keep config.json beside', {
+        hint: 'serve a --db <file>, or declare modes with `agl pricing billing set <agent> <mode>`',
+      })
+    }
+    return billing
+  }
+
+  app.get('/api/settings/billing', route(() => billingStore().view()))
+  app.post('/api/settings/billing', route(async (_c, _sp, hc) => billingStore().declare(await readJsonBody(hc.req))))
 
   app.notFound((c) =>
     c.json({ error: { kind: 'not_found', message: `no route for ${c.req.method} ${c.req.path}` } }, 404))
