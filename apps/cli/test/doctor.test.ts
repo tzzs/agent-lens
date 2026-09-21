@@ -722,6 +722,23 @@ describe('Capabilities', () => {
     expect(nothing.text()).toContain('no adapter exposes a capability catalog and no capability events are ingested')
   })
 
+  it('keeps the tools and skills pairs visible when both sides are zero (§11)', () => {
+    const out = recordingCtx(HOME)
+    renderCapabilities(out, {
+      installed: new Map(),
+      invoked: new Map(),
+      catalogs: 1,
+      catalogErrors: [],
+      hookFires: 0,
+      hookFailures: 0,
+      topFailingHook: null,
+      mcp: { attached: [], needsAuth: [], failed: [], pending: [], observed: false },
+    })
+    const text = out.text()
+    expect(text).toMatch(/tools\s+installed 0 · invoked 0/)
+    expect(text).toMatch(/skills\s+installed 0 · invoked 0/)
+  })
+
   it('surfaces a catalog that threw instead of reporting zero installed', async () => {
     const thrower = fakeAdapter({ id: 'claude-code', detection: { present: true, dataRoot: CLAUDE } })
     thrower.capabilities = async () => {
@@ -751,6 +768,9 @@ describe('Pricing', () => {
     expect(text).toContain('n/a')
     expect(text).not.toContain('$0.')
     expect(text).toContain('no agent reported a cost for any event')
+    // The fixture snapshot is undated (fetchedAt 0), which is exactly the case §8 pins.
+    expect(text).toContain("undated entry (effective_from 0): the current rate is applied to their whole history")
+    expect(text).toContain("today's price would have cost, not what was paid (§8)")
   })
 
   it('says so when nothing has been ingested to price', () => {

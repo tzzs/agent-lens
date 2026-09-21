@@ -545,8 +545,10 @@ export function renderPricing(db: DatabaseSync, rctx: Ctx, dbPath: string): void
   const gapBuckets = new Map<string, string>()
   const gapEvents = new Map<string, number>()
   let pricedEvents = 0
+  let undatedModels = 0
   for (const m of models) {
     const entry = priceTable.lookup(m.provider, m.name, m.lastSeen)
+    if (entry?.effectiveFrom === 0) undatedModels++
     const missing = unpricedBuckets(entry, m)
     const key = `${m.provider}|${m.name}`
     if (missing.length === 0) {
@@ -582,6 +584,13 @@ export function renderPricing(db: DatabaseSync, rctx: Ctx, dbPath: string): void
       ? `${GLYPH.ok} ${formatCount(reported)} event(s) carry a cost the agent reported itself, which the cube prefers over computed (§18 row 1)`
       : `${GLYPH.none} no agent reported a cost for any event — every $ figure this tool prints is computed from the local price table (§8)`,
   )
+  if (undatedModels > 0) {
+    rctx.out(
+      `${GLYPH.warn} ${formatCount(undatedModels)} priced model(s) have an undated entry (effective_from 0): the current rate ` +
+        'is applied to their whole history, so the $ totals are what today\'s price would have cost, not what was paid (§8) — ' +
+        '`agl pricing update` fetches dated entries',
+    )
+  }
 }
 
 export function renderPermissions(rctx: Ctx, probes: readonly AdapterProbe[]): void {

@@ -159,7 +159,10 @@ export function renderCapabilities(ctx: Ctx, report: CapabilityReport): void {
   if (report.catalogs === 0) {
     ctx.out(`${GLYPH.none} no adapter exposes capabilities() — "installed but never used" is unavailable, invoked side only (§5.1)`)
   }
-  for (const t of types) {
+  // §11 names tools and skills as installed-vs-invoked pairs, so they print even when both
+  // sides are zero — omitting them would make "the agent has no skills" unreadable.
+  const rows = [...new Set<CapabilityType>([...types, 'tool', 'skill'])].sort()
+  for (const t of rows) {
     if (t === 'hook') continue // §11 gives hooks their own fired/failures line
     const has = report.installed.get(t)
     const used = report.invoked.get(t) ?? 0
