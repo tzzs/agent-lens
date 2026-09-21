@@ -1,0 +1,307 @@
+{
+  "results": [
+    {
+      "events": [
+        {
+          "id": "1c1ed41a8d649ddfbe887eb48760a8db4f6f3d1f1772551f6c64a1c037e17de0",
+          "type": "generation.end",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "5476ebaebe6eb8c3e85e25cbe9275d6c4c9d0f64ee66ea6302d9ac0189ed88ed",
+          "threadId": "t/ba57bc2064d707430e305f1e40c3c17259b3e7c40c578d6530e31491733eff79",
+          "projectId": "project:alpha",
+          "parentEventId": null,
+          "requestId": "req-k1",
+          "timestamp": 1789899180000,
+          "model": {
+            "provider": "anthropic",
+            "name": "qfmodel"
+          },
+          "usage": {
+            "inputTokens": 700,
+            "outputTokens": 210,
+            "cacheReadTokens": 8000,
+            "cacheWriteTokens": 0,
+            "reasoningTokens": 0
+          },
+          "usageSource": "reported",
+          "costReported": null,
+          "costSource": null,
+          "credits": 0.06,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 1,
+          "rawOffset": 0,
+          "payload": null,
+          "metadata": {
+            "block_types": [
+              "tool_use"
+            ],
+            "message_id": null,
+            "stop_reason": "tool_use",
+            "leaf_uuid": null,
+            "qoder_credits": 0.06,
+            "qoder_original_credits": 0.06,
+            "qoder_billable": true,
+            "qoder_context_usage_ratio": 0.09,
+            "qoder_billing": {
+              "service_tier": "standard",
+              "inference_geo": "",
+              "speed": "standard",
+              "iterations": 0
+            }
+          }
+        },
+        {
+          "id": "d35e4da989d408209987e0c31176035a08cc2d56b1e4e2db4e8ddd415daff10a",
+          "type": "tool.start",
+          "subtype": "Agent:spawn",
+          "hostId": "qoder",
+          "sessionId": "5476ebaebe6eb8c3e85e25cbe9275d6c4c9d0f64ee66ea6302d9ac0189ed88ed",
+          "threadId": "t/ba57bc2064d707430e305f1e40c3c17259b3e7c40c578d6530e31491733eff79",
+          "projectId": "project:alpha",
+          "parentEventId": "1c1ed41a8d649ddfbe887eb48760a8db4f6f3d1f1772551f6c64a1c037e17de0",
+          "requestId": "req-k1",
+          "timestamp": 1789899180000,
+          "model": {
+            "provider": "anthropic",
+            "name": "qfmodel"
+          },
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": {
+            "type": "subagent",
+            "name": "explore",
+            "provider": "Agent"
+          },
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 1,
+          "rawOffset": 0,
+          "payload": {
+            "kind": "tool_input",
+            "role": "assistant",
+            "text": "86ch"
+          },
+          "metadata": {
+            "tool_name": "Agent",
+            "tool_use_id": "tu_agent",
+            "description": "find call sites"
+          }
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "id": "29e456367674fd4c202a55ef9cbdc8fce8c56e37cdd45c0f9f84e25bc8bbdd20",
+          "type": "subagent.start",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "5476ebaebe6eb8c3e85e25cbe9275d6c4c9d0f64ee66ea6302d9ac0189ed88ed",
+          "threadId": "t/ba57bc2064d707430e305f1e40c3c17259b3e7c40c578d6530e31491733eff79",
+          "projectId": "project:alpha",
+          "parentEventId": "d35e4da989d408209987e0c31176035a08cc2d56b1e4e2db4e8ddd415daff10a",
+          "requestId": null,
+          "timestamp": 1789899200000,
+          "model": {
+            "provider": "anthropic",
+            "name": "qfmodel"
+          },
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": {
+            "type": "subagent",
+            "name": "agent-explore-1",
+            "provider": "agent"
+          },
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 2,
+          "rawOffset": 759,
+          "payload": null,
+          "metadata": {
+            "host_metadata": true,
+            "agent_id": "agent-explore-1",
+            "parent_link": "native-fk"
+          }
+        },
+        {
+          "id": "7e078d6c2e3303185c1875e2dbeb4a12d8fd344f2f2c93a975ad87ceab0d59f4",
+          "type": "generation.end",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "5476ebaebe6eb8c3e85e25cbe9275d6c4c9d0f64ee66ea6302d9ac0189ed88ed",
+          "threadId": "t/ba57bc2064d707430e305f1e40c3c17259b3e7c40c578d6530e31491733eff79",
+          "projectId": "project:alpha",
+          "parentEventId": "d35e4da989d408209987e0c31176035a08cc2d56b1e4e2db4e8ddd415daff10a",
+          "requestId": "req-k2",
+          "timestamp": 1789899200000,
+          "model": {
+            "provider": "anthropic",
+            "name": "qfmodel"
+          },
+          "usage": {
+            "inputTokens": 300,
+            "outputTokens": 40,
+            "cacheReadTokens": 2000,
+            "cacheWriteTokens": 0,
+            "reasoningTokens": 0
+          },
+          "usageSource": "reported",
+          "costReported": null,
+          "costSource": null,
+          "credits": 0.02,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 2,
+          "rawOffset": 759,
+          "payload": null,
+          "metadata": {
+            "block_types": [
+              "tool_use"
+            ],
+            "message_id": null,
+            "stop_reason": "tool_use",
+            "leaf_uuid": null,
+            "agent_id": "agent-explore-1",
+            "qoder_credits": 0.02,
+            "qoder_original_credits": 0.02,
+            "qoder_billable": true,
+            "qoder_context_usage_ratio": 0.03,
+            "qoder_billing": {
+              "service_tier": "standard",
+              "inference_geo": "",
+              "speed": "standard",
+              "iterations": 0
+            }
+          }
+        },
+        {
+          "id": "e39cacb175140020416d4ca90b255b8a38d8715ee228e123735f1e9818e4e735",
+          "type": "tool.start",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "5476ebaebe6eb8c3e85e25cbe9275d6c4c9d0f64ee66ea6302d9ac0189ed88ed",
+          "threadId": "t/ba57bc2064d707430e305f1e40c3c17259b3e7c40c578d6530e31491733eff79",
+          "projectId": "project:alpha",
+          "parentEventId": "7e078d6c2e3303185c1875e2dbeb4a12d8fd344f2f2c93a975ad87ceab0d59f4",
+          "requestId": "req-k2",
+          "timestamp": 1789899200000,
+          "model": {
+            "provider": "anthropic",
+            "name": "qfmodel"
+          },
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": {
+            "type": "tool",
+            "name": "Grep",
+            "provider": null
+          },
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 2,
+          "rawOffset": 759,
+          "payload": {
+            "kind": "tool_input",
+            "role": "assistant",
+            "text": "22ch"
+          },
+          "metadata": {
+            "tool_name": "Grep",
+            "tool_use_id": "tu_k2",
+            "agent_id": "agent-explore-1"
+          }
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "id": "e28f44a49c1937395038bddd1482613d58a8120e65363277b7f1d3efda2ef208",
+          "type": "subagent.end",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "5476ebaebe6eb8c3e85e25cbe9275d6c4c9d0f64ee66ea6302d9ac0189ed88ed",
+          "threadId": "t/ba57bc2064d707430e305f1e40c3c17259b3e7c40c578d6530e31491733eff79",
+          "projectId": "project:alpha",
+          "parentEventId": "d35e4da989d408209987e0c31176035a08cc2d56b1e4e2db4e8ddd415daff10a",
+          "requestId": null,
+          "timestamp": 1789899240000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": {
+            "type": "subagent",
+            "name": "agent-explore-1",
+            "provider": "agent"
+          },
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 3,
+          "rawOffset": 1528,
+          "payload": null,
+          "metadata": {
+            "agent_id": "agent-explore-1",
+            "parent_link": "native-fk"
+          }
+        },
+        {
+          "id": "45c14da9ca4d05cd671dee34bca7c8dd8d2672919967cbb0c4c87b8fe11f2ed0",
+          "type": "message.user",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "5476ebaebe6eb8c3e85e25cbe9275d6c4c9d0f64ee66ea6302d9ac0189ed88ed",
+          "threadId": "t/ba57bc2064d707430e305f1e40c3c17259b3e7c40c578d6530e31491733eff79",
+          "projectId": "project:alpha",
+          "parentEventId": null,
+          "requestId": null,
+          "timestamp": 1789899240000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 3,
+          "rawOffset": 1528,
+          "payload": {
+            "kind": "user_message",
+            "role": "user",
+            "text": "32ch"
+          },
+          "metadata": {
+            "prompt_id": null,
+            "has_image": null,
+            "content_shape": "text"
+          }
+        }
+      ]
+    }
+  ]
+}

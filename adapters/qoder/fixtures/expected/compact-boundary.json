@@ -1,0 +1,130 @@
+{
+  "results": [
+    {
+      "events": [
+        {
+          "id": "039ed55fe5794a6e34fbd9b6b4c07518908b78cd4e7302ee7c47c55e6431652a",
+          "type": "context.compact",
+          "subtype": "compact_boundary",
+          "hostId": "qoder",
+          "sessionId": "43537be27032856f5e3b9c8611b08b60f5f0df36d046e4562c83732f5814c8ed",
+          "threadId": "t/08b56fdb711acd648a83d20b07054cb3b07c7137b3ac6129d4682a88b12b9873",
+          "projectId": "project:alpha",
+          "parentEventId": null,
+          "requestId": null,
+          "timestamp": 1789898760000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": null,
+          "durationMs": 4210,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 1,
+          "rawOffset": 0,
+          "payload": null,
+          "metadata": {
+            "mapped": true,
+            "trigger": "auto",
+            "pre_tokens": 169000,
+            "host_diagnostics": [
+              "entrypoint-absent"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "id": "e11c35b4e64c905d50e2568a5e34f8fe850bfc4104110f9e62e887e4922c36bd",
+          "type": "error",
+          "subtype": "api_error",
+          "hostId": "qoder",
+          "sessionId": "43537be27032856f5e3b9c8611b08b60f5f0df36d046e4562c83732f5814c8ed",
+          "threadId": "t/08b56fdb711acd648a83d20b07054cb3b07c7137b3ac6129d4682a88b12b9873",
+          "projectId": "project:alpha",
+          "parentEventId": null,
+          "requestId": null,
+          "timestamp": 1789898820000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": null,
+          "durationMs": null,
+          "status": "error",
+          "errorFingerprint": "31ebc015e47a1fd26ce53aa7a2b32cee25a02b2d8a18d0e53ab25f6a0b5882ed",
+          "rawSeq": 2,
+          "rawOffset": 232,
+          "payload": null,
+          "metadata": {
+            "mapped": true,
+            "message": "529 overloaded_service",
+            "host_diagnostics": [
+              "entrypoint-absent"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "id": "6cdf1b8048a2354e11413634b1e5e7babf50c4dcdec2a16dd1b42df44e8b1516",
+          "type": "unknown",
+          "subtype": "system:quantum_mode_changed",
+          "hostId": "qoder",
+          "sessionId": "43537be27032856f5e3b9c8611b08b60f5f0df36d046e4562c83732f5814c8ed",
+          "threadId": "t/08b56fdb711acd648a83d20b07054cb3b07c7137b3ac6129d4682a88b12b9873",
+          "projectId": "project:alpha",
+          "parentEventId": null,
+          "requestId": null,
+          "timestamp": 1789898880000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 3,
+          "rawOffset": 438,
+          "payload": null,
+          "metadata": {
+            "upstream_type": "system:quantum_mode_changed",
+            "fields": [
+              "cwd",
+              "mode",
+              "sessionId",
+              "subtype",
+              "timestamp",
+              "type",
+              "uuid"
+            ],
+            "raw": {
+              "type": "system",
+              "sessionId": "66666666-ffff-4fff-8fff-666666666666",
+              "uuid": "f3",
+              "timestamp": "2026-09-20T10:08:00.000Z",
+              "cwd": "/Users/example/alpha",
+              "subtype": "quantum_mode_changed",
+              "mode": "plan"
+            },
+            "host_diagnostics": [
+              "entrypoint-absent"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "results": [
+    {
+      "events": [
+        {
+          "id": "5b673710198a8a194ef121fe5f2d7a3099298fad3f2ea74959a996ea54db0ed4",
+          "type": "message.user",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "9aec612f8acaac87e4220c041d26de17840fe5e86e5bc2ec4e9f842c12909684",
+          "threadId": "t/8ac65a10ca7b01b29e44bfea5fdfc24b7408a8093c17e0c6afaa2353dbc9ac86",
+          "projectId": "project:alpha",
+          "parentEventId": null,
+          "requestId": null,
+          "timestamp": 1789899000000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 1,
+          "rawOffset": 0,
+          "payload": {
+            "kind": "user_message",
+            "role": "user",
+            "text": "5ch"
+          },
+          "metadata": {
+            "prompt_id": null,
+            "has_image": null,
+            "content_shape": "string"
+          }
+        }
+      ]
+    },
+    {
+      "failure": {
+        "reason": "json-parse: SyntaxError: Expected double-quoted property name in JSON at position 35 (line 1 column 36)",
+        "rawLine": "{\"type\":\"assistant\",\"broken\": true,",
+        "offset": 250,
+        "rawSeq": 2,
+        "upstreamType": null
+      }
+    }
+  ]
+}

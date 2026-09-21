@@ -1,0 +1,100 @@
+{
+  "results": [
+    {
+      "events": [
+        {
+          "id": "348600856c1e215bfad61c319c210c4d2699010456e848e96ba8132c4f100956",
+          "type": "generation.end",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "5361e26554ff7ae2f3433b46c3811cc53d41cf3df4147d780378c89e77c3f733",
+          "threadId": "t/f50583e6072f356a4ca58bb7168589b0f21d62e74ea851cedec0dafff13fb4f5",
+          "projectId": "project:alpha",
+          "parentEventId": null,
+          "requestId": "req-d1",
+          "timestamp": 1789898580000,
+          "model": {
+            "provider": "anthropic",
+            "name": "qfmodel"
+          },
+          "usage": {
+            "inputTokens": 120,
+            "outputTokens": 33,
+            "cacheReadTokens": 4000,
+            "cacheWriteTokens": 0,
+            "reasoningTokens": 0
+          },
+          "usageSource": "reported",
+          "costReported": null,
+          "costSource": null,
+          "credits": 0.01,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 1,
+          "rawOffset": 0,
+          "payload": null,
+          "metadata": {
+            "block_types": [
+              "tool_use"
+            ],
+            "message_id": null,
+            "stop_reason": "tool_use",
+            "leaf_uuid": null,
+            "qoder_credits": 0.01,
+            "qoder_original_credits": 0.01,
+            "qoder_billable": false,
+            "qoder_context_usage_ratio": 0.02,
+            "qoder_billing": {
+              "service_tier": "standard",
+              "inference_geo": "",
+              "speed": "standard",
+              "iterations": 0
+            }
+          }
+        },
+        {
+          "id": "247641a3cfd717d0a36ccaa542d11ceaab2e83f0383a31ccf5c5469ba0a3e73d",
+          "type": "mcp.invoke",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "5361e26554ff7ae2f3433b46c3811cc53d41cf3df4147d780378c89e77c3f733",
+          "threadId": "t/f50583e6072f356a4ca58bb7168589b0f21d62e74ea851cedec0dafff13fb4f5",
+          "projectId": "project:alpha",
+          "parentEventId": "348600856c1e215bfad61c319c210c4d2699010456e848e96ba8132c4f100956",
+          "requestId": "req-d1",
+          "timestamp": 1789898580000,
+          "model": {
+            "provider": "anthropic",
+            "name": "qfmodel"
+          },
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": {
+            "type": "mcp",
+            "name": "search_tools",
+            "provider": "qoder_market"
+          },
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 1,
+          "rawOffset": 0,
+          "payload": {
+            "kind": "tool_input",
+            "role": "assistant",
+            "text": "20ch"
+          },
+          "metadata": {
+            "tool_name": "mcp__qoder_market__search_tools",
+            "tool_use_id": "tu_m1"
+          }
+        }
+      ]
+    }
+  ]
+}

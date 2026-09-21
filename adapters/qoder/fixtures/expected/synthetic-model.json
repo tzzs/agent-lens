@@ -1,0 +1,57 @@
+{
+  "results": [
+    {
+      "events": [
+        {
+          "id": "49040aec5abf11dd17f05216dd52ee89e55a284c5b5fc4cc4ecbe23e9b699504",
+          "type": "error",
+          "subtype": "synthetic-placeholder",
+          "hostId": "qoder",
+          "sessionId": "32d5b917a329526d1be5a6e9fb64900e4027b7529c144eee54f992a9c83f7e50",
+          "threadId": "t/821020283c44bea25faaeb6c2b51364a51c3937399cc9a38a7c59fad124a09e0",
+          "projectId": "project:alpha",
+          "parentEventId": null,
+          "requestId": null,
+          "timestamp": 1789899060000,
+          "model": {
+            "provider": "anthropic",
+            "name": "<synthetic>"
+          },
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": 0,
+          "capability": null,
+          "durationMs": null,
+          "status": "error",
+          "errorFingerprint": "79b9668d5d58a5b37ab8283cf86ca2707f06d4b43e07dd518ce3fd089b3743de",
+          "rawSeq": 1,
+          "rawOffset": 0,
+          "payload": null,
+          "metadata": {
+            "reason": "model=<synthetic>",
+            "usage_present": true,
+            "message_keys": [
+              "content",
+              "model",
+              "role",
+              "stop_reason",
+              "usage"
+            ],
+            "qoder_credits": 0,
+            "qoder_original_credits": 0,
+            "qoder_billable": false,
+            "qoder_context_usage_ratio": 0,
+            "qoder_billing": {
+              "service_tier": "standard",
+              "inference_geo": "",
+              "speed": "standard",
+              "iterations": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

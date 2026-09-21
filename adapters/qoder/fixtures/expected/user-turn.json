@@ -1,0 +1,80 @@
+{
+  "results": [
+    {
+      "events": [
+        {
+          "id": "03f7b9161169be2b0b361e1cfbf28ec9f477f7c07c174f0b2a6b0f22dc708aa8",
+          "type": "message.user",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "a78e6c79c5fda524970c9fc0450ef2755dcc79e0eb10d2ed00e903be5ceb59d6",
+          "threadId": "t/9bff8a688694adcf139bf666cf78cee4123acaf2c87874db21bd3693257ba2eb",
+          "projectId": "project:alpha",
+          "parentEventId": null,
+          "requestId": null,
+          "timestamp": 1789898520000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 1,
+          "rawOffset": 0,
+          "payload": {
+            "kind": "user_message",
+            "role": "user",
+            "text": "33ch"
+          },
+          "metadata": {
+            "prompt_id": "p-7",
+            "has_image": null,
+            "content_shape": "string"
+          }
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "id": "defa3b5cef56688d77099577f4ecd7b0bac75ffcef603ac35cb675e02a352c14",
+          "type": "message.user",
+          "subtype": "with-image",
+          "hostId": "qoder",
+          "sessionId": "a78e6c79c5fda524970c9fc0450ef2755dcc79e0eb10d2ed00e903be5ceb59d6",
+          "threadId": "t/9bff8a688694adcf139bf666cf78cee4123acaf2c87874db21bd3693257ba2eb",
+          "projectId": "project:alpha",
+          "parentEventId": null,
+          "requestId": null,
+          "timestamp": 1789898550000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 2,
+          "rawOffset": 295,
+          "payload": {
+            "kind": "user_message",
+            "role": "user",
+            "text": "36ch"
+          },
+          "metadata": {
+            "prompt_id": "p-8",
+            "has_image": true,
+            "content_shape": "text+image+text"
+          }
+        }
+      ]
+    }
+  ]
+}

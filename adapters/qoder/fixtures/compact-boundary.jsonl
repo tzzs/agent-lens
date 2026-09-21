@@ -1,0 +1,3 @@
+{"type":"system","sessionId":"66666666-ffff-4fff-8fff-666666666666","uuid":"f1","timestamp":"2026-09-20T10:06:00.000Z","cwd":"/Users/example/alpha","subtype":"compact_boundary","trigger":"auto","preTokens":169000,"durationMs":4210}
+{"type":"system","sessionId":"66666666-ffff-4fff-8fff-666666666666","uuid":"f2","timestamp":"2026-09-20T10:07:00.000Z","cwd":"/Users/example/alpha","subtype":"api_error","message":"529 overloaded_service"}
+{"type":"system","sessionId":"66666666-ffff-4fff-8fff-666666666666","uuid":"f3","timestamp":"2026-09-20T10:08:00.000Z","cwd":"/Users/example/alpha","subtype":"quantum_mode_changed","mode":"plan"}

@@ -1,0 +1,180 @@
+{
+  "results": [
+    {
+      "events": [
+        {
+          "id": "e648bc9b979cb362a840410e8e60524b883d7d2d3b3ee80ddf4686e9328beb4c",
+          "type": "generation.end",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "30ddea4d04eb2e376c87e63727e88776c63f33de0ac5e6ebc84a2d230f4c6e3a",
+          "threadId": "t/927df735b0d2fb81acd63a0790b77a5e4fa53b13350972fc1f5229cb6492a42c",
+          "projectId": "project:alpha",
+          "parentEventId": null,
+          "requestId": "req-b1",
+          "timestamp": 1789898460000,
+          "model": {
+            "provider": "anthropic",
+            "name": "qfmodel"
+          },
+          "usage": {
+            "inputTokens": 500,
+            "outputTokens": 60,
+            "cacheReadTokens": 9000,
+            "cacheWriteTokens": 0,
+            "reasoningTokens": 0
+          },
+          "usageSource": "reported",
+          "costReported": null,
+          "costSource": null,
+          "credits": 0.05,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 1,
+          "rawOffset": 0,
+          "payload": null,
+          "metadata": {
+            "block_types": [
+              "tool_use"
+            ],
+            "message_id": null,
+            "stop_reason": "tool_use",
+            "leaf_uuid": null,
+            "qoder_credits": 0.05,
+            "qoder_original_credits": 0.05,
+            "qoder_billable": false,
+            "qoder_context_usage_ratio": 0.04,
+            "qoder_billing": {
+              "service_tier": "standard",
+              "inference_geo": "",
+              "speed": "standard",
+              "iterations": 0
+            }
+          }
+        },
+        {
+          "id": "aa5ccf6afa84374acf22a84ad53f4fa75b281100aee3fafc68981603a8030072",
+          "type": "tool.start",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "30ddea4d04eb2e376c87e63727e88776c63f33de0ac5e6ebc84a2d230f4c6e3a",
+          "threadId": "t/927df735b0d2fb81acd63a0790b77a5e4fa53b13350972fc1f5229cb6492a42c",
+          "projectId": "project:alpha",
+          "parentEventId": "e648bc9b979cb362a840410e8e60524b883d7d2d3b3ee80ddf4686e9328beb4c",
+          "requestId": "req-b1",
+          "timestamp": 1789898460000,
+          "model": {
+            "provider": "anthropic",
+            "name": "qfmodel"
+          },
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": {
+            "type": "tool",
+            "name": "Bash",
+            "provider": null
+          },
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 1,
+          "rawOffset": 0,
+          "payload": {
+            "kind": "tool_input",
+            "role": "assistant",
+            "text": "16ch"
+          },
+          "metadata": {
+            "tool_name": "Bash",
+            "tool_use_id": "tu_9"
+          }
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "id": "9c8870dc92ee9d5b08c7eaeee9b065eebbe14758b5a1298cc2c1f51ea2f7879d",
+          "type": "tool.result",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "30ddea4d04eb2e376c87e63727e88776c63f33de0ac5e6ebc84a2d230f4c6e3a",
+          "threadId": "t/927df735b0d2fb81acd63a0790b77a5e4fa53b13350972fc1f5229cb6492a42c",
+          "projectId": "project:alpha",
+          "parentEventId": "aa5ccf6afa84374acf22a84ad53f4fa75b281100aee3fafc68981603a8030072",
+          "requestId": null,
+          "timestamp": 1789898465000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": {
+            "type": "tool",
+            "name": "Bash",
+            "provider": null
+          },
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 2,
+          "rawOffset": 684,
+          "payload": {
+            "kind": "tool_output",
+            "role": "user",
+            "text": "20ch"
+          },
+          "metadata": {
+            "tool_use_id": "tu_9",
+            "is_error": null,
+            "prompt_id": "p-1"
+          }
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "id": "1371318e02ce2bcfed7743187880647dbd5fe00871d75faca6e2da928b40461e",
+          "type": "tool.result",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "30ddea4d04eb2e376c87e63727e88776c63f33de0ac5e6ebc84a2d230f4c6e3a",
+          "threadId": "t/927df735b0d2fb81acd63a0790b77a5e4fa53b13350972fc1f5229cb6492a42c",
+          "projectId": "project:alpha",
+          "parentEventId": null,
+          "requestId": null,
+          "timestamp": 1789898467000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": null,
+          "durationMs": null,
+          "status": "error",
+          "errorFingerprint": "1c3e47f8984ec35ecfb03fe0836d98bf08193763373a481d1204cac674212264",
+          "rawSeq": 3,
+          "rawOffset": 1066,
+          "payload": {
+            "kind": "tool_output",
+            "role": "user",
+            "text": "20ch"
+          },
+          "metadata": {
+            "tool_use_id": "tu_missing",
+            "is_error": true,
+            "prompt_id": "p-1"
+          }
+        }
+      ]
+    }
+  ]
+}

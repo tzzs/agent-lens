@@ -1,0 +1,146 @@
+{
+  "results": [
+    {
+      "events": [
+        {
+          "id": "47f148d173b87037ef20b5ef0c727892bcc0abb4bcf24698f85ae50d1a6028a2",
+          "type": "generation.end",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "600c223e0c207976f0db6a88b6117d3a9ed79daced834ef249b1a5052db04388",
+          "threadId": "t/90d6017d44ed2678f6ade39d96cea8ba736ca5ddabb66547b007447cc2bc19f7",
+          "projectId": "project:alpha",
+          "parentEventId": null,
+          "requestId": "b0d468a4-0000-4000-8000-000000000001",
+          "timestamp": 1789898400000,
+          "model": {
+            "provider": "anthropic",
+            "name": "qfmodel"
+          },
+          "usage": {
+            "inputTokens": 21000,
+            "outputTokens": 340,
+            "cacheReadTokens": 180000,
+            "cacheWriteTokens": 512,
+            "reasoningTokens": 0
+          },
+          "usageSource": "reported",
+          "costReported": null,
+          "costSource": null,
+          "credits": 0.42,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 1,
+          "rawOffset": 0,
+          "payload": {
+            "kind": "assistant_message",
+            "role": "assistant",
+            "text": "17ch"
+          },
+          "metadata": {
+            "block_types": [
+              "text",
+              "tool_use",
+              "tool_use"
+            ],
+            "message_id": "msg_x1",
+            "stop_reason": "tool_use",
+            "leaf_uuid": null,
+            "qoder_credits": 0.42,
+            "qoder_original_credits": 0.42,
+            "qoder_billable": true,
+            "qoder_context_usage_ratio": 0.21345,
+            "qoder_billing": {
+              "service_tier": "standard",
+              "inference_geo": "",
+              "speed": "standard",
+              "iterations": 0
+            }
+          }
+        },
+        {
+          "id": "58b2a6230ad6679fcb4e7e7362b0bf7d6386e1643b7fcd4782a9c7549420f9cf",
+          "type": "tool.start",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "600c223e0c207976f0db6a88b6117d3a9ed79daced834ef249b1a5052db04388",
+          "threadId": "t/90d6017d44ed2678f6ade39d96cea8ba736ca5ddabb66547b007447cc2bc19f7",
+          "projectId": "project:alpha",
+          "parentEventId": "47f148d173b87037ef20b5ef0c727892bcc0abb4bcf24698f85ae50d1a6028a2",
+          "requestId": "b0d468a4-0000-4000-8000-000000000001",
+          "timestamp": 1789898400000,
+          "model": {
+            "provider": "anthropic",
+            "name": "qfmodel"
+          },
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": {
+            "type": "tool",
+            "name": "Bash",
+            "provider": null
+          },
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 1,
+          "rawOffset": 0,
+          "payload": {
+            "kind": "tool_input",
+            "role": "assistant",
+            "text": "98ch"
+          },
+          "metadata": {
+            "tool_name": "Bash",
+            "tool_use_id": "tu_1"
+          }
+        },
+        {
+          "id": "2d5fb51054cdadb7866f75e1e0afa96d6ed5a6f6562956efd4c9845487878dc8",
+          "type": "tool.start",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "600c223e0c207976f0db6a88b6117d3a9ed79daced834ef249b1a5052db04388",
+          "threadId": "t/90d6017d44ed2678f6ade39d96cea8ba736ca5ddabb66547b007447cc2bc19f7",
+          "projectId": "project:alpha",
+          "parentEventId": "47f148d173b87037ef20b5ef0c727892bcc0abb4bcf24698f85ae50d1a6028a2",
+          "requestId": "b0d468a4-0000-4000-8000-000000000001",
+          "timestamp": 1789898400000,
+          "model": {
+            "provider": "anthropic",
+            "name": "qfmodel"
+          },
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": {
+            "type": "tool",
+            "name": "Read",
+            "provider": null
+          },
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 1,
+          "rawOffset": 0,
+          "payload": {
+            "kind": "tool_input",
+            "role": "assistant",
+            "text": "44ch"
+          },
+          "metadata": {
+            "tool_name": "Read",
+            "tool_use_id": "tu_2"
+          }
+        }
+      ]
+    }
+  ]
+}

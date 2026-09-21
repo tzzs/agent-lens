@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"88888888-bbbb-4bbb-8bbb-888888888888","uuid":"h1","timestamp":"2026-09-20T10:10:00.000Z","cwd":"/Users/example/alpha","userType":"external","entrypoint":"cli","version":"1.9.0","message":{"role":"user","content":"hello"}}
+{"type":"assistant","broken": true,

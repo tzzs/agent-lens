@@ -1,0 +1,2 @@
+{"type":"telemetry-beacon-v9","sessionId":"77777777-aaaa-4aaa-8aaa-777777777777","uuid":"g1","timestamp":"2026-09-20T10:09:00.000Z","payload":{"mystery":"shape","nested":{"deep":{"deeper":[{"i":1}]}}}}
+{"totally":{"not":"a record"}}

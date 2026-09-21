@@ -1,0 +1,58 @@
+{
+  "results": [
+    {
+      "events": [
+        {
+          "id": "4e6533f480638f840ad027fc34aa2be81b1ff24fcbc92afbf7ca7de390c31e2f",
+          "type": "generation.end",
+          "subtype": "zero-usage",
+          "hostId": "qoder",
+          "sessionId": "006c413e1fbb86f75b310ced8c816268a71efd1635c1b1758b15b074509f4fff",
+          "threadId": "t/13afc3eee2a1699e4e2085cec79000b0aa3990c41e039520e4426a5b3fc65e1a",
+          "projectId": "project:alpha",
+          "parentEventId": null,
+          "requestId": "b0d468a4-b274-434a-b30b-fc345a91efa4",
+          "timestamp": 1789899120000,
+          "model": {
+            "provider": "anthropic",
+            "name": "qfmodel"
+          },
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": 0.0823075,
+          "capability": null,
+          "durationMs": null,
+          "status": "error",
+          "errorFingerprint": "30d53bf30dd745173add7beb2f7df31d6791ff8430fd94b710934ae0fdb6edbc",
+          "rawSeq": 1,
+          "rawOffset": 0,
+          "payload": {
+            "kind": "assistant_message",
+            "role": "assistant",
+            "text": "4ch"
+          },
+          "metadata": {
+            "block_types": [
+              "text"
+            ],
+            "message_id": null,
+            "stop_reason": "end_turn",
+            "leaf_uuid": null,
+            "qoder_credits": 0.0823075,
+            "qoder_original_credits": 0.0823075,
+            "qoder_billable": false,
+            "qoder_context_usage_ratio": 0.043835,
+            "qoder_billing": {
+              "service_tier": "standard",
+              "inference_geo": "",
+              "speed": "standard",
+              "iterations": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{"type":"active-leaf","sessionId":"llll0000-0000-4000-8000-000000000000","uuid":"m1","timestamp":"2026-09-20T10:15:00.000Z","leafUuid":"m0"}
+{"type":"runtime-config","sessionId":"llll0000-0000-4000-8000-000000000000","uuid":"m2","timestamp":"2026-09-20T10:15:00.000Z","config":{"model":"qfmodel","maxTokens":32000}}
+{"type":"last-prompt","sessionId":"llll0000-0000-4000-8000-000000000000","uuid":"m3","timestamp":"2026-09-20T10:15:01.000Z","prompt":"a very long stored prompt text that must be redacted from metadata but its length preserved for drift review purposes only"}
+{"type":"workspace-directories","sessionId":"llll0000-0000-4000-8000-000000000000","uuid":"m4","timestamp":"2026-09-20T10:15:01.000Z","directories":["/Users/example/alpha","/Users/example/shared"]}
+{"type":"worktree-state","sessionId":"llll0000-0000-4000-8000-000000000000","uuid":"m5","timestamp":"2026-09-20T10:15:02.000Z","worktreePath":"/Users/example/.qoder-worktrees-app-1234-alpha","branch":"picko"}
+{"type":"file-history-snapshot","sessionId":"llll0000-0000-4000-8000-000000000000","uuid":"m6","timestamp":"2026-09-20T10:15:02.000Z","files":[{"path":"/Users/example/alpha/a.ts","hash":"deadbeef"}]}

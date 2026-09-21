@@ -1,0 +1,181 @@
+{
+  "results": [
+    {
+      "events": [
+        {
+          "id": "2140b2b15217d7a1d2f709ac372243b28d728e583be2adb3133fd3f945dd3519",
+          "type": "generation.end",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "33b964f08b6eac2d2f6b40bdd8c0cf5d2ae94a63d63731ae107b86066f323cc0",
+          "threadId": "t/b4f1b0835534e3fcb7a6de9d4867bac07df0e4566f051a6ea5005d11e7661fb3",
+          "projectId": "project:alpha",
+          "parentEventId": null,
+          "requestId": "req-e1",
+          "timestamp": 1789898640000,
+          "model": {
+            "provider": "anthropic",
+            "name": "qfmodel"
+          },
+          "usage": {
+            "inputTokens": 800,
+            "outputTokens": 90,
+            "cacheReadTokens": 1200,
+            "cacheWriteTokens": 10,
+            "reasoningTokens": 0
+          },
+          "usageSource": "reported",
+          "costReported": null,
+          "costSource": null,
+          "credits": 0.03,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 1,
+          "rawOffset": 0,
+          "payload": null,
+          "metadata": {
+            "block_types": [
+              "tool_use"
+            ],
+            "message_id": null,
+            "stop_reason": "tool_use",
+            "leaf_uuid": null,
+            "qoder_credits": 0.03,
+            "qoder_original_credits": 0.03,
+            "qoder_billable": true,
+            "qoder_context_usage_ratio": 0.05,
+            "qoder_billing": {
+              "service_tier": "standard",
+              "inference_geo": "",
+              "speed": "standard",
+              "iterations": 0
+            }
+          }
+        },
+        {
+          "id": "312f999ecb97729460578d0a96196af6914f03ebca500b19d5695c82ddf889cb",
+          "type": "tool.start",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "33b964f08b6eac2d2f6b40bdd8c0cf5d2ae94a63d63731ae107b86066f323cc0",
+          "threadId": "t/b4f1b0835534e3fcb7a6de9d4867bac07df0e4566f051a6ea5005d11e7661fb3",
+          "projectId": "project:alpha",
+          "parentEventId": "2140b2b15217d7a1d2f709ac372243b28d728e583be2adb3133fd3f945dd3519",
+          "requestId": "req-e1",
+          "timestamp": 1789898640000,
+          "model": {
+            "provider": "anthropic",
+            "name": "qfmodel"
+          },
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": {
+            "type": "tool",
+            "name": "Edit",
+            "provider": null
+          },
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 1,
+          "rawOffset": 0,
+          "payload": {
+            "kind": "tool_input",
+            "role": "assistant",
+            "text": "41ch"
+          },
+          "metadata": {
+            "tool_name": "Edit",
+            "tool_use_id": "tu_e1"
+          }
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "id": "6a138f63f86302bb94a9f32d4aeea3664260c9456ba796ef95b8db411fa0575d",
+          "type": "hook.fire",
+          "subtype": "hook_post",
+          "hostId": "qoder",
+          "sessionId": "33b964f08b6eac2d2f6b40bdd8c0cf5d2ae94a63d63731ae107b86066f323cc0",
+          "threadId": "t/b4f1b0835534e3fcb7a6de9d4867bac07df0e4566f051a6ea5005d11e7661fb3",
+          "projectId": "project:alpha",
+          "parentEventId": "312f999ecb97729460578d0a96196af6914f03ebca500b19d5695c82ddf889cb",
+          "requestId": null,
+          "timestamp": 1789898642000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": {
+            "type": "hook",
+            "name": "PostToolUse:Edit",
+            "provider": "PostToolUse"
+          },
+          "durationMs": 137,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 2,
+          "rawOffset": 710,
+          "payload": null,
+          "metadata": {
+            "hook_event": "PostToolUse",
+            "exit_code": 0,
+            "tool_use_id": "tu_e1",
+            "stderr_chars": 0,
+            "stdout_chars": 2
+          }
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "id": "fc254d88bc029ac5e0d4b8cb8fa23ae5df0a4085bf67f12ca2e66b719d80b9aa",
+          "type": "hook.fire",
+          "subtype": "stop_hook_summary",
+          "hostId": "qoder",
+          "sessionId": "33b964f08b6eac2d2f6b40bdd8c0cf5d2ae94a63d63731ae107b86066f323cc0",
+          "threadId": "t/b4f1b0835534e3fcb7a6de9d4867bac07df0e4566f051a6ea5005d11e7661fb3",
+          "projectId": "project:alpha",
+          "parentEventId": null,
+          "requestId": null,
+          "timestamp": 1789898700000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": {
+            "type": "hook",
+            "name": "Stop",
+            "provider": "Stop"
+          },
+          "durationMs": 51,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 3,
+          "rawOffset": 1088,
+          "payload": null,
+          "metadata": {
+            "mapped": true,
+            "hook_count": 2,
+            "summary": true,
+            "host_diagnostics": [
+              "entrypoint-absent"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

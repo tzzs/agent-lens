@@ -1,0 +1,93 @@
+{
+  "results": [
+    {
+      "events": [
+        {
+          "id": "68ccf36bbd66bd5266f424031d316f7365749717443e7c8c1ed3d8435292f52a",
+          "type": "unknown",
+          "subtype": "telemetry-beacon-v9",
+          "hostId": "qoder",
+          "sessionId": "898490070953d5af6c908f930e11fb595edf686b2ba66b37389646ca613aef94",
+          "threadId": "t/89106991b4604f8159e7503aa37dec0310ee9d3b85c8a9dcf06a0cd345c32d58",
+          "projectId": "d42d99c3305e156cfed44f339624e342a662ead29b44e32be9d357d4575fd1b3",
+          "parentEventId": null,
+          "requestId": null,
+          "timestamp": 1789898940000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 1,
+          "rawOffset": 0,
+          "payload": null,
+          "metadata": {
+            "upstream_type": "telemetry-beacon-v9",
+            "raw": {
+              "type": "telemetry-beacon-v9",
+              "sessionId": "77777777-aaaa-4aaa-8aaa-777777777777",
+              "uuid": "g1",
+              "timestamp": "2026-09-20T10:09:00.000Z",
+              "payload": {
+                "mystery": "shape",
+                "nested": {
+                  "deep": "[object]"
+                }
+              }
+            },
+            "host_diagnostics": [
+              "entrypoint-absent"
+            ],
+            "project_unattributed": true
+          }
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "id": "1866b03ba597b6370eb33a481ceed510d1268a3a36bc7b5c2b80e74d9ff42aec",
+          "type": "unknown",
+          "subtype": null,
+          "hostId": "qoder",
+          "sessionId": "3f9496fe3862002254b2833d0a311f43c02dc9876a42b676e3ec7ec316c2ace0",
+          "threadId": "t/89106991b4604f8159e7503aa37dec0310ee9d3b85c8a9dcf06a0cd345c32d58",
+          "projectId": "d42d99c3305e156cfed44f339624e342a662ead29b44e32be9d357d4575fd1b3",
+          "parentEventId": null,
+          "requestId": null,
+          "timestamp": 1760000000000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 2,
+          "rawOffset": 202,
+          "payload": null,
+          "metadata": {
+            "upstream_type": null,
+            "raw": {
+              "totally": {
+                "not": "a record"
+              }
+            },
+            "host_diagnostics": [
+              "entrypoint-absent"
+            ],
+            "project_unattributed": true
+          }
+        }
+      ]
+    }
+  ]
+}

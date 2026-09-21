@@ -1,0 +1,280 @@
+{
+  "results": [
+    {
+      "events": [
+        {
+          "id": "3548e91230b335b473d2289a119ef43ea27239846cf9522f057619b69b61bf5f",
+          "type": "unknown",
+          "subtype": "active-leaf",
+          "hostId": "qoder",
+          "sessionId": "74ddd34dcddaa78b1957557e6a7f33b1889dc5804eeb711e1932597c9a01105c",
+          "threadId": "t/4429e303ef4dc15fb63958446fc69cf9fe08ca8a304919481e407bd0150cffc1",
+          "projectId": "d42d99c3305e156cfed44f339624e342a662ead29b44e32be9d357d4575fd1b3",
+          "parentEventId": null,
+          "requestId": null,
+          "timestamp": 1789899300000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 1,
+          "rawOffset": 0,
+          "payload": null,
+          "metadata": {
+            "upstream_type": "active-leaf",
+            "host_metadata": true,
+            "raw": {
+              "type": "active-leaf",
+              "sessionId": "llll0000-0000-4000-8000-000000000000",
+              "uuid": "m1",
+              "timestamp": "2026-09-20T10:15:00.000Z",
+              "leafUuid": "m0"
+            },
+            "host_diagnostics": [
+              "entrypoint-absent"
+            ],
+            "project_unattributed": true
+          }
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "id": "b0d6873133ba9422c770ea8ae631fab03ce1a4510393bb144d007f3918e17234",
+          "type": "unknown",
+          "subtype": "runtime-config",
+          "hostId": "qoder",
+          "sessionId": "74ddd34dcddaa78b1957557e6a7f33b1889dc5804eeb711e1932597c9a01105c",
+          "threadId": "t/4429e303ef4dc15fb63958446fc69cf9fe08ca8a304919481e407bd0150cffc1",
+          "projectId": "d42d99c3305e156cfed44f339624e342a662ead29b44e32be9d357d4575fd1b3",
+          "parentEventId": null,
+          "requestId": null,
+          "timestamp": 1789899300000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 2,
+          "rawOffset": 141,
+          "payload": null,
+          "metadata": {
+            "upstream_type": "runtime-config",
+            "host_metadata": true,
+            "raw": {
+              "type": "runtime-config",
+              "sessionId": "llll0000-0000-4000-8000-000000000000",
+              "uuid": "m2",
+              "timestamp": "2026-09-20T10:15:00.000Z",
+              "config": {
+                "model": "qfmodel",
+                "maxTokens": 32000
+              }
+            },
+            "host_diagnostics": [
+              "entrypoint-absent"
+            ],
+            "project_unattributed": true
+          }
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "id": "442aa49c30e13110dbde3a9f2dface1c387e185edff2835ebdf4004c9ecd67dc",
+          "type": "unknown",
+          "subtype": "last-prompt",
+          "hostId": "qoder",
+          "sessionId": "74ddd34dcddaa78b1957557e6a7f33b1889dc5804eeb711e1932597c9a01105c",
+          "threadId": "t/4429e303ef4dc15fb63958446fc69cf9fe08ca8a304919481e407bd0150cffc1",
+          "projectId": "d42d99c3305e156cfed44f339624e342a662ead29b44e32be9d357d4575fd1b3",
+          "parentEventId": null,
+          "requestId": null,
+          "timestamp": 1789899301000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 3,
+          "rawOffset": 316,
+          "payload": null,
+          "metadata": {
+            "upstream_type": "last-prompt",
+            "host_metadata": true,
+            "raw": {
+              "type": "last-prompt",
+              "sessionId": "llll0000-0000-4000-8000-000000000000",
+              "uuid": "m3",
+              "timestamp": "2026-09-20T10:15:01.000Z",
+              "prompt": "(omitted 122ch)"
+            },
+            "host_diagnostics": [
+              "entrypoint-absent"
+            ],
+            "project_unattributed": true
+          }
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "id": "3b3ad6c46906191dfe85a1f8950513905e6b2d08934803458502b46f6b2d8144",
+          "type": "unknown",
+          "subtype": "workspace-directories",
+          "hostId": "qoder",
+          "sessionId": "74ddd34dcddaa78b1957557e6a7f33b1889dc5804eeb711e1932597c9a01105c",
+          "threadId": "t/4429e303ef4dc15fb63958446fc69cf9fe08ca8a304919481e407bd0150cffc1",
+          "projectId": "d42d99c3305e156cfed44f339624e342a662ead29b44e32be9d357d4575fd1b3",
+          "parentEventId": null,
+          "requestId": null,
+          "timestamp": 1789899301000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 4,
+          "rawOffset": 575,
+          "payload": null,
+          "metadata": {
+            "upstream_type": "workspace-directories",
+            "host_metadata": true,
+            "raw": {
+              "type": "workspace-directories",
+              "sessionId": "llll0000-0000-4000-8000-000000000000",
+              "uuid": "m4",
+              "timestamp": "2026-09-20T10:15:01.000Z",
+              "directories": [
+                "/Users/example/alpha",
+                "/Users/example/shared"
+              ]
+            },
+            "host_diagnostics": [
+              "entrypoint-absent"
+            ],
+            "project_unattributed": true
+          }
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "id": "fae9fad7a71e6fb8aa3c453c4cac713061aa32f22cd389a480f893d134b6d5c6",
+          "type": "unknown",
+          "subtype": "worktree-state",
+          "hostId": "qoder",
+          "sessionId": "74ddd34dcddaa78b1957557e6a7f33b1889dc5804eeb711e1932597c9a01105c",
+          "threadId": "t/4429e303ef4dc15fb63958446fc69cf9fe08ca8a304919481e407bd0150cffc1",
+          "projectId": "d42d99c3305e156cfed44f339624e342a662ead29b44e32be9d357d4575fd1b3",
+          "parentEventId": null,
+          "requestId": null,
+          "timestamp": 1789899302000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 5,
+          "rawOffset": 773,
+          "payload": null,
+          "metadata": {
+            "upstream_type": "worktree-state",
+            "host_metadata": true,
+            "raw": {
+              "type": "worktree-state",
+              "sessionId": "llll0000-0000-4000-8000-000000000000",
+              "uuid": "m5",
+              "timestamp": "2026-09-20T10:15:02.000Z",
+              "worktreePath": "/Users/example/.qoder-worktrees-app-1234-alpha",
+              "branch": "picko"
+            },
+            "host_diagnostics": [
+              "entrypoint-absent"
+            ],
+            "project_unattributed": true
+          }
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "id": "1055573047859ab0cd4c17ce287ff2a086b6532019d1a979e2afc99b508f985a",
+          "type": "unknown",
+          "subtype": "file-history-snapshot",
+          "hostId": "qoder",
+          "sessionId": "74ddd34dcddaa78b1957557e6a7f33b1889dc5804eeb711e1932597c9a01105c",
+          "threadId": "t/4429e303ef4dc15fb63958446fc69cf9fe08ca8a304919481e407bd0150cffc1",
+          "projectId": "d42d99c3305e156cfed44f339624e342a662ead29b44e32be9d357d4575fd1b3",
+          "parentEventId": null,
+          "requestId": null,
+          "timestamp": 1789899302000,
+          "model": null,
+          "usage": null,
+          "usageSource": "missing",
+          "costReported": null,
+          "costSource": null,
+          "credits": null,
+          "capability": null,
+          "durationMs": null,
+          "status": "ok",
+          "errorFingerprint": null,
+          "rawSeq": 6,
+          "rawOffset": 982,
+          "payload": null,
+          "metadata": {
+            "upstream_type": "file-history-snapshot",
+            "host_metadata": true,
+            "raw": {
+              "type": "file-history-snapshot",
+              "sessionId": "llll0000-0000-4000-8000-000000000000",
+              "uuid": "m6",
+              "timestamp": "2026-09-20T10:15:02.000Z",
+              "files": [
+                {
+                  "path": "/Users/example/alpha/a.ts",
+                  "hash": "deadbeef"
+                }
+              ]
+            },
+            "host_diagnostics": [
+              "entrypoint-absent"
+            ],
+            "project_unattributed": true
+          }
+        }
+      ]
+    }
+  ]
+}
