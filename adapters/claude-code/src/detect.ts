@@ -80,7 +80,7 @@ async function versionFromNewestFile(ctx: HostContext, files: string[]): Promise
 
 async function versionFromInstallHint(ctx: HostContext): Promise<string | null> {
   for (const path of [
-    join(ctx.dataRoot, '..', 'lib', 'node_modules', '@anthropic-ai', 'claude-code', 'package.json'),
+    ...(ctx.dataRoot ? [join(ctx.dataRoot, '..', 'lib', 'node_modules', '@anthropic-ai', 'claude-code', 'package.json')] : []),
     join(ctx.homedir, '.claude.json'),
   ]) {
     let text: string

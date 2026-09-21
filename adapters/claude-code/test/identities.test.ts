@@ -133,8 +133,47 @@ describe('subagents', () => {
     expect(entry?.capability).toEqual({ type: 'subagent', name: 'general-purpose', provider: 'Agent' })
     expect(start?.parentEventId).toBe(entry?.id)
     expect(start?.capability).toEqual({ type: 'subagent', name: 'general-purpose', provider: 'Agent' })
-    expect(end?.parentEventId).toBe(entry?.id)
     expect(all.filter((e) => e.type === 'subagent.start')).toHaveLength(1)
+    // §4.4 row 8 / probe-subagent-attribution: the spawn's own result carries the FK,
+    // so this link is proved, not guessed.
+    expect(end?.parentEventId).toBe(entry?.id)
+    expect(end?.metadata?.parent_source).toBe('foreign-key')
+    expect(end?.metadata?.parent_heuristic).toBe(false)
+  })
+
+  /**
+   * docs/research/subagent-attribution.md: nearest-preceding is a *fallback* only.
+   * Where the spawn's `tool_result` proves a different call, the proved link wins.
+   */
+  it('the spawn-result foreign key overrides a contradicting heuristic guess', async () => {
+    const all = await eventsOf('agent-subagent-fk-override.jsonl')
+    const wrong = all.find((e) => e.type === 'tool.start' && e.metadata?.tool_use_id === 'tu-fk-wrong')
+    const trueSpawn = all.find((e) => e.type === 'tool.start' && e.metadata?.tool_use_id === 'tu-fk-true')
+    const start = all.find((e) => e.type === 'subagent.start')
+    const end = all.find((e) => e.type === 'subagent.end')
+    // at start time only the earlier call exists, so the heuristic has to guess
+    expect(start?.parentEventId).toBe(wrong?.id)
+    expect(start?.metadata?.parent_source).toBe('heuristic')
+    // the closing result names tu-fk-true, which is the parent the logs actually prove
+    expect(end?.parentEventId).toBe(trueSpawn?.id)
+    expect(end?.metadata?.parent_source).toBe('foreign-key')
+    expect(end?.metadata?.linked_parent).toBe(trueSpawn?.id)
+    expect(end?.capability).toEqual({ type: 'subagent', name: 'general-purpose', provider: 'Agent' })
+  })
+
+  /**
+   * Deployed shape (probe-subagent-attribution): the chain's own records live in a
+   * separate source, so this session file never emits `subagent.start` — but the
+   * closing result still names its spawn, so `subagent.end` is attributed exactly.
+   */
+  it('attributes a chain whose records are in another source, from the closing result', async () => {
+    const all = await eventsOf('agent-subagent-fk-separate-source.jsonl')
+    const entry = all.find((e) => e.subtype === 'Agent:spawn')
+    const end = all.find((e) => e.type === 'subagent.end')
+    expect(all.filter((e) => e.type === 'subagent.start')).toHaveLength(0)
+    expect(end?.parentEventId).toBe(entry?.id)
+    expect(end?.metadata?.parent_source).toBe('foreign-key')
+    expect(end?.metadata?.agent_id).toBe('a-sep-chain')
   })
 
   it('legacy Task entry is accepted and an unmatched chain stays NULL', async () => {
@@ -175,6 +214,8 @@ describe('subagents', () => {
     const start = result.events.find((e) => e.type === 'subagent.start')
     expect(start?.parentEventId).toBeNull()
     expect(start?.metadata?.parent_matched).toBe(false)
+    // NULL is an outcome doctor can count, not a silent guess (§4.4 row 8)
+    expect(start?.metadata?.parent_source).toBe('none')
   })
 })
 

@@ -183,8 +183,11 @@ function dispatch(s: Scope, upstreamType: string | null): AgentEvent[] {
 
 /**
  * §2.3: side chains are attributed to the nearest preceding `Agent`/`Task` call in the
- * same session; there is no foreign key upstream, so `parent_event_id` may stay NULL.
- * The chain keeps its own requestId/usage, so its cost is attributable on its own.
+ * same session as a *fallback*; `parent_event_id` may stay NULL (§4.4 row 8). A link
+ * later proved by the spawn's own `tool_result` upgrades the stored chain
+ * (`ScanState.confirmSidechainParent`), which is why `subagent.end` carries
+ * `parent_source`. The chain keeps its own requestId/usage, so its cost is attributable
+ * on its own either way.
  */
 function subagentStart(s: Scope): AgentEvent[] {
   const agentId = s.agentId
@@ -207,7 +210,13 @@ function subagentStart(s: Scope): AgentEvent[] {
       discriminator: `subagent-start:${agentId}`,
       capability: { type: 'subagent', name: link.subagentType ?? agentId, provider: link.subagentType ? 'Agent' : 'agent' },
       parentEventId: link.parentEventId,
-      metadata: { mapped: true, agent_id: agentId, parent_heuristic: true, parent_matched: link.parentEventId !== null },
+      metadata: {
+        mapped: true,
+        agent_id: agentId,
+        parent_source: link.parentSource ?? 'none',
+        parent_heuristic: link.parentSource === 'heuristic',
+        parent_matched: link.parentEventId !== null,
+      },
     }),
   ]
 }
@@ -438,7 +447,11 @@ function fromAssistantBlock(s: Scope, block: UnknownRecord, kind: string, index:
       ? { tool_name: name, tool_use_id: toolUseId, description: str(input?.description) }
       : { tool_name: name, tool_use_id: toolUseId },
   })
-  s.state.noteToolCall(toolUseId ?? `${parentEventId}#${index}`, { eventId: toolEvent.id, capability })
+  s.state.noteToolCall(toolUseId ?? `${parentEventId}#${index}`, {
+    eventId: toolEvent.id,
+    capability,
+    subagentType: isSubagentEntry ? str(input?.subagent_type) : null,
+  })
   if (isSubagentEntry) {
     s.state.noteAgentEntry(s.sessionId, {
       eventId: toolEvent.id,
@@ -461,12 +474,14 @@ function firstKey(input: UnknownRecord | null): string | null {
 function fromUser(s: Scope): AgentEvent[] {
   const blocks = contentBlocks(s.rec)
   const out: AgentEvent[] = []
+  const resultToolUseIds: (string | null)[] = []
   let sawToolResult = false
 
   blocks.forEach((block, index) => {
     if (str(block.type) !== 'tool_result') return
     sawToolResult = true
     const toolUseId = str(block.tool_use_id) ?? str(block.toolUseID)
+    resultToolUseIds.push(toolUseId)
     // §2.7: 93.2% of user records are tool results, not user turns.
     const ref = s.state.toolCall(toolUseId)
     const isError = bool(block.is_error)
@@ -486,7 +501,7 @@ function fromUser(s: Scope): AgentEvent[] {
     )
   })
 
-  const sidechainEnd = sidechainClose(s)
+  const sidechainEnd = sidechainClose(s, resultToolUseIds)
   if (sidechainEnd) out.push(sidechainEnd)
 
   if (sawToolResult) return out
@@ -550,20 +565,38 @@ function toolResultText(block: UnknownRecord): string | null {
   return parts.length > 0 ? parts.join('\n') : null
 }
 
-/** §2.3: the `Agent`/`Task` result carries `agentId`, which closes that side chain. */
-function sidechainClose(s: Scope): AgentEvent | null {
+/**
+ * §2.3: the `Agent`/`Task` result carries `agentId`, which closes that side chain —
+ * and the same record carries that spawn's own `tool_use_id`. §4.4 row 8 assumed no
+ * foreign key exists; `docs/research/subagent-attribution.md` measured one on 36/36
+ * side chains, so it is used first and the nearest-preceding heuristic is the fallback.
+ */
+function sidechainClose(s: Scope, resultToolUseIds: readonly (string | null)[]): AgentEvent | null {
   const result = asRecord(s.rec.toolUseResult)
   if (!result) return null
   const agentId = str(result.agentId) ?? str(result.agent_id)
   if (!agentId) return null
-  const link = s.state.sidechain(s.sessionId, agentId)
+  const spawn =
+    resultToolUseIds.map((id) => s.state.toolCall(id)).find((ref) => ref?.capability?.type === 'subagent') ?? null
+  const link = spawn
+    ? s.state.confirmSidechainParent(s.sessionId, agentId, {
+        eventId: spawn.eventId,
+        subagentType: spawn.subagentType ?? null,
+      })
+    : s.state.sidechain(s.sessionId, agentId)
+  const parentSource = link?.parentSource ?? null
   return event(s, {
     type: 'subagent.end',
     discriminator: `subagent-end:${agentId}`,
     capability: { type: 'subagent', name: link?.subagentType ?? agentId, provider: link?.subagentType ? 'Agent' : 'agent' },
     parentEventId: link?.parentEventId ?? null,
     status: bool(result.isError) || bool(result.is_error) ? 'error' : 'ok',
-    metadata: { agent_id: agentId, linked_parent: link?.parentEventId ?? null, parent_heuristic: true },
+    metadata: {
+      agent_id: agentId,
+      linked_parent: link?.parentEventId ?? null,
+      parent_source: parentSource ?? 'none',
+      parent_heuristic: parentSource === 'heuristic',
+    },
   })
 }
 

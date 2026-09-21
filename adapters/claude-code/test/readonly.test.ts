@@ -78,6 +78,7 @@ describe('read-only guarantee (§5.2 rule 3)', () => {
 
   it('the adapter exposes only the read-side AgentAdapter surface', () => {
     expect(Object.keys(claudeCodeAdapter).sort()).toEqual([
+      'aggregation',
       'capabilities',
       'detect',
       'discover',

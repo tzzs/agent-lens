@@ -11,12 +11,17 @@ import { parse } from './parse.ts'
 import { AGENT_ID } from './record.ts'
 
 /** Bump when the mapping rules below change: a mismatch forces a full rescan (§5.3). */
-export const PARSER_VERSION = 1
+// v2: subagent parent attribution now prefers the spawn's own tool_result foreign key
+// (docs/research/subagent-attribution.md), so previously written parent_event_id
+// values are stale and the side chain rows must be re-derived.
+export const PARSER_VERSION = 2
 
 export const claudeCodeAdapter: AgentAdapter = {
   id: AGENT_ID,
   displayName: 'Claude Code',
   parserVersion: PARSER_VERSION,
+  // §1.5: one API response is split across content-block records that repeat the same usage.
+  aggregation: Object.freeze({ mode: 'request_max', subagentsIncluded: true }),
   detect,
   discover,
   parse,

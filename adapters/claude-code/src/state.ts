@@ -18,16 +18,27 @@ export interface AgentEntryCall {
   rawSeq: number
 }
 
+/**
+ * How a side chain got its parent. `docs/research/subagent-attribution.md` measured
+ * that `foreign-key` is available for every Claude Code side chain on this machine,
+ * so it is the rule and `heuristic` is only the fallback.
+ */
+export type ParentSource = 'heuristic' | 'foreign-key'
+
 export interface SidechainLink {
   firstSeen: boolean
-  startEventId: string
+  /** Null when the link was created by the closing result, before any start event. */
+  startEventId: string | null
   parentEventId: string | null
   subagentType: string | null
+  parentSource: ParentSource | null
 }
 
 export interface ToolCallRef {
   eventId: string
   capability: CapabilityRef | null
+  /** Set for `Agent`/`Task` calls: the raw `subagent_type`, kept out of payloads. */
+  subagentType?: string | null
 }
 
 /** Two activation paths describing one activation land within a few records of each other. */
@@ -99,8 +110,10 @@ export class ScanState {
   }
 
   /**
-   * §2.3: side chains carry no agentId <-> tool_use.id foreign key, so the parent
-   * is the nearest preceding `Agent`/`Task` call in the same session; NULL is legal.
+   * §2.3: side chains carry no agentId <-> tool_use.id foreign key *on their own
+   * records*, so the fallback parent is the nearest preceding `Agent`/`Task` call in
+   * the same session; NULL is legal (§4.4 row 8). `confirmSidechainParent` overrides
+   * this whenever the spawn's own result proves the link.
    */
   linkSidechain(
     sessionId: string,
@@ -122,6 +135,32 @@ export class ScanState {
       startEventId,
       parentEventId: best ? best.eventId : null,
       subagentType: best ? best.subagentType : null,
+      parentSource: best ? 'heuristic' : null,
+    }
+    this.sidechains.set(key, link)
+    return link
+  }
+
+  /**
+   * The spawn's own `tool_result` carries both `tool_use_id` (the `Agent` call) and
+   * `toolUseResult.agentId` (the chain it started): the one real foreign key in this
+   * log format, measured on 36/36 side chains in `docs/research/subagent-attribution.md`.
+   * It upgrades a chain that the heuristic already linked — a proved link beats a
+   * plausible one — and is recorded for a chain whose start lives in another source.
+   */
+  confirmSidechainParent(
+    sessionId: string,
+    agentId: string,
+    parent: { eventId: string; subagentType: string | null },
+  ): SidechainLink {
+    const key = `${sessionId}\u0000${agentId}`
+    const existing = this.sidechains.get(key)
+    const link: SidechainLink = {
+      firstSeen: existing?.firstSeen ?? false,
+      startEventId: existing?.startEventId ?? null,
+      parentEventId: parent.eventId,
+      subagentType: parent.subagentType ?? existing?.subagentType ?? null,
+      parentSource: 'foreign-key',
     }
     this.sidechains.set(key, link)
     return link
