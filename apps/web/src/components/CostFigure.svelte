@@ -23,7 +23,7 @@
   const titles = {
     est: 'Computed estimate: tokens × list price (cost_api_equiv). Not a cash figure.',
     actual: 'Actual cash after the declared billing mode — subscription and local models spend 0 (§8).',
-    reported: 'Cost the agent logged for itself (§18 row 1); only OpenCode and WorkBuddy report it.',
+    reported: "Cost the agent logged for itself (§18 row 1): only where an agent's own log carries the figure, so which agents report is a fact about the data, not a fixed list; every other cost here falls back to the computed estimate (est.).",
   }
   const text = $derived(formatUsd(value))
   const na = $derived(text === 'n/a')
