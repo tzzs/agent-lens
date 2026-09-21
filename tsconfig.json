@@ -21,7 +21,13 @@
       "@agentlens/pricing": ["./packages/pricing/src/index.ts"],
       "@agentlens/query": ["./packages/query/src/index.ts"],
       "@agentlens/adapter-claude-code": ["./adapters/claude-code/src/index.ts"],
-      "@agentlens/cli": ["./apps/cli/src/index.ts"]
+      "@agentlens/adapter-codex": ["./adapters/codex/src/index.ts"],
+      "@agentlens/adapter-qoder": ["./adapters/qoder/src/index.ts"],
+      "@agentlens/adapter-opencode": ["./adapters/opencode/src/index.ts"],
+      "@agentlens/adapter-workbuddy": ["./adapters/workbuddy/src/index.ts"],
+      "@agentlens/cli": ["./apps/cli/src/index.ts"],
+      "@agentlens/server": ["./packages/server/src/index.ts"],
+      "@agentlens/web": ["./apps/web/src/lib/index.ts"]
     }
   },
   "include": ["packages/*/src/**/*", "packages/*/test/**/*", "adapters/*/src/**/*", "adapters/*/test/**/*", "apps/*/src/**/*"]

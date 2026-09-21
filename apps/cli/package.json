@@ -7,12 +7,20 @@
     "agentlens": "./src/command-exec.ts",
     "agl": "./src/command-exec.ts"
   },
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "dependencies": {
+    "@agentlens/adapter-claude-code": "workspace:*",
+    "@agentlens/adapter-codex": "workspace:*",
+    "@agentlens/adapter-opencode": "workspace:*",
+    "@agentlens/adapter-qoder": "workspace:*",
+    "@agentlens/adapter-workbuddy": "workspace:*",
     "@agentlens/collector": "workspace:*",
     "@agentlens/event-model": "workspace:*",
     "@agentlens/pricing": "workspace:*",
     "@agentlens/query": "workspace:*",
+    "@agentlens/server": "workspace:*",
     "@agentlens/storage": "workspace:*"
   }
 }
