@@ -8,6 +8,9 @@ import { homedir as osHomedir } from 'node:os'
 import { basename, dirname } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import type { HostContext } from '@agentlens/event-model'
+import type { FlagView } from './args.ts'
+import type { ServeHandle } from './serve.ts'
+import { loadAgentAggregations } from '@agentlens/storage'
 import type { BillingMode, QueryFilter, QueryDeps } from './types.ts'
 import { loadBillingModes, loadPricing } from './pricing-store.ts'
 
@@ -18,6 +21,11 @@ export interface Ctx {
   homedir: string
   env: NodeJS.ProcessEnv
   now: () => number
+  /**
+   * `--serve` plug point (§14). Tests inject a stub so the suite never binds a socket
+   * or launches a browser; the real implementation lives in `serve.ts`.
+   */
+  serve?: (db: DatabaseSync, dbPath: string, flags: FlagView, ctx: Ctx, deps: QueryDeps) => Promise<ServeHandle>
 }
 
 export function defaultCtx(argv: string[]): Ctx {
@@ -68,7 +76,7 @@ export function fileExists(path: string): boolean {
 /** HostContext (§5.1) backed by real fs, read-only. */
 export function makeHostCtx(ctx: Ctx, dataRoot?: string | null): HostContext {
   return {
-    dataRoot: dataRoot || ctx.homedir,
+    dataRoot: dataRoot ?? null,
     homedir: ctx.homedir,
     env: ctx.env,
     async readFile(path: string): Promise<string> {
@@ -90,12 +98,15 @@ export function makeHostCtx(ctx: Ctx, dataRoot?: string | null): HostContext {
   }
 }
 
-export function queryDeps(dbPath: string, ctx: Ctx): QueryDeps {
+export function queryDeps(db: DatabaseSync, dbPath: string, ctx: Ctx): QueryDeps {
   const { table } = loadPricing(dbPath)
   const modes = loadBillingModes(dbPath)
   return {
     priceResolver: (provider, model, occurredAt) => table.lookup(provider, model, occurredAt),
     billingModeFor: (agentId): BillingMode => modes[agentId] ?? 'api',
+    // §18 row 2: read the fold rule back from the rows' own agents, so a query never has to
+    // know which adapter version wrote them.
+    aggregation: loadAgentAggregations(db),
   }
 }
 

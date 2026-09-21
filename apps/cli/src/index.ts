@@ -8,11 +8,13 @@ import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import { defaultDbPath, migrate, openDatabase } from '@agentlens/storage'
 import { CLI_FLAG_SCHEMA, parseArgs, UsageError, type FlagView } from './args.ts'
+import { getAdapters } from './adapters.ts'
 import { defaultCtx, redactHome, type Ctx } from './context.ts'
 import { ensureDataDir } from './pricing-store.ts'
 import { bucketTs } from '@agentlens/query'
 import { GLYPH, formatCount, formatTokens, formatUsd } from './render.ts'
 import { cmdScan, runScan } from './commands/scan.ts'
+import { cmdWatch } from './commands/watch.ts'
 import { cmdStatus } from './commands/status.ts'
 import { cmdDoctor } from './commands/doctor.ts'
 import { cmdUsage } from './commands/usage.ts'
@@ -22,6 +24,7 @@ import { cmdExport } from './commands/export.ts'
 import { cmdPricingOverride, cmdPricingUpdate, cmdPrune } from './commands/admin.ts'
 import { query } from '@agentlens/query'
 import { queryDeps } from './context.ts'
+import { serveDashboard } from './serve.ts'
 import { filter } from './commands/shared.ts'
 
 export const DASHBOARD_URL = 'http://localhost:7317'
@@ -31,6 +34,8 @@ const HELP = `agentlens (agl) — the activity monitor for AI agents
 Usage:
   agentlens                        scan registered adapters, print summary (§14)
   agentlens scan [--agent X]       manual incremental scan
+  agentlens watch [--agent X] [--interval <ms>]
+                                   scan once, then stay resident printing new activity (§9)
   agentlens status                 agent discovery + source counts + today's totals
   agentlens doctor                 data-trust report (§11)
   agentlens usage  [--agent --host --project --model --since --until --by <dim> [--limit N] [--explain]]
@@ -71,11 +76,15 @@ async function cmdBare(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath: stri
   ctx.out('Scanning local agents...')
   const outcome = await runScan(db, flags, ctx)
   if (outcome.adaptersFound === 0) {
-    ctx.out(`${GLYPH.none} no adapters installed — nothing new to scan (ingested history stays queryable).`)
+    ctx.out(
+      (await getAdapters()).length === 0
+        ? `${GLYPH.none} no adapters installed — nothing new to scan (ingested history stays queryable).`
+        : `${GLYPH.none} no agents detected on this host — nothing new to scan (ingested history stays queryable).`,
+    )
   } else {
     ctx.out(`${GLYPH.ok} ${outcome.adaptersFound} adapter(s) scanned · ${outcome.events} new events · ${outcome.failures} parse failures`)
   }
-  const deps = queryDeps(dbPath, ctx)
+  const deps = queryDeps(db, dbPath, ctx)
   const totals = query(db, { metrics: ['sessions', 'events', 'tokens_total', 'cost_api_equiv'] }, deps).totals
   const caps = query(db, { metrics: ['events'], dims: ['capability_type'] })
   const capBy = new Map(caps.rows.map((r) => [String(r.capability_type), Number(r.events)]))
@@ -97,8 +106,11 @@ async function cmdBare(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath: stri
     `today: ${formatTokens(today.tokens_total)} tokens · ${formatUsd(today.cost_api_equiv)} api-equiv`,
   )
   if (flags.bool('serve')) {
+    const handle = await (ctx.serve ?? serveDashboard)(db, dbPath, flags, ctx, deps)
     ctx.out('')
-    ctx.out(`Dashboard → ${DASHBOARD_URL}`)
+    ctx.out(`Dashboard → ${handle.url}`)
+    ctx.out(`${GLYPH.ok} serving until you press Ctrl-C`)
+    await handle.closed
   }
   return 0
 }
@@ -116,6 +128,8 @@ function dispatch(
       return cmdBare(db, flags, ctx, dbPath)
     case 'scan':
       return cmdScan(db, flags, ctx)
+    case 'watch':
+      return cmdWatch(db, flags, ctx)
     case 'status':
       return cmdStatus(db, flags, ctx, dbPath)
     case 'doctor':

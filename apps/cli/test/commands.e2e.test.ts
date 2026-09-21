@@ -41,13 +41,35 @@ async function run(...argv: string[]): Promise<{ code: number; lines: string[] }
   return { code, lines }
 }
 
+/** `--serve` stub: the suite must never bind a socket or launch a browser (§14). */
+async function runServe(...argv: string[]): Promise<{ code: number; lines: string[] }> {
+  const lines: string[] = []
+  let opened = 0
+  const ctx: Ctx = {
+    argv: [...argv, '--db', dbPath],
+    out: (l) => lines.push(l),
+    err: (l) => lines.push(l),
+    homedir: tmp,
+    env: {},
+    now: () => Date.UTC(2026, 8, 21),
+    serve: async () => {
+      opened += 1
+      return { url: 'http://localhost:7317', closed: Promise.resolve(), close: async () => {} }
+    },
+  }
+  const code = await runCli(ctx)
+  expect(opened).toBe(1)
+  return { code, lines }
+}
+
 describe('command shells smoke', () => {
   it('bare command prints the §14-style summary (no adapters → clear message, no crash)', async () => {
     const { code, lines } = await run()
     expect(code).toBe(0)
     const out = lines.join('\n')
     expect(out).toContain('AgentLens')
-    expect(out).toContain('no adapters installed')
+    // Adapters ship in this build but none of their data roots exist under `tmp`.
+    expect(out).toContain('no agents detected')
     expect(out).toContain('2 sessions')
     expect(out).toContain('502k tokens') // 500k + 2k deduped once, NOT 1.004M naive
     expect(out).not.toContain('1M tokens')
@@ -55,8 +77,9 @@ describe('command shells smoke', () => {
     expect(out).not.toContain('Dashboard')
   })
 
-  it('--serve prints the dashboard URL', async () => {
-    const { lines } = await run('--serve')
+  it('--serve prints the dashboard URL from the injected serve handle', async () => {
+    const { code, lines } = await runServe('--serve')
+    expect(code).toBe(0)
     expect(lines.join('\n')).toContain('Dashboard → http://localhost:7317')
   })
 
