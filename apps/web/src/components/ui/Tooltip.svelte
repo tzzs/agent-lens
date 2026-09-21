@@ -1,15 +1,54 @@
 <script lang="ts">
-  // CSS-only tooltip: shows on hover and on keyboard focus within the trigger.
-  // No positioning library; it opens above and is clamped to a readable width.
+  // Hover/focus tooltip. Positioned `fixed` from the trigger's bounding rect, so it
+  // is never clipped by a scrolling ancestor (table headers live inside an
+  // overflow-auto wrapper). Opens above, flips below near the top edge, and is
+  // clamped to the viewport horizontally. No positioning library.
   import type { Snippet } from 'svelte'
-  let { text, align = 'center', children }: { text: string; align?: 'center' | 'start' | 'end'; children: Snippet } = $props()
-  const pos = $derived(align === 'start' ? 'left-0' : align === 'end' ? 'right-0' : 'left-1/2 -translate-x-1/2')
+  let { text, children }: { text: string; children: Snippet } = $props()
+
+  let trigger: HTMLSpanElement | undefined = $state()
+  let tip: HTMLSpanElement | undefined = $state()
+  let open = $state(false)
+  let pos = $state({ x: 0, y: 0, below: false })
+  let placed = $state(false)
+
+  function show() {
+    open = true
+    placed = false
+    requestAnimationFrame(place)
+  }
+  function hide() {
+    open = false
+  }
+  function place() {
+    if (!trigger || !tip) return
+    const r = trigger.getBoundingClientRect()
+    const w = tip.offsetWidth
+    const h = tip.offsetHeight
+    const below = r.top - h - 8 < 4
+    const x = Math.min(window.innerWidth - w - 8, Math.max(8, r.left + r.width / 2 - w / 2))
+    const y = below ? r.bottom + 6 : r.top - h - 6
+    pos = { x, y, below }
+    placed = true
+  }
 </script>
 
-<span class="group/tt relative inline-flex">
+<span
+  bind:this={trigger}
+  class="inline-flex"
+  role="presentation"
+  onpointerenter={show}
+  onpointerleave={hide}
+  onfocusin={show}
+  onfocusout={hide}
+>
   {@render children()}
-  <span
-    role="tooltip"
-    class="pointer-events-none invisible absolute bottom-full z-50 mb-1.5 w-max max-w-72 rounded-lg bg-tooltip px-2.5 py-1.5 text-left text-xs font-normal normal-case leading-snug tracking-normal text-tooltip-fg opacity-0 shadow-overlay transition-opacity duration-100 group-hover/tt:visible group-hover/tt:opacity-100 group-focus-within/tt:visible group-focus-within/tt:opacity-100 {pos}"
-  >{text}</span>
 </span>
+{#if open}
+  <span
+    bind:this={tip}
+    role="tooltip"
+    class="pointer-events-none fixed z-[60] w-max max-w-72 rounded-lg bg-tooltip px-2.5 py-1.5 text-left text-xs font-normal normal-case leading-snug tracking-normal text-tooltip-fg shadow-overlay"
+    style="left:{pos.x}px;top:{pos.y}px;visibility:{placed ? 'visible' : 'hidden'}"
+  >{text}</span>
+{/if}

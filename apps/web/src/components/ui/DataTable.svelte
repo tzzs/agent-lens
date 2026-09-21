@@ -28,6 +28,7 @@
     maxHeight = 0,
     dense = false,
     caption = '',
+    minWidth = 720,
   }: {
     columns: Column[]
     rows: T[]
@@ -40,11 +41,13 @@
     maxHeight?: number
     dense?: boolean
     caption?: string
+    /** below this width the table scrolls sideways inside its card instead of squeezing every cell to an ellipsis */
+    minWidth?: number
   } = $props()
 </script>
 
 <div class="dt overflow-auto" class:dense style={maxHeight ? `max-height:${maxHeight}px` : ''}>
-  <table class="w-full table-fixed border-separate border-spacing-0 text-left text-[13px]">
+  <table class="w-full table-fixed border-separate border-spacing-0 text-left text-[13px]" style="min-width:{minWidth}px">
     {#if caption}<caption class="sr-only">{caption}</caption>{/if}
     <colgroup>
       {#each columns as c (c.key)}<col style={c.width ? `width:${c.width}` : ''} />{/each}

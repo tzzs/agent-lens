@@ -155,7 +155,7 @@
         >
           <Icon name="menu" size={18} />
         </button>
-        <div class="-my-2 min-w-0 flex-1 overflow-x-auto py-2">
+        <div class="no-scrollbar -my-2 min-w-0 flex-1 overflow-x-auto py-2">
           <RangeControls />
         </div>
         <span
