@@ -569,6 +569,8 @@ Dashboard → http://localhost:7317
 验收：① 对一个假造 JSONL，重扫两次 → DB 状态字节级一致；② 一条"多 block 重复 usage"的假造记录，聚合结果等于单份 usage（**去重必须有独立单测**）。
 > 不写任何真实 Adapter。
 
+**状态**：✅ 完成（2026-09-21）。`event-model`（`validate.ts`/`otel-map.ts`/`dedupe.ts`/`project.ts`）+ `storage`（迁移 `001`–`003`）+ `sources` 增量器（`collector/src/incremental.ts`）+ Adapter 接口/`ParseFailure` 均在；验收①见 `storage/test/idempotency.test.ts`，②（多 block 重复 usage→单份）见 `event-model/test/dedupe.test.ts`。
+
 ### M1 · 单 Adapter 打通（2–4 天）— 全局风险最高的一步
 只做 `claude-code`（含 `host_id` 的 desktop/cli 拆分）。跑通 detect → discover → 增量 parse → normalize → SQLite → CLI `usage`。
 必须回答（§4.4 与 ccusage 对账已回答前四项，剩余一项待做）：
@@ -580,22 +582,34 @@ Dashboard → http://localhost:7317
 > M1 剩余工作因此从"探索未知"变成"把已确认的规则工程化"，可直接进入 M0。
 > **禁止在此阶段并行写第二个 Adapter。** 抽象未被证伪前多加一个实现，等于固化错误。
 
+**状态**：✅ 完成，一处 pending。`adapters/claude-code`（`host_id` desktop/cli 拆分、fixtures 57）贯通 detect→discover→parse→normalize→SQLite→`usage`。①–④ 见 §1.5；⑤ 的"规则工程化 + subagent 父链取真实外键"已落地，**"抽 20 个侧链人工核对父链准确率"无仓库证据 → pending**。
+
 ### M2 · Codex + 抽象证伪（2–3 天）
 Codex 与 Claude Code 差异最大（rollout 文件、无 skill 概念、session 边界不同）。目的**不是加支持，是逼 Event Schema 改第二轮**。改完 Schema 冻结，此后只允许加枚举值、不允许改结构。
+
+**状态**：✅ 完成。`adapters/codex`（+ `usage-granularity`/`cache-tokens` 单测）逼出 Schema 第二轮（迁移 `002`），结构冻结。
 
 ### M3 · Cost + doctor（2–3 天）
 Pricing 快照与 `pricing update`、三种计费口径（§8）、`doctor`（§11）、`agentlens status`。
 **新增硬性验收（对账副产品）**：`reconcile-ccusage.mjs` 升级为回归测试 —— 同一窗口 AgentLens 的 token 与成本必须与 `ccusage claude daily -j -O -z UTC` 零偏差；成本锚点取本机实测的 **$667.96 / 30 天**。ccusage 只作 devDependency 级别的测试工具，不进产品依赖。
 > doctor 不延后：它决定第一批用户是否相信数字。而对账 CI 是"我们相信数字"的机器化版本。
 
+**状态**：✅ 完成。`packages/pricing`（litellm 快照 + 三计费口径 `cost.ts:computeCost`）、`doctor`、`status` 均在；对账回归 `apps/cli/test/reconcile-ccusage.test.ts` 已进套件（本次 552 绿）。
+
 ### M4 · Web：Overview + Session Timeline + Capability + Project（4–6 天）
 顺序按 §1 收缩后的主张：Session 与 Capability 先于 Project，Project 先于 Agent 页 —— 前者是 ccusage 完全没有的层。此阶段同时引入隐私开关（`--no-content`）。
+
+**状态**：🟡 代码/单测到位、**浏览器未验证**。`apps/web`（Overview/Sessions/SessionDetail/Capabilities/Projects/Usage/Doctor/Settings）+ `packages/server`（Hono + SSE）+ `--no-content` 已落地；无截图或点击回归（见 §19）→ 待人工验证，不算完成。
 
 ### M5 · Qoder / OpenCode / WorkBuddy（3–5 天）
 真正验证 Adapter 架构是否通用。若此时仍需改 Schema，说明 M2 的证伪没做够——这是本计划唯一允许的"返工信号"。
 
+**状态**：✅ 完成，一处受限。`adapters/{qoder,opencode,workbuddy}` 全部有实现与测试；但 **OpenCode 真实库为 WAL、被 collector 拒绝直开、当前贡献 0 事件**（见 §19）。
+
 ### M6 · watch 常驻 + 实时看板（2–3 天）
 SSE 增量、MCP 插件的 `capabilities()` 静态清单（`skills`/`mcp` 命令的"装了但没用过"视角）。
+
+**状态**：✅ 完成。`collector/src/watch.ts`（`node:fs.watch` + 每轮 discover）、`server/src/sse.ts`（SSE）、`capabilities()` 静态清单（`doctor-caps.ts`）均在；`watch.e2e.test.ts`/`watch-idempotency.test.ts` 钉住。
 
 ### M7 及以后
 Replay · 导出（OTel/Langfuse）· 告警（"agentx 今日成本 +240%"）· 效率分析（按 skill/phase 归因）· 单二进制分发 · Team。
@@ -643,15 +657,15 @@ Replay · 导出（OTel/Langfuse）· 告警（"agentx 今日成本 +240%"）· 
 
 这一轮**证伪了 §3/§4/§8 的四条假设**，M2 的"逼 Schema 改第二轮"因此提前。结论按严重度：
 
-| # | 实测结论 | 对方案的影响 |
-|---|---|---|
-| 1 | 🔴 **§8「日志里没有成本字段」只对 Claude 家族成立**。OpenCode 原生带 `session.cost` 与逐消息/逐 step 成本；WorkBuddy `session_usage` 同样带成本。 | `events` 增列 `cost_reported REAL` + `cost_source TEXT('reported'\|'computed'\|'none')`。查询优先级：reported > computed；两者都无 → NULL，仍不得当 $0。 |
-| 2 | 🔴 **`request_id` 去重是 Claude/Qoder 特有形态，不是全局不变量**。同一测在 Codex/Qoder 均未复现"一次响应拆多条重复 usage"（Qoder 每个 request_id 恰好一条 usage；Codex 0 组重复）。Codex 的同类陷阱更狠：usage 有三层粒度（每次调用的 `last`/`usage` + 累积的 `total`/`turn`/`thread`），误用累积字段虚高 **约 1,971×**；正确口径是只累加每次调用的 `last_token_usage`，且按 ccusage 对账须**排除 subagent 线程**（逐字段偏差 cacheRead +2.3% / total +1.8%）。 | 去重口径改为**Adapter 声明**：`Adapter.aggregation = { mode: 'request_max' \| 'per_record_sum' \| 'last_call_sum', subagentsIncluded: boolean }`。`'request_max'` 仍是 Claude/Qoder 默认，查询立方体按 agent 分流；MAX-per-request 的兜底保留（漏声明时按最保守口径）。 |
-| 3 | 🟠 **§4.1「一个文件一个 session」只对 Claude/Qoder 成立**。Codex 是 file=thread，`session_id` 跨文件（379 个文件里 280 个共享 session，其中 257 个是 subagent 线程）；OpenCode/WorkBuddy 用关系型 session + `parent_id`。 | `events` 增列 `thread_id TEXT`（源内线程/文件粒度）与 `session_id`（产品粒度）双键；`sources.session_id_hint` 保留；subagent 是否计入总量成为显式开关（默认排除，与 ccusage 对齐）。 |
-| 4 | 🟠 **cache token 命名有 4 种方言**，且 Codex 的 `input_tokens` **已包含** cached（与 Claude 相反）：Claude/Qoder `cache_read_input_tokens`/`cache_creation_input_tokens`；Codex `cached_input_tokens`/`cache_write_input_tokens`；OpenCode `tokens_cache_read`/`tokens_cache_write`。 | 方言映射只允许存在于 Adapter 内，`events` 列名冻结；每个 Adapter 必须单测断言"input 是否含 cache"，否则 cost 会双计。 |
-| 5 | 🟡 **能力枚举不通用**：`hook.fire` 只有 Claude/Qoder 有（Codex 实测 0 条）；`context.compact`/`subagent`/`mcp.invoke` 概念都在，但源结构各异（Codex `compacted`/`dynamic_tools`/`thread_source`；OpenCode `time_compacting`/`parent_id`）。 | 枚举保留，但 UI 与 `doctor` 必须按 Agent 声明"该能力是否存在"（`capabilities.supports`），不得默认 hook 列有数。 |
-| 6 | 🟡 **`host_id` 推广成功**：Codex 的 `originator` 分布 Desktop 343 / tui / exec / cli_rs，与 Claude 的 `entrypoint` 同构。 | 无需改结构，Adapter 各自提供 `entrypoint→host_id` 归一表。 |
-| 7 | 🔴 **只读打开 SQLite 并非绝对安全**：Qoder 是 JSONL（Claude Code 分支，非 SQLite）；OpenCode 只读打开干净、不产生 sidecar；**WorkBuddy 的 `workbuddy.db`（WAL 模式）在 `readOnly:true` 下仍创建了 `-wal`/`-shm`**。 | 规则：Adapter 打开前必须检查 `-wal` 存在性；WAL 模式的第三方库默认**拒绝直开**，改走该 Agent 的导出/JSONL 通道，并把"因写入副作用而跳过"记进 `doctor`。这条是硬约束，宁可少采一路也不能碰别人的库。 |
+| # | 实测结论 | 对方案的影响 | 落地（2026-09-21） |
+|---|---|---|---|
+| 1 | 🔴 **§8「日志里没有成本字段」只对 Claude 家族成立**。OpenCode 原生带 `session.cost` 与逐消息/逐 step 成本；WorkBuddy `session_usage` 同样带成本。 | `events` 增列 `cost_reported REAL` + `cost_source TEXT('reported'\|'computed'\|'none')`。查询优先级：reported > computed；两者都无 → NULL，仍不得当 $0。 | ✅ 迁移 `002` 加 `cost_reported`/`cost_source` 入 `events`，`storage/src/write.ts` 落库 |
+| 2 | 🔴 **`request_id` 去重是 Claude/Qoder 特有形态，不是全局不变量**。同一测在 Codex/Qoder 均未复现"一次响应拆多条重复 usage"（Qoder 每个 request_id 恰好一条 usage；Codex 0 组重复）。Codex 的同类陷阱更狠：usage 有三层粒度（每次调用的 `last`/`usage` + 累积的 `total`/`turn`/`thread`），误用累积字段虚高 **约 1,971×**；正确口径是只累加每次调用的 `last_token_usage`，且按 ccusage 对账须**排除 subagent 线程**（逐字段偏差 cacheRead +2.3% / total +1.8%）。 | 去重口径改为**Adapter 声明**：`Adapter.aggregation = { mode: 'request_max' \| 'per_record_sum' \| 'last_call_sum', subagentsIncluded: boolean }`。`'request_max'` 仍是 Claude/Qoder 默认，查询立方体按 agent 分流；MAX-per-request 的兜底保留（漏声明时按最保守口径）。 | ✅ `AggregationPolicy` 入 `agents` 表（迁移 `003_aggregation_policy_per_agent.sql`），查询期由 `loadAgentAggregations` 回读、立方体按 agent 分流 |
+| 3 | 🟠 **§4.1「一个文件一个 session」只对 Claude/Qoder 成立**。Codex 是 file=thread，`session_id` 跨文件（379 个文件里 280 个共享 session，其中 257 个是 subagent 线程）；OpenCode/WorkBuddy 用关系型 session + `parent_id`。 | `events` 增列 `thread_id TEXT`（源内线程/文件粒度）与 `session_id`（产品粒度）双键；`sources.session_id_hint` 保留；subagent 是否计入总量成为显式开关（默认排除，与 ccusage 对齐）。 | ✅ 迁移 `002` 加 `thread_id` + `idx_events_thread`，`subagents_included` 随 `003` 入 `agents` |
+| 4 | 🟠 **cache token 命名有 4 种方言**，且 Codex 的 `input_tokens` **已包含** cached（与 Claude 相反）：Claude/Qoder `cache_read_input_tokens`/`cache_creation_input_tokens`；Codex `cached_input_tokens`/`cache_write_input_tokens`；OpenCode `tokens_cache_read`/`tokens_cache_write`。 | 方言映射只允许存在于 Adapter 内，`events` 列名冻结；每个 Adapter 必须单测断言"input 是否含 cache"，否则 cost 会双计。 | ✅ 方言映射只在各 Adapter 内、`events` 列名冻结，cache-是否含入 input 各有单测（`codex/test/cache-tokens.test.ts` 等） |
+| 5 | 🟡 **能力枚举不通用**：`hook.fire` 只有 Claude/Qoder 有（Codex 实测 0 条）；`context.compact`/`subagent`/`mcp.invoke` 概念都在，但源结构各异（Codex `compacted`/`dynamic_tools`/`thread_source`；OpenCode `time_compacting`/`parent_id`）。 | 枚举保留，但 UI 与 `doctor` 必须按 Agent 声明"该能力是否存在"（`capabilities.supports`），不得默认 hook 列有数。 | ✅ `doctor-caps.ts` 以静态 `capabilities()` 清单比对 invoked，无数据源时不印 0 |
+| 6 | 🟡 **`host_id` 推广成功**：Codex 的 `originator` 分布 Desktop 343 / tui / exec / cli_rs，与 Claude 的 `entrypoint` 同构。 | 无需改结构，Adapter 各自提供 `entrypoint→host_id` 归一表。 | ✅ 各 Adapter 提供 entrypoint→`host_id` 归一（`identities.test.ts` 钉住） |
+| 7 | 🔴 **只读打开 SQLite 并非绝对安全**：Qoder 是 JSONL（Claude Code 分支，非 SQLite）；OpenCode 只读打开干净、不产生 sidecar；**WorkBuddy 的 `workbuddy.db`（WAL 模式）在 `readOnly:true` 下仍创建了 `-wal`/`-shm`**。 | 规则：Adapter 打开前必须检查 `-wal` 存在性；WAL 模式的第三方库默认**拒绝直开**，改走该 Agent 的导出/JSONL 通道，并把"因写入副作用而跳过"记进 `doctor`。这条是硬约束，宁可少采一路也不能碰别人的库。 | ✅ `sqlite-source.ts:journalModeOf`（DB 头 18/19 字节）见 WAL 即拒；OpenCode 真实库因此 0 事件，读取通道仍待定（见 §19） |
 
 落地顺序（M2′，先改契约再写 Adapter）：`event-model` 加列与 `aggregation` 声明 → `storage` 迁移 `002_entity_refinement.sql`（新增列，不改既有列语义，幂等测试继续通过）→ `query` 立方体按 agent 分流聚合口径 → `adapters/codex`。Schema 改完即冻结，此后只加枚举值不改结构。
 
@@ -686,3 +700,15 @@ Replay · 导出（OTel/Langfuse）· 告警（"agentx 今日成本 +240%"）· 
 
 - 好处是任何历史窗口都有价可查，不会因为日期早于快照首日而整段显示 n/a；
 - 代价是**今天的价格被回溯套用**，`--explain` 与 `doctor` 需要把这一点显式说给用户，而不是假装是当期价格。要精确到历史价，用 `agentlens pricing override` 覆盖，不要改生成器。
+
+### 落地发现（2026-09-21）
+
+只记已核实的事实与所在文件；下列各条**均未修复**，标"方向/进行中"的是选定路线而非完成。
+
+- **OpenCode 当前贡献 0 事件**：其库 `~/.local/share/opencode/opencode.db` 为 WAL，collector 的规则（`packages/collector/src/sqlite-source.ts:journalModeOf` 见 WAL 即拒）与 `adapters/opencode/src/safety.ts:assessReadOnly` 现已同为"拒绝任何 WAL attach"，于是 OpenCode 的 3 个 sqlite 源全部落成拒绝 → 0 事件。**进行中（选定方向，未完成）**：collector 将以 `copyFile` 把 WAL 库复制成单文件快照、复制进 AgentLens 数据目录后再读，既不打开也不修改对方库；截至本次快照 `grep copyFile packages/collector/src` 无命中，该通道尚未落地。
+- **`-shm` 写入证据**：无 OpenCode 进程存活时，跑一条 `agl` 能力命令的瞬间，`~/.local/share/opencode/opencode.db-shm` 的 mtime 就跳到那一分钟；`verifyNoSidecars`（`adapters/opencode/src/safety.ts:104`）只检测**新建**的 sidecar，检不出对既有 `-shm` 的修改。此即上一条拒绝任何 WAL 的动因。
+- **拒绝的报告与存储**：扫描结束后按库去重成一行（`apps/cli/src/commands/scan.ts:refusalLines`，形如 `! opencode ~/.local/share/opencode/opencode.db not read (3 sources): …`），并逐源以 `status='error'`、offset 不动存库（`packages/collector/src/orchestrator.ts:scanSqliteSource` 的 `WalModeRefusedError` catch 分支）。
+- **capability 维度陷阱**：`packages/query/src/engine.ts:capNameSql` 对别的 kind 的事件返回 `''`，故不带 `capabilityType` 过滤的 capability-dim 查询会把整库塌成一个 "(unnamed)" 桶、并把库大小当计数。CLI（`apps/cli/src/commands/capabilities.ts`）与 Web Usage 页（`apps/web/src/lib/api.ts:withCapabilityType`）已各自补 `capabilityType` 过滤并加测试；**该陷阱对任何新的立方体调用方仍然生效**，故写此备案。
+- **`agl` bin 形态**：入口 `apps/cli/src/command-exec.ts` 是带 shebang 的 TS 文件，靠 `--experimental-transform-types`（`packages/pricing`、`packages/server` 用了 parameter property），strip-only 的 Node 跑不动；`#!/usr/bin/env -S node …` 这种多参 shebang 在 Windows 上不适用。
+- **`agl projects` 标签可读性**：`cmdProjects`（`apps/cli/src/commands/capabilities.ts`）直接把 64 位 sha256 project hash（`event-model/src/ids.ts:deriveProjectId`）当标签渲染，纯观感、难读，未处理。
+- **M4 浏览器验证缺位**：`apps/web` + `packages/server` 的单测/e2e 全绿，但没有人在真实浏览器里打开过页面 → 属**待验证**，不算"完成"。此前"沙箱会挂起已绑定 socket"的说法**已被实测推翻**（loopback `listen` + 自请求正常返回响应），因此缺的只是执行，不是环境能力。
