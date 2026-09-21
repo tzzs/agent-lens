@@ -1,0 +1,200 @@
+[
+  {
+    "id": "364c1972b1111633f8f93d4b0366998c325007e1aae1886e1197f54c85ec781d",
+    "type": "unknown",
+    "subtype": "message-without-role",
+    "sessionId": "1cd0851053edb3dfe6161467c298eeb7cc09259b8b1b5364d511f98fb82e9987",
+    "threadId": "ses_child000000000000000000B",
+    "projectId": "project:alpha",
+    "hostId": "opencode",
+    "timestamp": 1760000001200,
+    "rawSeq": 4,
+    "rawOffset": 4,
+    "requestId": null,
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "model": null,
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "message",
+      "rowid": 4,
+      "upstream_type": "message-without-role",
+      "mapped": false,
+      "raw": {
+        "time": {
+          "created": 1760000001200
+        },
+        "somethingNew": true
+      },
+      "subagentThread": true
+    }
+  },
+  {
+    "id": "3e0d16882d49068fe62e627ca7b0c6c888bace9ed5250b7fc7187dd40dd4f86d",
+    "type": "error",
+    "subtype": "APIError",
+    "sessionId": "1cd0851053edb3dfe6161467c298eeb7cc09259b8b1b5364d511f98fb82e9987",
+    "threadId": "ses_root0000000000000000000A",
+    "projectId": "project:alpha",
+    "hostId": "opencode",
+    "timestamp": 1760000001000,
+    "rawSeq": 3,
+    "rawOffset": 3,
+    "requestId": null,
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "error",
+    "model": {
+      "provider": "testp",
+      "name": "test-model",
+      "tier": null
+    },
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "message",
+      "rowid": 3,
+      "error_keys": [
+        "data",
+        "name"
+      ],
+      "raw": {
+        "name": "APIError",
+        "data": {
+          "message": "synthetic upstream failure"
+        }
+      }
+    }
+  },
+  {
+    "id": "699f63da34fa474d588a6cf9a5113894f19aecb172e354e06fbf177a0240e2cd",
+    "type": "message.assistant",
+    "subtype": "assistant-without-usage",
+    "sessionId": "1cd0851053edb3dfe6161467c298eeb7cc09259b8b1b5364d511f98fb82e9987",
+    "threadId": "ses_root0000000000000000000A",
+    "projectId": "project:alpha",
+    "hostId": "opencode",
+    "timestamp": 1760000001000,
+    "rawSeq": 3,
+    "rawOffset": 3,
+    "requestId": null,
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "model": {
+      "provider": "testp",
+      "name": "test-model",
+      "tier": null
+    },
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "message",
+      "rowid": 3,
+      "native_message_id": "msg_err000000000000000000001",
+      "parent_message_id": null,
+      "finish": null,
+      "agent": null,
+      "rollup": null
+    }
+  },
+  {
+    "id": "6b95f790bd0c19d792842e9e0ed0be757bc93e877c50ae49e3646a6d33345154",
+    "type": "message.user",
+    "subtype": "turn",
+    "sessionId": "1cd0851053edb3dfe6161467c298eeb7cc09259b8b1b5364d511f98fb82e9987",
+    "threadId": "ses_root0000000000000000000A",
+    "projectId": "project:alpha",
+    "hostId": "opencode",
+    "timestamp": 1760000000100,
+    "rawSeq": 1,
+    "rawOffset": 1,
+    "requestId": null,
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "model": null,
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "message",
+      "rowid": 1,
+      "native_message_id": "msg_user00000000000000000001",
+      "parent_message_id": null,
+      "agent": "build",
+      "mode": "primary",
+      "text_in_parts": true
+    }
+  },
+  {
+    "id": "a373243a140771501e5f7bfacc2f40855c4a250aa0ef17d0acbc54341b271ee0",
+    "type": "message.assistant",
+    "subtype": "assistant-rollup",
+    "sessionId": "1cd0851053edb3dfe6161467c298eeb7cc09259b8b1b5364d511f98fb82e9987",
+    "threadId": "ses_root0000000000000000000A",
+    "projectId": "project:alpha",
+    "hostId": "opencode",
+    "timestamp": 1760000000200,
+    "rawSeq": 2,
+    "rawOffset": 2,
+    "requestId": null,
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "model": {
+      "provider": "testp",
+      "name": "test-model",
+      "tier": "default"
+    },
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "message",
+      "rowid": 2,
+      "native_message_id": "msg_asst00000000000000000001",
+      "parent_message_id": "msg_user00000000000000000001",
+      "finish": "stop",
+      "agent": "build",
+      "rollup": {
+        "cost": 0.031,
+        "tokens": {
+          "total": 3023,
+          "input": 1100,
+          "output": 183,
+          "reasoning": 73,
+          "cache": {
+            "read": 1667,
+            "write": 0
+          }
+        }
+      }
+    }
+  }
+]

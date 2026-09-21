@@ -1,0 +1,11 @@
+{
+  "name": "@agentlens/adapter-opencode",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@agentlens/collector": "workspace:*",
+    "@agentlens/event-model": "workspace:*"
+  }
+}
