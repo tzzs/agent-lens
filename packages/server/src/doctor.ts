@@ -100,7 +100,7 @@ export async function doctor(ctx: ServerCtx, sp: URLSearchParams): Promise<Docto
       payloads: payloadCount(ctx.db),
       note: contentLayerPresent(ctx.db)
         ? 'content layer on: timelines show message/tool text'
-        : 'content layer off (--no-content) or expired: timelines are metrics-only, statistics unaffected',
+        : 'content layer off (the default; scan with --content) or expired: timelines are metrics-only, statistics unaffected',
     },
   }
 }

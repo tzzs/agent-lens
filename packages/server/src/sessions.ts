@@ -217,7 +217,7 @@ export function sessionDetail(ctx: ServerCtx, wanted: string): SessionDetailResp
     contentAvailable,
     contentNote: contentAvailable
       ? 'content layer present for this session'
-      : 'content layer off or expired (payload TTL) — metrics-only timeline; re-scan without --no-content to capture message/tool text',
+      : 'content layer off or expired (payload TTL) — metrics-only timeline; re-scan with --content to capture message/tool text',
     totals: agg.totals,
     nodes,
     explain: describeQuery({ metrics: [...spec.metrics], filter: spec.filter }),

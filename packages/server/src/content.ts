@@ -1,5 +1,5 @@
 /**
- * Content-layer access (§3.2). Payloads are optional by design (`--no-content`),
+ * Content-layer access (§3.2). Payloads are opt-in (`--content`, off by default),
  * so every reader here answers "is there content?" rather than assuming it:
  * a missing content layer is a degraded mode the UI renders, not an error.
  *

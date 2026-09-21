@@ -94,7 +94,7 @@ export function cmdSession(db: DatabaseSync, words: string[], flags: FlagView, c
   ctx.out(`Session ${sessionId}`)
   ctx.out(`  agent=${meta?.agent_id ?? '?'} host=${meta?.host_id ?? '?'} project=${meta?.project_id ? shortId(String(meta.project_id)) : '—'} events=${events.length}`)
   if (contentOff) {
-    ctx.out('  (content layer off — showing the metrics-only timeline; re-scan without --no-content to capture message/tool text)')
+    ctx.out('  (content layer off — showing the metrics-only timeline; re-scan with --content to capture message/tool text)')
   }
   ctx.out('')
   for (const ev of events) {

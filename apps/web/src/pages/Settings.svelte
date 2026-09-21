@@ -32,7 +32,7 @@
 {#if health.state.status !== 'ready' || doctor.state.status !== 'ready'}
   <StatePanel status={(health.state.status === 'error' || doctor.state.status === 'error') ? 'error' : 'loading'}
     error={health.state.error ?? doctor.state.error} kind={health.state.kind ?? doctor.state.kind} />
-{:else}
+{:else if h && doc}
   <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
     <Card title="Server">
       <div class={stat}><span class="text-mist-500">name</span><span class="nums text-mist-200">{h.server}</span></div>
@@ -49,13 +49,14 @@
         <span class={h.loopbackOnly ? 'text-ok' : 'text-danger'}>{h.loopbackOnly ? 'yes · same-origin only' : 'NO'}</span>
       </div>
       <div class={stat}>
-        <span class="text-mist-500">content layer (--no-content)</span>
+        <span class="text-mist-500">content layer (--content)</span>
         <span class={h.contentAvailable ? 'text-warn' : 'text-ok'}>{h.contentAvailable ? `on · ${formatInt(h.payloads)} payloads stored` : 'off · metrics only'}</span>
       </div>
       <p class="mt-3 text-[11px] leading-relaxed text-mist-500">
         AgentLens reads private local agent logs and serves them without auth, so the server binds loopback
         only and this UI makes no request beyond its own origin — no telemetry, no external fonts, no CDN.
-        Turning the content layer off ({`--no-content`}) keeps every statistic but stops storing message/tool text.
+        Off by default, and it stays off unless a scan opts in ({`--content`}) — message/tool text is the one
+        thing here that copies private content into this database. Every statistic works without it.
       </p>
     </Card>
 

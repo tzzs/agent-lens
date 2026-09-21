@@ -1,9 +1,12 @@
 /**
  * How the §18 row 7 refusals reach the terminal: one line per store, never one per
- * source, and never the path twice.
+ * source, and never the path twice. Plus the §6 privacy default behind them.
  */
 import { describe, expect, it } from 'vitest'
-import { refusalLines, type ScanOutcome, type SourceRefusal } from '../src/commands/scan.ts'
+import { parseArgs, CLI_FLAG_SCHEMA } from '../src/args.ts'
+import { contentWanted, refusalLines, type ScanOutcome, type SourceRefusal } from '../src/commands/scan.ts'
+
+const flags = (...argv: string[]) => parseArgs(argv, CLI_FLAG_SCHEMA).flags
 
 const refusal = (agentId: string, path: string): SourceRefusal => ({
   agentId,
@@ -22,6 +25,16 @@ const outcome = (refusals: SourceRefusal[]): ScanOutcome => ({
 
 const HOME = '/home/me'
 const OPENCODE_DB = `${HOME}/.local/share/opencode/opencode.db`
+
+describe('the content layer default (§6)', () => {
+  it('is off unless the run asks for it', () => {
+    expect(contentWanted(flags('scan'))).toBe(false)
+    expect(contentWanted(flags('scan', '--no-content'))).toBe(false)
+    expect(contentWanted(flags('scan', '--content'))).toBe(true)
+    // An explicit global opt-out outranks a per-run opt-in.
+    expect(contentWanted(flags('scan', '--content', '--no-content'))).toBe(false)
+  })
+})
 
 describe('refusalLines', () => {
   it('collapses the sources that share one store into a single line', () => {

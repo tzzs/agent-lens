@@ -26,7 +26,7 @@ import type { Ctx } from '../context.ts'
 import { makeHostCtx } from '../context.ts'
 import { getAdapters } from '../adapters.ts'
 import { formatCount, formatTime } from '../render.ts'
-import { cmdScan, makeProjectResolver, recordProjectRoots } from './scan.ts'
+import { cmdScan, contentWanted, makeProjectResolver, recordProjectRoots } from './scan.ts'
 
 function savedState(db: DatabaseSync, sourceId: string): SavedSourceState {
   const row = db.prepare(
@@ -124,7 +124,7 @@ async function buildTargets(
   adapters: AgentAdapter[],
 ): Promise<WatchTarget[]> {
   const only = flags.list('agent')
-  const contentEnabled = !flags.bool('no-content')
+  const contentEnabled = contentWanted(flags)
   const known = new Set<string>()
   const targets: WatchTarget[] = []
 

@@ -116,6 +116,15 @@ export function recordProjectRoots(db: DatabaseSync, roots: Map<string, string>)
   roots.clear()
 }
 
+/**
+ * §6's risk table: the content layer copies private message/tool text into this
+ * database, so it is off by default and a run opts in with `--content`.
+ * `--no-content` is the plan's global switch and outranks it.
+ */
+export function contentWanted(flags: FlagView): boolean {
+  return flags.bool('content') && !flags.bool('no-content')
+}
+
 export async function runScan(
   db: DatabaseSync,
   flags: FlagView,
@@ -123,7 +132,7 @@ export async function runScan(
   onSource?: (agentId: string, source: SourceSpec, events: number, failures: number, action: string) => void,
 ): Promise<ScanOutcome> {
   const only = flags.list('agent')
-  const contentEnabled = !flags.bool('no-content')
+  const contentEnabled = contentWanted(flags)
   const adapters = await getAdapters()
   const outcome: ScanOutcome = { adaptersFound: 0, sourcesScanned: 0, events: 0, failures: 0, notDetected: [], refusals: [] }
   const projects = makeProjectResolver(ctx.homedir)

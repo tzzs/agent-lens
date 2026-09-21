@@ -54,7 +54,8 @@ Usage:
 
 Global flags:
   --db <path>          database file (default ~/.agentlens/agentlens.db)
-  --no-content         do not store the content layer (payloads) during scan
+  --content            store the content layer (payloads) during scan — off by default (§6)
+  --no-content         force the content layer off, even alongside --content
   --serve              with bare command, print the dashboard URL (server itself is a later milestone)
   -h, --help           this text
   -V, --version        print version

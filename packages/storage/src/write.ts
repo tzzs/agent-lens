@@ -3,7 +3,7 @@ import { Buffer } from 'node:buffer'
 import type { DatabaseSync } from 'node:sqlite'
 import { assertAggregationMode, type AgentEvent, type AggregationPolicy, type ModelRef, type ParseFailure } from '@agentlens/event-model'
 
-/** §3.2 — content layer is off unless explicitly enabled (`--no-content` default). */
+/** §3.2/§6 — the content layer is off unless a scan opts in (`--content`). */
 const DEFAULT_MAX_PAYLOAD_BYTES = 32 * 1024
 /** §3.2 — payloads table-level retention. */
 const DEFAULT_PAYLOAD_TTL_DAYS = 30
