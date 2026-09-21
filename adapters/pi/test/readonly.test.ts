@@ -65,7 +65,7 @@ describe('read-only guarantee (§5.2 rule 3)', () => {
       const host = hostCtx({ dataRoot: root, homedir: root })
       const detection = await piAdapter.detect(host)
       expect(detection.present).toBe(true)
-      await piAdapter.capabilities(host)
+      await piAdapter.capabilities?.(host)
 
       for await (const spec of piAdapter.discover(host)) {
         sources++

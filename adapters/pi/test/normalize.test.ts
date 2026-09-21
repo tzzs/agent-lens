@@ -191,7 +191,7 @@ describe('projection invariants across all scenarios', () => {
       const events: AgentEvent[] = await eventsOf(name)
       const ids = new Set(events.map((e) => e.id))
       for (const e of events) {
-        if (e.parentEventId !== null) expect(ids.has(e.parentEventId), `${name} dangling parent`).toBe(true)
+        if (typeof e.parentEventId === 'string') expect(ids.has(e.parentEventId), `${name} dangling parent`).toBe(true)
       }
     }
   })
