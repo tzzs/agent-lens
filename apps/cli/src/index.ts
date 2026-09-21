@@ -48,7 +48,7 @@ Usage:
   agentlens tools|skills|mcp|plugins|connectors|subagents|hooks
                                    capability views (same cube, capability dims)
   agentlens projects               cross-agent project tree (§9)
-  agentlens export --format jsonl|csv|otel [--since ...] [--agent ...]
+  agentlens export --format jsonl|csv|otel [--since ...] [--agent ...] [--limit N]
                      --format otel [--push <otlp-url>] [--push-header "Name: value"]
                      (§12: the OTel mapping, optionally POSTed to a Langfuse/Phoenix collector)
   agentlens pricing update         refresh litellm price snapshot
