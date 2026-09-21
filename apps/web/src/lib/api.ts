@@ -113,6 +113,53 @@ export type Row = Record<string, unknown>
 /** Capability axis whitelist (mirrors event-model CAPABILITY_TYPES). */
 export const CAPABILITY_TYPES = ['tool', 'skill', 'mcp', 'plugin', 'connector', 'command', 'subagent', 'hook'] as const
 
+/**
+ * Dims that resolve to a capability *name*. The cube renders each of them as
+ * `CASE WHEN e.capability_type = '<dim>' THEN COALESCE(e.capability_name,'') ELSE '' END`
+ * (packages/query engine), so an event of any other kind contributes the empty
+ * string. Without a matching `capabilityType` filter the whole event store
+ * therefore collapses into one giant unnamed bucket and the page reports the
+ * entire database as "skill invocations" — the bug `agl skills` shipped with.
+ */
+export const CAPABILITY_NAME_DIMS: readonly string[] = CAPABILITY_TYPES
+
+/** How the empty value of a capability-name dim must read in the UI: never a name. */
+export const UNNAMED_CAPABILITY = '(unnamed)'
+
+export function isCapabilityNameDim(dim: string): boolean {
+  return CAPABILITY_NAME_DIMS.includes(dim)
+}
+
+/**
+ * Fold the capability-type restriction the cube needs into a request's params,
+ * exactly the way the CLI's capability commands do. A caller-set `capabilityType`
+ * is intersected with the types the dims ask for (an empty intersection stays
+ * empty: no rows is honest, a widened window is not). Queries that select no
+ * capability-name dim are returned untouched.
+ */
+export function withCapabilityType(dims: readonly string[], params: FilterParams): FilterParams {
+  const requested = dims.filter(isCapabilityNameDim)
+  if (requested.length === 0) return params
+  const declared = params.capabilityType
+  if (declared === undefined) return { ...params, capabilityType: requested }
+  const list = Array.isArray(declared) ? declared.map(String) : String(declared).split(',')
+  return { ...params, capabilityType: list.filter((t) => requested.includes(t)) }
+}
+
+/**
+ * Label one cell of a capability-name dim. `''` is the engine's "no name for this
+ * kind" bucket, so it is rendered as a disclosure instead of a blank the eye would
+ * read as a real capability name. When several capability dims share one query the
+ * same empty cell can also mean "this event is one of the other selected kinds",
+ * and the label says so rather than inventing a name.
+ */
+export function capabilityDimCell(dim: string, value: unknown, selected: readonly string[] = [dim]): string {
+  if (!isCapabilityNameDim(dim)) return String(value)
+  const text = String(value ?? '')
+  if (text !== '') return text
+  return selected.some((d) => d !== dim && isCapabilityNameDim(d)) ? '(unnamed or other kind)' : UNNAMED_CAPABILITY
+}
+
 /** A cost figure as the server emits it: null means "no basis", never $0. */
 export interface CostView {
   pricingConfigured: boolean

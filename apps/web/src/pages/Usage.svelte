@@ -2,7 +2,7 @@
   // GET /api/query — a thin UI over the single §7 cube (this page IS the cube; every
   // other page is a fixed slice of it). The returned `explain` is rendered verbatim
   // so the user always sees the basis behind the numbers (§7 "basis is visible").
-  import { api, QUERY_METRICS, QUERY_DIMS } from '../lib/api.ts'
+  import { api, QUERY_METRICS, QUERY_DIMS, capabilityDimCell, isCapabilityNameDim, withCapabilityType } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
   import { range } from '../lib/filter.svelte.js'
   import { options, live } from '../lib/live.svelte.js'
@@ -19,8 +19,12 @@
   let limit = $state(50)
   let nonce = $state(0)
 
-  const { state, run } = loader(() =>
-    api.query({
+  // Capability-name dims (`tool`, `skill`, …) yield '' for every event of another
+  // kind, so the page must restrict the row set to those kinds or the whole store
+  // lands in one unnamed bucket and the explorer counts everything as the capability.
+  const nameDims = $derived(dims.filter(isCapabilityNameDim))
+  const querySpec = $derived(
+    withCapabilityType(dims, {
       metrics: metrics.join(','),
       dims: dims.join(','),
       since: range.since,
@@ -29,6 +33,15 @@
       order,
       limit,
     }),
+  )
+
+  const { state, run } = loader(() => api.query(querySpec))
+
+  // A caller-set capabilityType that contradicts the selected dim can match no row.
+  // Running it would drop the restriction (an empty list is not a filter) and count
+  // the whole store, so the page says "impossible" instead of fetching.
+  const dimConflict = $derived(
+    nameDims.length > 0 && Array.isArray(querySpec.capabilityType) && querySpec.capabilityType.length === 0,
   )
 
   // Debounced reload whenever the spec changes so a checkbox spam does not hammer the
@@ -43,6 +56,7 @@
     void range.since
     void live.lastTick
     void nonce
+    if (dimConflict) return
     const t = setTimeout(run, 150)
     return () => clearTimeout(t)
   })
@@ -55,6 +69,7 @@
 
   function cell(col: string, v: unknown) {
     if (v === null || v === undefined) return null
+    if (isCapabilityNameDim(col)) return capabilityDimCell(col, v, nameDims)
     if (col === 'duration') return formatMs(Number(v))
     if (col.startsWith('tokens')) return formatCompact(Number(v))
     if (col === 'events' || col === 'sessions') return formatInt(Number(v))
@@ -107,13 +122,15 @@
   </div>
 
   <div class="space-y-3">
-    {#if metrics.length === 0}
+    {#if dimConflict}
+      <Card><p class="text-sm text-warn">this capability dim contradicts the capability-type filter, so no event can match it.</p></Card>
+    {:else if metrics.length === 0}
       <Card><p class="text-sm text-warn">select at least one metric.</p></Card>
     {:else if state.status !== 'ready'}
       <StatePanel status={state.status} error={state.error} kind={state.kind} />
     {:else}
       {@const res = state.data}
-      <Card padded={false} title={res.rows.length + ' rows'} note={res.truncated ? 'truncated by limit' : ''}>
+      <Card padded={false} title={res.rows.length + ' rows'} note={nameDims.length ? `rows restricted to capability type ${nameDims.join(', ')} · ${res.truncated ? 'truncated by limit' : 'not truncated'}` : res.truncated ? 'truncated by limit' : ''}>
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs">
             <thead class="border-b border-line text-[11px] uppercase tracking-wide text-mist-500">
