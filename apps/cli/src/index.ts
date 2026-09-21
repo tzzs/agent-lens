@@ -13,7 +13,7 @@ import { defaultCtx, redactHome, type Ctx } from './context.ts'
 import { ensureDataDir } from './pricing-store.ts'
 import { bucketTs } from '@agentlens/query'
 import { GLYPH, formatCount, formatTokens, formatUsd } from './render.ts'
-import { cmdScan, runScan } from './commands/scan.ts'
+import { cmdScan, refusalLines, runScan } from './commands/scan.ts'
 import { cmdWatch } from './commands/watch.ts'
 import { cmdStatus } from './commands/status.ts'
 import { cmdDoctor } from './commands/doctor.ts'
@@ -83,6 +83,7 @@ async function cmdBare(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath: stri
     )
   } else {
     ctx.out(`${GLYPH.ok} ${outcome.adaptersFound} adapter(s) scanned · ${outcome.events} new events · ${outcome.failures} parse failures`)
+    for (const line of refusalLines(outcome, ctx)) ctx.out(line)
   }
   const deps = queryDeps(db, dbPath, ctx)
   const totals = query(db, { metrics: ['sessions', 'events', 'tokens_total', 'cost_api_equiv'] }, deps).totals

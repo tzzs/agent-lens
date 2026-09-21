@@ -121,6 +121,17 @@ describe('command shells smoke', () => {
     expect(spans[0]!.attributes['agentlens.host_id']).toBe('claude-desktop')
   })
 
+  it('capability pages count only their own kind', async () => {
+    // The cube's capability dims return '' for other kinds; without a capabilityType
+    // filter all 5 events collapse into one "(unnamed)" bucket.
+    const tools = await run('tools')
+    expect(tools.lines.join('\n')).toContain('Bash')
+    const skills = await run('skills')
+    const out = skills.lines.join('\n')
+    expect(out).not.toContain('(unnamed)')
+    expect(out).not.toContain('5')
+  })
+
   it('prune keeps events by default, trims payloads', async () => {
     const { code, lines } = await run('prune')
     expect(code).toBe(0)

@@ -151,7 +151,17 @@ export async function cmdScan(db: DatabaseSync, flags: FlagView, ctx: Ctx): Prom
 
 /** §18 row 7 stores left alone on purpose, spelled out rather than folded into "failures". */
 export function refusalLines(outcome: ScanOutcome, ctx: { homedir: string }): string[] {
-  return outcome.refusals.map(
-    (r) => `! ${r.agentId} ${redactHome(r.path, ctx.homedir)} not read: ${redactHome(r.reason, ctx.homedir)}`,
+  // One store usually backs several sources (OpenCode: 3 tables in one db), and the stored
+  // error repeats the path the line already names — both would just multiply identical text.
+  const bySource = new Map<string, { agentId: string; path: string; reason: string; count: number }>()
+  for (const r of outcome.refusals) {
+    const key = `${r.agentId}\u0000${r.path}\u0000${r.reason}`
+    const seen = bySource.get(key)
+    if (seen) seen.count += 1
+    else bySource.set(key, { agentId: r.agentId, path: r.path, reason: r.reason.replace(/^refusing to open "[^"]*": /, ''), count: 1 })
+  }
+  return [...bySource.values()].map(
+    (r) =>
+      `! ${r.agentId} ${redactHome(r.path, ctx.homedir)} not read${r.count > 1 ? ` (${r.count} sources)` : ''}: ${redactHome(r.reason, ctx.homedir)}`,
   )
 }

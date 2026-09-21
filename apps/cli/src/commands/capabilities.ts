@@ -31,12 +31,15 @@ export async function cmdCapability(db: DatabaseSync, flags: FlagView, ctx: Ctx,
   const dim = CAP_COMMANDS[command]
   if (!dim) return 2
   const baseFilter = filter(db, ctx, flags)
+  // Each capability dim yields '' for events of another kind, so without this the whole
+  // store collapses into the single "(unnamed)" bucket and the page counts everything.
+  const typeFilter = { ...baseFilter, capabilityType: [dim] }
   const res = query(
     db,
     {
       metrics: ['events', 'duration', 'tokens_total', 'cost_api_equiv'],
       dims: [dim],
-      filter: baseFilter,
+      filter: typeFilter,
       order: 'metric:events:desc',
       limit: flags.num('limit') ?? 30,
     },
@@ -45,7 +48,7 @@ export async function cmdCapability(db: DatabaseSync, flags: FlagView, ctx: Ctx,
   const errs = query(db, {
     metrics: ['events'],
     dims: [dim],
-    filter: { ...baseFilter, status: ['error'] },
+    filter: { ...typeFilter, status: ['error'] },
   })
   const errBy = new Map(errs.rows.map((r) => [String(r[dim]), Number(r.events)]))
 
