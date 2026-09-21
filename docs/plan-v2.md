@@ -326,7 +326,7 @@ interface AgentAdapter {
 agent-lens/
 ├── apps/
 │   ├── cli/                 # agentlens
-│   └── web/                 # SvelteKit SPA，由 server 以静态资源托管
+│   └── web/                 # Vite + Svelte 5 SPA，由 server 以静态资源托管
 ├── packages/
 │   ├── event-model/         # Schema + OTel 映射 + 校验     ← 单一事实源
 │   ├── storage/             # SQLite schema / migrations / 查询
@@ -339,11 +339,13 @@ agent-lens/
 │   ├── codex/
 │   ├── qoder/
 │   ├── opencode/
-│   └── workbuddy/
+│   ├── workbuddy/
+│   ├── pi/
+│   └── zcode/
 └── docs/
 ```
 
-依赖方向严格单向：`adapters → event-model`，`core → event-model`，`cli/web → query → storage`。Adapter 之间不得互相引用。
+依赖方向严格单向：`adapters → event-model`，`core → event-model`，`cli/web → query → storage`。Adapter 之间不得互相引用。**这条现在有测试**：`packages/event-model/test/dependency-arrows.test.ts` 从文件系统枚举包（新增第 8 个 Adapter 自动纳入），只读 `src/`（测试允许直接建库），逐条断言：event-model 不 import 任何内部包、Adapter 之间零引用、Adapter 是叶子（只能用 event-model 与 collector）、core 不得反向 import Adapter、storage/pricing 不依赖其上层、query 不依赖 server/cli/web。故意植入的违规会被抓住（实测报 `adapter-pi → adapter-codex`、`storage → query`）。
 
 ---
 
