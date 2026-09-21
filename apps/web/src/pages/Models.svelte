@@ -1,15 +1,22 @@
 <script lang="ts">
-  // GET /api/models — the price-gap surface (§8/§11). `priced: null` means pricing is
+  // GET /api/models: the price-gap surface (§8/§11). `priced: null` means pricing is
   // not configured in this build, which must NOT be shown as "unpriced"; an unpriced
   // model's cost is n/a, never $0.
-  import { api } from '../lib/api.ts'
+  import { api, type ModelRow } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
   import { range, filterParams } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
-  import { formatCompact, formatInt, formatDate } from '../lib/format.ts'
-  import Card from '../components/Card.svelte'
+  import { formatCompact, formatInt, formatDate, formatDateTime } from '../lib/format.ts'
+  import Surface from '../components/ui/Surface.svelte'
+  import PageHeader from '../components/ui/PageHeader.svelte'
+  import DataTable, { type Column } from '../components/ui/DataTable.svelte'
+  import Chip from '../components/ui/Chip.svelte'
+  import Alert from '../components/ui/Alert.svelte'
   import StatePanel from '../components/StatePanel.svelte'
   import CostFigure from '../components/CostFigure.svelte'
+
+  /** Unpriced models named inline in the alert; the full list sits in its own card. */
+  const ALERT_NAMES = 5
 
   const q = loader(() => api.models(filterParams()))
   $effect(() => {
@@ -19,75 +26,130 @@
     void live.lastTick
     q.run()
   })
-  const d = $derived(q.state.status === 'ready' ? q.state.data : null)
+  const d = $derived(q.state.data)
+
+  const modelKey = (provider: string, model: string) => `${provider}::${model}`
+
+  // `unpriced` drives the alert and the list below, so a model in it must never read
+  // "Priced" in the table, whatever its own flag says; the page would contradict itself.
+  const unpricedKeys = $derived(new Set((d?.unpriced ?? []).map((u) => modelKey(u.provider, u.model))))
+  const gapNames = $derived((d?.unpriced ?? []).slice(0, ALERT_NAMES).map((u) => u.model).join(', '))
+  type Price = 'priced' | 'unpriced' | 'unconfigured' | 'no-model'
+  function priceOf(m: ModelRow): Price {
+    if (!m.model) return 'no-model'
+    if (m.priced === null) return 'unconfigured'
+    return m.priced && !unpricedKeys.has(modelKey(m.provider, m.model)) ? 'priced' : 'unpriced'
+  }
+
+  const columns: Column[] = [
+    { key: 'model', label: 'Model', width: '28%' },
+    { key: 'provider', label: 'Provider', width: '13%' },
+    { key: 'events', label: 'Events', align: 'right', width: '10%' },
+    { key: 'sessions', label: 'Sessions', align: 'right', width: '10%' },
+    { key: 'tokens', label: 'Tokens', align: 'right', width: '10%', info: 'Counted once per request, then summed (§3.1).' },
+    {
+      key: 'cost',
+      label: 'Est. cost',
+      align: 'right',
+      width: '12%',
+      info: "Each day's tokens × that day's list price. n/a when the model has no price — never $0.",
+    },
+    {
+      key: 'price',
+      label: 'Price',
+      width: '17%',
+      info: 'Whether the price table covers this model at its last-seen date. “Not configured” means no price table is loaded at all.',
+    },
+  ]
 </script>
 
-<div class="mb-4">
-  <h1 class="text-lg font-semibold">Models</h1>
-  <p class="text-xs text-mist-500">{d?.note ?? 'est. cost is tokens × price; n/a when unpriced'}</p>
-</div>
+<PageHeader
+  title="Models"
+  description="Tokens and estimated cost per model, and which models are missing a price."
+  info="Est. cost is tokens × list price. A model with no price shows n/a, never $0 (§8)."
+  refreshing={q.state.refreshing}
+/>
 
-{#if q.state.status !== 'ready'}
-  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} />
-{:else if d}
-  {#if d.unpriced.length}
-    <div class="mb-3 rounded-md border border-warn/40 bg-warn/5 p-3 text-xs text-warn">
-      <span class="font-semibold">pricing gap.</span> {d.unpriced.length} model(s) have no price at their last-seen date, so their cost is n/a:
-      <span class="nums">{d.unpriced.map((u: any) => u.model).join(', ')}</span>
+{#if !d}
+  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} since={q.state.since} loadingText="Loading models" />
+{:else}
+  {#if q.state.status === 'error' || !d.pricingConfigured || d.unpriced.length}
+    <div class="mb-4 space-y-2">
+      {#if q.state.status === 'error'}
+        <Alert tone="red" title="Refresh failed.">{q.state.error} — showing the last good numbers.</Alert>
+      {/if}
+      {#if !d.pricingConfigured}
+        <Alert tone="neutral" title="Pricing not configured.">
+          No price table is loaded, so est. and actual cost show n/a everywhere. Run <span class="nums">agentlens pricing update</span> to fetch one.
+        </Alert>
+      {/if}
+      {#if d.unpriced.length}
+        {@const n = d.unpriced.length}
+        <Alert tone="orange" title="Pricing gap.">
+          {n === 1 ? '1 model has' : `${formatInt(n)} models have`} no price at {n === 1 ? 'its' : 'their'} last-seen date, so {n === 1 ? 'its' : 'their'} cost shows n/a:
+          <span class="nums">{gapNames}</span>{#if n > ALERT_NAMES}{' '}and {formatInt(n - ALERT_NAMES)} more, listed below{/if}.
+        </Alert>
+      {/if}
     </div>
   {/if}
-  <Card padded={false}>
-    <div class="overflow-x-auto">
-      <table class="w-full text-left text-xs">
-        <thead class="border-b border-line text-[11px] uppercase tracking-wide text-mist-500">
-          <tr>
-            <th class="px-4 py-2 font-medium">Model</th>
-            <th class="px-4 py-2 font-medium">Provider</th>
-            <th class="px-4 py-2 text-right font-medium">Events</th>
-            <th class="px-4 py-2 text-right font-medium">Sessions</th>
-            <th class="px-4 py-2 text-right font-medium">Tokens</th>
-            <th class="px-4 py-2 text-right font-medium">Est. cost</th>
-            <th class="px-4 py-2 font-medium">Price</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each d.rows as m (m.provider + '::' + m.model)}
-            <tr class="border-b border-line/50">
-              <td class="nums px-4 py-2 text-mist-100">{m.model || '(none)'}</td>
-              <td class="px-4 py-2 text-mist-400">{m.provider || '—'}</td>
-              <td class="nums px-4 py-2 text-right">{formatInt(m.events)}</td>
-              <td class="nums px-4 py-2 text-right">{formatInt(m.sessions)}</td>
-              <td class="nums px-4 py-2 text-right">{formatCompact(m.tokensTotal)}</td>
-              <td class="px-4 py-2 text-right"><CostFigure value={m.costApiEquiv} basis="est" /></td>
-              <td class="px-4 py-2">
-                {#if m.priced === null}<span class="text-[10px] text-mist-500">not configured</span>
-                {:else if m.priced}<span class="text-[10px] text-ok">priced</span>
-                {:else}<span class="text-[10px] text-warn">unpriced</span>{/if}
-              </td>
-            </tr>
-          {:else}
-            <tr><td colspan="7" class="px-4 py-10 text-center text-mist-500">no model activity in this window</td></tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-  </Card>
 
-  {#if !d.pricingConfigured}
-    <p class="mt-3 text-[11px] text-mist-500">No price table injected: est. cost and actual are n/a across the board (§8). Use <span class="nums">agentlens pricing update</span>.</p>
+  <Surface padded={false}>
+    <div class="overflow-x-auto rounded-card">
+      <div class="min-w-[720px]">
+        <DataTable {columns} rows={d.rows} key={(m: ModelRow) => modelKey(m.provider, m.model)} caption="Models" empty="No model activity in this window">
+          {#snippet row(m: ModelRow)}
+            {@const price = priceOf(m)}
+            {#if m.model}
+              <td class="nums font-medium text-ink" title={m.model}>{m.model}</td>
+            {:else}
+              <td class="text-ink-3" title="Events recorded without a model, such as tool calls and lifecycle events">(no model)</td>
+            {/if}
+            <td class={m.provider ? 'text-ink-2' : 'text-ink-3'} title={m.provider || undefined}>{m.provider || '—'}</td>
+            <td class="nums text-right">{formatInt(m.events)}</td>
+            <td class="nums text-right">{formatInt(m.sessions)}</td>
+            <td class="nums text-right" title={formatInt(m.tokensTotal)}>{formatCompact(m.tokensTotal)}</td>
+            <td class="text-right"><CostFigure value={m.costApiEquiv} basis="est" showLabel={false} /></td>
+            <td>
+              {#if price === 'priced'}
+                <Chip tone="green" dot>Priced</Chip>
+              {:else if price === 'unpriced'}
+                <Chip tone="orange" dot title="No price at this model's last-seen date, so its cost shows n/a, never $0.">Unpriced</Chip>
+              {:else if price === 'unconfigured'}
+                <Chip dashed title="No price table is loaded, so no model can be priced.">Not configured</Chip>
+              {:else}
+                <Chip dashed title="There is no model on these events, so there is nothing to price.">No model</Chip>
+              {/if}
+            </td>
+          {/snippet}
+        </DataTable>
+      </div>
+    </div>
+  </Surface>
+  {#if d.truncated}
+    <p class="mt-3 text-xs text-ink-3">Showing the first {formatInt(d.rows.length)} {d.rows.length === 1 ? 'model' : 'models'}. Narrow the range or agent to see the rest.</p>
   {/if}
+
   {#if d.unpriced.length}
     <div class="mt-4">
-      <Card title="Unpriced models" subtitle="cost renders n/a, never $0">
-        <ul class="nums space-y-1 text-xs">
-          {#each d.unpriced as u (u.provider + '::' + u.model)}
-            <li class="flex justify-between border-b border-line/40 pb-1">
-              <span class="text-mist-200">{u.model} <span class="text-mist-500">· {u.provider}</span></span>
-              <span class="text-mist-500">last seen {u.lastSeen ? formatDate(u.lastSeen) : '—'}</span>
+      <Surface
+        title="Unpriced models"
+        subtitle="No price at their last-seen date, so their cost shows n/a, never $0"
+        info="Checked against the price table at each model's last-seen date (§8), so this can include models outside the selected window."
+      >
+        <ul class="max-h-72 divide-y divide-line-soft overflow-y-auto">
+          {#each d.unpriced as u (modelKey(u.provider, u.model))}
+            <li class="flex items-center justify-between gap-3 py-1.5 first:pt-0 last:pb-0">
+              <span class="min-w-0 truncate text-[13px]" title="{u.model} · {u.provider}">
+                <span class="nums text-ink">{u.model}</span>
+                <span class="text-ink-3">· {u.provider || '—'}</span>
+              </span>
+              <span class="shrink-0 text-xs text-ink-3" title={u.lastSeen ? formatDateTime(u.lastSeen) : undefined}>
+                Last seen <span class="nums">{formatDate(u.lastSeen)}</span>
+              </span>
             </li>
           {/each}
         </ul>
-      </Card>
+      </Surface>
     </div>
   {/if}
 {/if}

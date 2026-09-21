@@ -2,12 +2,26 @@
   // GET /api/query — a thin UI over the single §7 cube (this page IS the cube; every
   // other page is a fixed slice of it). The returned `explain` is rendered verbatim
   // so the user always sees the basis behind the numbers (§7 "basis is visible").
-  import { api, QUERY_METRICS, QUERY_DIMS, capabilityDimCell, isCapabilityNameDim, withCapabilityType } from '../lib/api.ts'
+  import {
+    api,
+    CAPABILITY_TYPES,
+    QUERY_METRICS,
+    QUERY_DIMS,
+    capabilityDimCell,
+    isCapabilityNameDim,
+    withCapabilityType,
+    type Row,
+  } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
   import { range } from '../lib/filter.svelte.js'
   import { options, live } from '../lib/live.svelte.js'
   import { formatCompact, formatInt, formatMs } from '../lib/format.ts'
-  import Card from '../components/Card.svelte'
+  import Surface from '../components/ui/Surface.svelte'
+  import PageHeader from '../components/ui/PageHeader.svelte'
+  import DataTable from '../components/ui/DataTable.svelte'
+  import Alert from '../components/ui/Alert.svelte'
+  import CodeBlock from '../components/ui/CodeBlock.svelte'
+  import Icon from '../components/ui/Icon.svelte'
   import StatePanel from '../components/StatePanel.svelte'
   import CostFigure from '../components/CostFigure.svelte'
 
@@ -75,101 +89,224 @@
     if (col === 'events' || col === 'sessions') return formatInt(Number(v))
     return String(v)
   }
+
+  // Stale-while-revalidate: after the first answer the last good result stays up
+  // while a new spec runs (or fails), so the table never flashes back to a spinner.
+  const res = $derived(q.state.data)
+  // The cube returns no rows without a dim — the aggregate then lives only in totals.
+  const hasDim = $derived(res ? res.columns.some(isDim) : false)
+  const resultNote = $derived(
+    !res
+      ? ''
+      : nameDims.length
+        ? `Rows restricted to capability type ${nameDims.join(', ')} · ${res.truncated ? 'truncated by limit' : 'not truncated'}`
+        : res.truncated
+          ? 'Truncated by limit'
+          : '',
+  )
+
+  // Fixed px widths per column: the table grows past the card and scrolls sideways
+  // instead of squeezing a wide spec until every header is an ellipsis.
+  const TIME_DIMS = ['time', 'day', 'week', 'month']
+  const MONO_DIMS = [...TIME_DIMS, 'session', 'thread']
+  function colWidth(c: string): string {
+    if (costMetric(c)) return '140px'
+    if (TIME_DIMS.includes(c)) return '120px'
+    if (isDim(c)) return c === 'session' || c === 'thread' ? '240px' : '200px'
+    return `${Math.max(110, c.length * 7 + 36)}px`
+  }
+  const resultColumns = $derived(
+    (res?.columns ?? []).map((c) => ({ key: c, label: c, align: isDim(c) ? ('left' as const) : ('right' as const), width: colWidth(c) })),
+  )
+
+  function totalText(c: string) {
+    const v = Number(res?.totals[c] ?? 0)
+    if (c.startsWith('tokens')) return formatCompact(v)
+    if (c === 'duration') return formatMs(v)
+    return formatInt(v)
+  }
+
+  // Picker groups, built from the cube's own vocabulary so a new name always shows
+  // up (under "Other") instead of silently going missing.
+  type Group = { label: string; note?: string; names: string[] }
+  function grouped(all: readonly string[], groups: Group[]): Group[] {
+    const out = groups.map((g) => ({ ...g, names: g.names.filter((n) => all.includes(n)) }))
+    const placed = new Set(out.flatMap((g) => g.names))
+    out.push({ label: 'Other', names: all.filter((n) => !placed.has(n)) })
+    return out.filter((g) => g.names.length > 0)
+  }
+  const METRIC_GROUPS = grouped(QUERY_METRICS, [
+    { label: 'Activity', names: ['events', 'sessions', 'duration'] },
+    { label: 'Tokens', names: QUERY_METRICS.filter((m) => m.startsWith('tokens')) },
+    { label: 'Cost', names: ['cost_api_equiv', 'cost_reported'] },
+  ])
+  const DIM_GROUPS = grouped(QUERY_DIMS, [
+    { label: 'Time', names: TIME_DIMS },
+    { label: 'Scope', names: ['agent', 'host', 'project', 'session', 'thread'] },
+    { label: 'Model', names: ['model', 'provider'] },
+    { label: 'Capability', names: ['capability_type', 'capability_name'] },
+    { label: 'Capability name', note: 'restricts rows to that kind', names: [...CAPABILITY_TYPES] },
+  ])
+
+  const pill = 'inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-medium transition-colors'
+  const pillOff = 'bg-surface text-ink-2 shadow-btn hover:bg-hover hover:text-ink'
+  const metricOn = 'bg-accent-tint text-accent-ink ring-1 ring-accent/40'
+  const dimOn = 'bg-hover-2 text-ink ring-1 ring-line-strong'
+  const fieldLabel = 'mb-1 block text-xs font-medium text-ink-3'
+  const field = 'h-8 w-full rounded-lg bg-field px-2.5 text-[13px] text-ink shadow-btn outline-none placeholder:text-ink-3 focus-visible:outline-accent'
 </script>
 
-<div class="mb-4">
-  <h1 class="text-lg font-semibold">Usage · query explorer</h1>
-  <p class="text-xs text-mist-500">pick metrics + dimensions + filters → run the §7 cube directly (window: last {range.since})</p>
-</div>
+{#snippet picker(label: string, groups: Group[], selected: string[], onClass: string, onToggle: (name: string) => void)}
+  <div class="space-y-3" role="group" aria-label={label}>
+    {#each groups as g (g.label)}
+      <div role="group" aria-label="{label}: {g.label}">
+        <div class="mb-1.5 text-[11px] font-medium text-ink-3">{g.label}{#if g.note}<span class="font-normal"> · {g.note}</span>{/if}</div>
+        <div class="flex flex-wrap gap-1.5">
+          {#each g.names as n (n)}
+            {@const on = selected.includes(n)}
+            <button type="button" aria-pressed={on} class="{pill} {on ? onClass : pillOff}" onclick={() => onToggle(n)}>
+              {#if on}<Icon name="check" size={12} />{/if}{n}
+            </button>
+          {/each}
+        </div>
+      </div>
+    {/each}
+  </div>
+{/snippet}
+
+{#snippet chevron()}
+  <Icon name="chevronDown" size={14} class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-3" />
+{/snippet}
+
+<PageHeader
+  title="Usage explorer"
+  description="Pick metrics, dimensions and filters to query the usage cube directly. {range.since ? `Window: last ${range.since}.` : 'Window: all time.'}"
+  info="This page is the query cube itself — every other page is a fixed slice of it (§7). The server's own account of each query is shown under the result."
+  refreshing={q.state.refreshing || (q.state.status === 'loading' && !!res)}
+/>
 
 <div class="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1fr]">
-  <div class="space-y-3">
-    <Card title="Metrics" padded>
-      <div class="flex flex-wrap gap-1.5">
-        {#each QUERY_METRICS as m}
-          <button class="rounded border px-2 py-1 text-[11px] {metrics.includes(m) ? 'border-signal bg-signal/10 text-signal' : 'border-line text-mist-400 hover:text-mist-100'}" onclick={() => (metrics = toggle(metrics, m))}>{m}</button>
-        {/each}
+  <div class="min-w-0 space-y-4">
+    <Surface title="Metrics" note="{metrics.length} selected">
+      {@render picker('Metrics', METRIC_GROUPS, metrics, metricOn, (m) => (metrics = toggle(metrics, m)))}
+    </Surface>
+
+    <Surface title="Dimensions" note="{dims.length} selected">
+      {@render picker('Dimensions', DIM_GROUPS, dims, dimOn, (dm) => (dims = toggle(dims, dm)))}
+    </Surface>
+
+    <Surface title="Filters" info="Only the header's time range applies on this page; agent and status are chosen here.">
+      <div class="space-y-3">
+        <div>
+          <label for="usage-agent" class={fieldLabel}>Agent</label>
+          <div class="relative">
+            <select id="usage-agent" class="{field} appearance-none pr-8" bind:value={agent}>
+              <option value="">All agents</option>
+              {#each options.agents as a (a.agentId)}<option value={a.agentId}>{a.displayName || a.agentId}</option>{/each}
+            </select>
+            {@render chevron()}
+          </div>
+        </div>
+        <div>
+          <label for="usage-status" class={fieldLabel}>Status</label>
+          <div class="relative">
+            <select id="usage-status" class="{field} appearance-none pr-8" bind:value={status}>
+              <option value="">Any status</option>
+              <option value="ok">OK</option>
+              <option value="error">Error</option>
+              <option value="unknown">Unknown</option>
+            </select>
+            {@render chevron()}
+          </div>
+        </div>
+        <div>
+          <label for="usage-order" class={fieldLabel}>Order</label>
+          <input
+            id="usage-order"
+            class="{field} nums"
+            bind:value={order}
+            placeholder="metric:events:desc"
+            spellcheck="false"
+            autocomplete="off"
+            aria-describedby="usage-order-hint"
+          />
+          <p id="usage-order-hint" class="mt-1 text-[11px] text-ink-3">
+            <span class="nums">metric:&lt;name&gt;:desc</span> or <span class="nums">dim:&lt;name&gt;:asc</span>
+          </p>
+        </div>
+        <div>
+          <label for="usage-limit" class={fieldLabel}>Row limit</label>
+          <input id="usage-limit" class="{field} nums" type="number" min="0" max="5000" bind:value={limit} aria-describedby="usage-limit-hint" />
+          <p id="usage-limit-hint" class="mt-1 text-[11px] text-ink-3">0–5,000. Totals always cover every matching event.</p>
+        </div>
       </div>
-    </Card>
-    <Card title="Dimensions">
-      <div class="flex flex-wrap gap-1.5">
-        {#each QUERY_DIMS as dm}
-          <button class="rounded border px-2 py-1 text-[11px] {dims.includes(dm) ? 'border-accent bg-accent/10 text-accent' : 'border-line text-mist-400 hover:text-mist-100'}" onclick={() => (dims = toggle(dims, dm))}>{dm}</button>
-        {/each}
-      </div>
-    </Card>
-    <Card title="Filters">
-      <div class="space-y-2 text-xs">
-        <label class="block">agent
-          <select class="mt-1 w-full rounded border border-line bg-ink-850 px-2 py-1 text-mist-100" bind:value={agent}>
-            <option value="">all</option>
-            {#each options.agents as a (a.agentId)}<option value={a.agentId}>{a.agentId}</option>{/each}
-          </select>
-        </label>
-        <label class="block">status
-          <select class="mt-1 w-full rounded border border-line bg-ink-850 px-2 py-1 text-mist-100" bind:value={status}>
-            <option value="">any</option><option value="ok">ok</option><option value="error">error</option><option value="unknown">unknown</option>
-          </select>
-        </label>
-        <label class="block">order
-          <input class="nums mt-1 w-full rounded border border-line bg-ink-850 px-2 py-1 text-mist-100" bind:value={order} placeholder="metric:events:desc" />
-        </label>
-        <label class="block">limit
-          <input class="nums mt-1 w-full rounded border border-line bg-ink-850 px-2 py-1 text-mist-100" type="number" min="0" max="5000" bind:value={limit} />
-        </label>
-      </div>
-    </Card>
+    </Surface>
   </div>
 
-  <div class="space-y-3">
+  <div class="min-w-0 space-y-4">
     {#if dimConflict}
-      <Card><p class="text-sm text-warn">this capability dim contradicts the capability-type filter, so no event can match it.</p></Card>
+      <Alert tone="orange" title="No event can match.">This capability dimension contradicts the capability-type filter, so the query was not run.</Alert>
     {:else if metrics.length === 0}
-      <Card><p class="text-sm text-warn">select at least one metric.</p></Card>
-    {:else if q.state.status !== 'ready'}
-      <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} />
-    {:else if q.state.data}
-      {@const res = q.state.data}
-      <Card padded={false} title={res.rows.length + ' rows'} note={nameDims.length ? `rows restricted to capability type ${nameDims.join(', ')} · ${res.truncated ? 'truncated by limit' : 'not truncated'}` : res.truncated ? 'truncated by limit' : ''}>
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs">
-            <thead class="border-b border-line text-[11px] uppercase tracking-wide text-mist-500">
-              <tr>
-                {#each res.columns as c (c)}<th class="px-3 py-2 font-medium {isDim(c) ? '' : 'text-right'}">{c}</th>{/each}
-              </tr>
-            </thead>
-            <tbody>
-              {#each res.rows as r, i (i)}
-                <tr class="border-b border-line/40">
-                  {#each res.columns as c (c)}
-                    <td class="px-3 py-1.5 {isDim(c) ? 'text-mist-200' : 'nums text-right text-mist-100'}">
-                      {#if costMetric(c)}<CostFigure value={r[c] as number | null} basis={c === 'cost_reported' ? 'reported' : 'est'} />{:else}{cell(c, r[c]) ?? '—'}{/if}
-                    </td>
-                  {/each}
-                </tr>
+      <Alert tone="accent">Select at least one metric.</Alert>
+    {:else if !res}
+      <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} since={q.state.since} loadingText="Running the query" />
+    {:else}
+      {#if q.state.status === 'error'}
+        <Alert tone="red" title="Query failed.">{q.state.error} — the table below is the last successful result.</Alert>
+      {/if}
+
+      <Surface
+        padded={false}
+        title={hasDim ? `${formatInt(res.rows.length)} ${res.rows.length === 1 ? 'row' : 'rows'}` : 'Totals'}
+        note={resultNote}
+        info="Totals are computed over every matching event, not just the rows shown: they include rows cut by the limit, and distinct counts such as sessions are not column sums."
+      >
+        <DataTable
+          columns={resultColumns}
+          rows={res.rows}
+          key={(_r: Row, i: number) => String(i)}
+          dense
+          caption="Query result"
+          empty={hasDim ? 'No rows for this spec' : 'No dimension selected — the totals row below is the whole result'}
+        >
+          {#snippet row(r: Row)}
+            {#each res.columns as c (c)}
+              {#if costMetric(c)}
+                <td class="text-right"><CostFigure value={r[c] as number | null} basis={c === 'cost_reported' ? 'reported' : 'est'} /></td>
               {:else}
-                <tr><td colspan={res.columns.length} class="px-3 py-8 text-center text-mist-500">no rows for this spec</td></tr>
+                {@const text = cell(c, r[c])}
+                {#if isDim(c)}
+                  <!-- '' in a capability-name dim is a disclosure ("(unnamed)"), not a name -->
+                  <td
+                    class="{MONO_DIMS.includes(c) ? 'nums' : ''} {text === null || (isCapabilityNameDim(c) && String(r[c] ?? '') === '') ? 'text-ink-3' : 'text-ink'}"
+                    title={text ?? undefined}
+                  >{text ?? '—'}</td>
+                {:else}
+                  <td class="nums text-right {text === null ? 'text-ink-3' : 'text-ink'}">{text ?? '—'}</td>
+                {/if}
+              {/if}
+            {/each}
+          {/snippet}
+          {#snippet footer()}
+            <tr>
+              {#each res.columns as c, ci (c)}
+                {#if isDim(c)}
+                  <!-- dims come first; only the first carries the label, the rest have no total -->
+                  <td class="font-medium text-ink-2">{ci === 0 ? 'Totals' : ''}</td>
+                {:else if costMetric(c)}
+                  <td class="text-right"><CostFigure value={res.totals[c] ?? null} basis={c === 'cost_reported' ? 'reported' : 'est'} /></td>
+                {:else}
+                  <td class="nums text-right font-medium text-ink">{totalText(c)}</td>
+                {/if}
               {/each}
-            </tbody>
-            <tfoot class="border-t border-line">
-              <tr>
-                {#each res.columns as c, ci (c)}
-                  <td class="px-3 py-2 {ci === 0 ? 'text-mist-500' : costMetric(c) ? 'text-right' : 'nums text-right'}">
-                    {#if ci === 0}<span>totals</span>
-                    {:else if costMetric(c)}<CostFigure value={res.totals[c] ?? null} basis={c === 'cost_reported' ? 'reported' : 'est'} />
-                    {:else if c.startsWith('tokens')}<span>{formatCompact(Number(res.totals[c] ?? 0))}</span>
-                    {:else if c === 'duration'}<span>{formatMs(Number(res.totals[c] ?? 0))}</span>
-                    {:else}<span>{formatInt(Number(res.totals[c] ?? 0))}</span>{/if}
-                  </td>
-                {/each}
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </Card>
-      <Card title="Basis" subtitle="the query the server actually ran (§7 explain)">
-        <pre class="nums whitespace-pre-wrap break-words text-[11px] leading-relaxed text-mist-400">{res.explain}</pre>
-      </Card>
+            </tr>
+          {/snippet}
+        </DataTable>
+      </Surface>
+
+      <Surface title="How this was computed" info="The query the server actually ran, verbatim (§7 explain).">
+        <CodeBlock text={res.explain} />
+      </Surface>
     {/if}
   </div>
 </div>
