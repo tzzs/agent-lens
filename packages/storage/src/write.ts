@@ -130,17 +130,20 @@ export function insertEvents(
       ).run(ev.sourceId, ev.agentId)
     }
 
+    // §5.2/§5.3: the conflict path deliberately does NOT touch the timestamps. A
+    // min/max widening here would be a one-way ratchet: once an event's stored timestamp
+    // is re-derived (ingest-clock guess → source time) or re-homed to another session,
+    // the stale extreme it contributed can never leave, and the columns silently drift
+    // away from the truth they claim to summarize. The single owner of these columns is
+    // the min/max recompute below, which runs after the event rows land. The INSERT arm
+    // still seeds fresh rows from this batch, which that recompute then confirms.
     const upsertSession = db.prepare(`
       INSERT INTO sessions (id, agent_id, host_id, project_id, source_id, first_timestamp, last_timestamp)
       VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         host_id         = COALESCE(sessions.host_id, excluded.host_id),
         project_id      = COALESCE(sessions.project_id, excluded.project_id),
-        source_id       = COALESCE(sessions.source_id, excluded.source_id),
-        first_timestamp = COALESCE(min(sessions.first_timestamp, excluded.first_timestamp),
-                                   sessions.first_timestamp, excluded.first_timestamp),
-        last_timestamp  = COALESCE(max(sessions.last_timestamp, excluded.last_timestamp),
-                                   sessions.last_timestamp, excluded.last_timestamp)
+        source_id       = COALESCE(sessions.source_id, excluded.source_id)
     `)
     for (const [id, s] of sessionIdentities) {
       upsertSession.run(id, s.agentId, s.hostId, s.projectId, s.sourceId, s.first, s.last)
@@ -246,10 +249,18 @@ export function insertEvents(
 
     // Recomputed (not incremented) so a byte-identical replay leaves the count
     // identical — and so a session the rows just left drops to its true count (§5.3).
-    const recomputeCount = db.prepare(
-      'UPDATE sessions SET event_count = (SELECT COUNT(*) FROM events WHERE events.session_id = sessions.id) WHERE id = ?',
-    )
-    for (const id of recountSessions) recomputeCount.run(id)
+    // first/last_timestamp are recomputed in the same statement for the same reason:
+    // they mean MIN/MAX over the session's events, and after a repair that moved or
+    // re-timed rows only this makes the columns converge back (a repair rescan must
+    // be able to SHRINK a span, which the widening upsert could never do).
+    const recomputeSession = db.prepare(`
+      UPDATE sessions SET
+        event_count     = (SELECT COUNT(*) FROM events WHERE events.session_id = sessions.id),
+        first_timestamp = (SELECT MIN(timestamp) FROM events WHERE events.session_id = sessions.id),
+        last_timestamp  = (SELECT MAX(timestamp) FROM events WHERE events.session_id = sessions.id)
+      WHERE id = ?
+    `)
+    for (const id of recountSessions) recomputeSession.run(id)
 
     if (opts?.progress) updateSourceProgressTx(db, opts.progress)
     return { inserted }
