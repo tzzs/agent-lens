@@ -1,6 +1,7 @@
 export * from './price-types.ts'
 export * from './snapshot.ts'
 export * from './table.ts'
+export * from './merge.ts'
 export * from './cost.ts'
 export * from './billing-config.ts'
 export * from './gaps.ts'

@@ -5,7 +5,7 @@
  * snapshot alone, so a store with one override printed 432 where the CLI printed 433.
  * Every file below is synthetic and lives in a `mkdtemp` dir; no real agent data is read.
  */
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -96,6 +96,42 @@ describe('priceTableFor merges pricing-overrides.jsonl (defect 1)', () => {
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  it('a malformed override line is surfaced by both views, never skipped silently (§5.2)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentlens-pricing-malformed-'))
+    const dbPath = join(dir, 'agentlens.db')
+    writeFileSync(join(dir, 'price-snapshot.json'), JSON.stringify(SNAPSHOT), 'utf8')
+    writeFileSync(join(dir, 'pricing-overrides.jsonl'), '{ this is not json\n', 'utf8')
+    try {
+      expect(() => priceTableFor(dbPath)).toThrow(/1 malformed override line\(s\)/)
+      expect(() => loadPricing(dbPath)).toThrow(/1 malformed override line\(s\)/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+/**
+ * §5.3's structural lesson, enforced structurally: the merge lives in
+ * `loadMergedPricing` (packages/pricing/src/merge.ts) and nowhere else. If either
+ * end re-grows its own jsonl parsing, the entry-for-entry equality above could
+ * still pass (two copies agreeing today, drifting tomorrow) — this scan cannot.
+ */
+describe('§5.3: one merge implementation, both ends delegate', () => {
+  const sources: Array<[string, URL]> = [
+    ['packages/server/src/serve.ts', new URL('../src/serve.ts', import.meta.url)],
+    ['apps/cli/src/pricing-store.ts', new URL('../../../apps/cli/src/pricing-store.ts', import.meta.url)],
+  ]
+  for (const [label, url] of sources) {
+    it(`${label} calls loadMergedPricing and holds no merge of its own`, () => {
+      const src = readFileSync(url, 'utf8')
+      expect(src).toContain('loadMergedPricing')
+      // A hand-rolled merge necessarily contains one of these:
+      expect(src, 'merge order must not be re-implemented here').not.toMatch(/\.withOverride\s*\(/)
+      expect(src, 'the jsonl must not be parsed here').not.toMatch(/JSON\.parse/)
+      expect(src, 'the file convention lives in @agentlens/pricing').not.toMatch(/price(ring)?-(snapshot|overrides)\.jsonl?/)
+    })
+  }
 })
 
 describe('startServer serves the merged numbers (defect 1 + defect 2 wiring)', () => {

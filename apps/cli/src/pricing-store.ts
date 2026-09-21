@@ -1,18 +1,20 @@
 /**
  * Pricing persistence for the CLI: snapshot + overrides live next to the DB
  * file, so `--db <temp>/x.db` in tests never touches ~/.agentlens.
+ * The merge itself is §5.3's one-truth call into `@agentlens/pricing` —
+ * this file only maps DB paths onto the store's file names.
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import {
-  BILLING_MODES,
-  bundledSnapshot,
+  loadMergedPricing,
   liveBillingModes,
-  PricingTable,
-  readSnapshotFile,
+  PRICE_SNAPSHOT_FILENAME,
+  PRICING_OVERRIDES_FILENAME,
   writeBillingMode,
   writeSnapshotFile,
   type BillingMode,
+  type MergedPricing,
   type PriceEntry,
   type PriceSnapshot,
 } from '@agentlens/pricing'
@@ -21,10 +23,10 @@ export function dataDir(dbPath: string): string {
   return dirname(dbPath)
 }
 export function snapshotPath(dbPath: string): string {
-  return join(dataDir(dbPath), 'price-snapshot.json')
+  return join(dataDir(dbPath), PRICE_SNAPSHOT_FILENAME)
 }
 export function overridesPath(dbPath: string): string {
-  return join(dataDir(dbPath), 'pricing-overrides.jsonl')
+  return join(dataDir(dbPath), PRICING_OVERRIDES_FILENAME)
 }
 export function configPath(dbPath: string): string {
   return join(dataDir(dbPath), 'config.json')
@@ -34,37 +36,11 @@ export function ensureDataDir(dbPath: string): void {
   mkdirSync(dataDir(dbPath), { recursive: true })
 }
 
-export interface LoadedPricing {
-  table: PricingTable
-  snapshot: PriceSnapshot
-  overrideCount: number
-}
+export type LoadedPricing = MergedPricing
 
 /** Snapshot file when present (after `pricing update`), else the bundled snapshot; overrides always win (§8). */
 export function loadPricing(dbPath: string): LoadedPricing {
-  let snapshot: PriceSnapshot
-  try {
-    snapshot = readSnapshotFile(snapshotPath(dbPath)) ?? bundledSnapshot()
-  } catch (err) {
-    throw new Error(`price snapshot at ${basenameSafe(snapshotPath(dbPath))} is unreadable: ${(err as Error).message}`)
-  }
-  let table = PricingTable.fromSnapshot(snapshot)
-  let overrideCount = 0
-  const op = overridesPath(dbPath)
-  if (existsSync(op)) {
-    for (const line of readFileSync(op, 'utf8').split('\n')) {
-      const t = line.trim()
-      if (!t) continue
-      const entry = JSON.parse(t) as PriceEntry
-      table = table.withOverride(entry)
-      overrideCount++
-    }
-  }
-  return { table, snapshot, overrideCount }
-}
-
-function basenameSafe(p: string): string {
-  return p.split('/').pop() ?? p
+  return loadMergedPricing(snapshotPath(dbPath))
 }
 
 export function writeSnapshot(dbPath: string, snapshot: PriceSnapshot): void {
