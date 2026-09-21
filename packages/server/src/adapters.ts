@@ -1,30 +1,16 @@
 /**
- * Optional adapter access for the diagnostic routes.
+ * Read-only helpers for the diagnostic routes (§11).
  *
- * Adapters are satellites (§5.4): they are loaded through a variable specifier so
- * a missing package is a runtime no-op rather than a build error, and the server
- * keeps zero compile-time edges to them (the CLI wires the same list for `agl
- * doctor`). Detection is strictly read-only — this tool reads private logs and
- * must never touch them (§5.2 rule 3).
+ * Adapter *loading* deliberately does not live here (§5.4): the server declares no
+ * dependency on any adapter package, and a variable-specifier `import` from this
+ * package would resolve to nothing and swallow the error — which is how the web
+ * Doctor came to contradict `agl doctor`. The CLI injects its adapter set through
+ * `ServerDeps.adapters` instead, so both ends walk the same five adapters.
+ * Detection stays strictly read-only — this tool reads private logs and must
+ * never touch them (§5.2 rule 3).
  */
 import { accessSync, constants, readdirSync, readFileSync, statSync } from 'node:fs'
-import type { AgentAdapter, HostContext } from '@agentlens/event-model'
-
-const OPTIONAL_ADAPTER_PACKAGES = ['@agentlens/adapter-claude-code'] as const
-
-export async function loadAdapters(): Promise<AgentAdapter[]> {
-  const out: AgentAdapter[] = []
-  for (const pkg of OPTIONAL_ADAPTER_PACKAGES) {
-    try {
-      const mod = (await import(/* @vite-ignore */ pkg)) as Record<string, unknown>
-      const candidate = (mod['default'] ?? mod['adapter'] ?? mod['claudeCodeAdapter']) as AgentAdapter | undefined
-      if (candidate && typeof candidate.discover === 'function' && typeof candidate.normalize === 'function') out.push(candidate)
-    } catch {
-      // adapter package not installed — expected in a server-only build
-    }
-  }
-  return out
-}
+import type { HostContext } from '@agentlens/event-model'
 
 /** Read-only HostContext (§5.1); `dataRoot` narrows a scan to one agent's store. */
 export function hostContext(opts: { homedir: string; env?: NodeJS.ProcessEnv; dataRoot?: string | null }): HostContext {

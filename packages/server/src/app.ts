@@ -43,6 +43,7 @@ export function createContext(deps: ServerDeps): ServerCtx {
     ...(deps.staticDir ? { staticDir: deps.staticDir } : {}),
     ...(deps.scan ? { scan: deps.scan } : {}),
     ...(deps.capabilityCatalog ? { capabilityCatalog: deps.capabilityCatalog } : {}),
+    ...(deps.adapters ? { adapters: deps.adapters } : {}),
     ...(deps.dbPath ? { dbPath: redactHome(deps.dbPath, homedir) } : {}),
     homedir,
     cubeDeps: {

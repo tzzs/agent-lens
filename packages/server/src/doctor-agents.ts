@@ -1,11 +1,12 @@
 /**
- * Doctor's Agents + Permissions blocks (§11): adapter detection when adapter
- * packages are installed, otherwise the ingested entity rows with an explicit
- * "adapter not in this build" note — never a silent zero.
+ * Doctor's Agents + Permissions blocks (§11): adapter detection over the adapter
+ * set the host injects (`ServerDeps.adapters`, §5.4), otherwise the ingested
+ * entity rows with an explicit "adapter not in this build" note — never a
+ * silent zero. Detection is read-only.
  */
 import type { ServerCtx } from './types.ts'
 import type { DoctorAgentRow } from './doctor-types.ts'
-import { hostContext, isReadable, loadAdapters } from './adapters.ts'
+import { hostContext, isReadable } from './adapters.ts'
 import { redactHome, rowsOf } from './resolve.ts'
 
 function count(db: ServerCtx['db'], sql: string, ...params: unknown[]): number {
@@ -17,7 +18,7 @@ export async function doctorAgents(ctx: ServerCtx): Promise<{
   permissions: { path: string; readable: boolean }[]
   adaptersInstalled: boolean
 }> {
-  const adapters = await loadAdapters()
+  const adapters = ctx.adapters ? await ctx.adapters() : []
   const ingested = rowsOf(ctx.db, 'SELECT id, display_name, detected_version, data_root FROM agents')
   const rows: DoctorAgentRow[] = []
   const permissions: { path: string; readable: boolean }[] = []
