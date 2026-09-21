@@ -3,7 +3,7 @@ import { dirname } from 'node:path'
 import { litellmRawMapToSnapshot, loadSnapshot, type PriceSnapshot } from './snapshot.ts'
 
 export const LITELLM_PRICES_URL =
-  'https://raw.githubusercontent.com/BerriCAI/litellm/main/model_prices_and_context_window.json'
+  'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json'
 
 export class PricingFetchError extends Error {
   override readonly name = 'PricingFetchError'
