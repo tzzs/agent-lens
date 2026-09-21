@@ -72,6 +72,15 @@ importers:
         specifier: workspace:*
         version: link:../../packages/event-model
 
+  adapters/zcode:
+    dependencies:
+      '@agentlens/collector':
+        specifier: workspace:*
+        version: link:../../packages/collector
+      '@agentlens/event-model':
+        specifier: workspace:*
+        version: link:../../packages/event-model
+
   apps/cli:
     dependencies:
       '@agentlens/adapter-claude-code':
@@ -92,6 +101,9 @@ importers:
       '@agentlens/adapter-workbuddy':
         specifier: workspace:*
         version: link:../../adapters/workbuddy
+      '@agentlens/adapter-zcode':
+        specifier: workspace:*
+        version: link:../../adapters/zcode
       '@agentlens/collector':
         specifier: workspace:*
         version: link:../../packages/collector

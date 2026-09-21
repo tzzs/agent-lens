@@ -17,6 +17,7 @@ export default defineConfig({
       '@agentlens/adapter-opencode': r('./adapters/opencode/src/index.ts'),
       '@agentlens/adapter-workbuddy': r('./adapters/workbuddy/src/index.ts'),
       '@agentlens/adapter-pi': r('./adapters/pi/src/index.ts'),
+      '@agentlens/adapter-zcode': r('./adapters/zcode/src/index.ts'),
       '@agentlens/cli': r('./apps/cli/src/index.ts'),
       '@agentlens/server': r('./packages/server/src/index.ts'),
       '@agentlens/web': r('./apps/web/src/lib/index.ts'),

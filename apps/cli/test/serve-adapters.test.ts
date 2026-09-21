@@ -32,7 +32,7 @@ describe('the served Doctor uses the CLI adapter set', () => {
   it('resolves every shipped adapter from the CLI package', async () => {
     const adapters = await getAdapters()
     expect(adapters.map((a) => a.id).sort()).toEqual(
-      ['claude-code', 'codex', 'opencode', 'pi', 'qoder', 'workbuddy'].sort(),
+      ['claude-code', 'codex', 'opencode', 'pi', 'qoder', 'workbuddy', 'zcode'].sort(),
     )
   })
 

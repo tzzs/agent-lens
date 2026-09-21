@@ -17,6 +17,7 @@
     "@agentlens/adapter-pi": "workspace:*",
     "@agentlens/adapter-qoder": "workspace:*",
     "@agentlens/adapter-workbuddy": "workspace:*",
+    "@agentlens/adapter-zcode": "workspace:*",
     "@agentlens/collector": "workspace:*",
     "@agentlens/event-model": "workspace:*",
     "@agentlens/pricing": "workspace:*",

@@ -12,6 +12,7 @@ const OPTIONAL_ADAPTER_PACKAGES = [
   '@agentlens/adapter-opencode',
   '@agentlens/adapter-workbuddy',
   '@agentlens/adapter-pi',
+  '@agentlens/adapter-zcode',
 ] as const
 
 function isAdapter(value: unknown): value is AgentAdapter {
