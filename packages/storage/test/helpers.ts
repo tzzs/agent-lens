@@ -67,6 +67,7 @@ export const SNAPSHOT_TABLES = [
   'events',
   'payloads',
   'parse_errors',
+  'machine',
 ] as const
 
 /** Byte-comparable snapshot of the whole DB state (§15 M0 acceptance ①). */

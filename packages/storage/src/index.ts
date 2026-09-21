@@ -1,5 +1,7 @@
 export * from './db.ts'
+export * from './machine.ts'
 export * from './migrate.ts'
 export * from './write.ts'
 export * from './query-shape.ts'
 export * from './doctor-checks.ts'
+export * from './project-backfill.ts'

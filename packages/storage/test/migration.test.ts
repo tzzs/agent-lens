@@ -12,6 +12,7 @@ describe('migrations', () => {
       '002_measurement_round_two.sql',
       '003_aggregation_policy_per_agent.sql',
       '004_sqlite_table_in_sources.sql',
+      '005_machine.sql',
     ])
     expect(migrate(db)).toEqual([])
     const applied = db.prepare('SELECT id FROM schema_migrations').all()
@@ -20,6 +21,7 @@ describe('migrations', () => {
       '002_measurement_round_two.sql',
       '003_aggregation_policy_per_agent.sql',
       '004_sqlite_table_in_sources.sql',
+      '005_machine.sql',
     ])
     db.close()
   })
@@ -91,6 +93,7 @@ describe('migrations', () => {
     expect(tables).toEqual([
       'agents',
       'events',
+      'machine',
       'models',
       'parse_errors',
       'payloads',
@@ -144,7 +147,7 @@ describe('migrations', () => {
       "INSERT INTO sources (id, agent_id, path, kind, last_offset, status) VALUES ('s1','a1','/x/opencode.db','sqlite',512,'active')",
     ).run()
 
-    expect(migrate(db)).toEqual(['004_sqlite_table_in_sources.sql'])
+    expect(migrate(db)).toEqual(['004_sqlite_table_in_sources.sql', '005_machine.sql'])
     const cols = (db.prepare('PRAGMA table_info(sources)').all() as { name: string }[]).map((c) => c.name)
     expect(cols).toContain('sqlite_table')
     const row = db.prepare("SELECT sqlite_table, last_offset FROM sources WHERE id = 's1'").get() as

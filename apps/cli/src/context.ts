@@ -10,7 +10,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { projectLabel, type HostContext } from '@agentlens/event-model'
 import type { FlagView } from './args.ts'
 import type { ServeHandle } from './serve.ts'
-import { loadAgentAggregations } from '@agentlens/storage'
+import { ensureMachineId, loadAgentAggregations, type MachineIdentity } from '@agentlens/storage'
 import type { BillingMode, QueryFilter, QueryDeps } from './types.ts'
 import { loadBillingModes, loadPricing } from './pricing-store.ts'
 
@@ -107,6 +107,38 @@ export function makeHostCtx(ctx: Ctx, dataRoot?: string | null): HostContext {
       }
     },
   }
+}
+
+/**
+ * §2 Machine tier, read through the CLI context so `status` and `doctor` print the same
+ * thing (and the same thing the server will print once it surfaces it, §14). The id is
+ * minted lazily on first use and lives in the database file itself; a failure to mint
+ * (read-only store) degrades to `null` — an identity gap must never sink a report.
+ */
+export function machineIdentity(db: DatabaseSync): MachineIdentity | null {
+  try {
+    return ensureMachineId(db)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The Machine block, phrased identically by `status` and `doctor` (§14: one fact, one
+ * wording). The label is the privacy posture (§16): a random local id, nothing personal,
+ * nothing transmitted.
+ */
+export function machineLines(machine: MachineIdentity | null): string[] {
+  if (!machine) {
+    return ['Machine', '  - unavailable: the database is not writable, so no machine id could be minted (§2)']
+  }
+  return [
+    'Machine',
+    `  ${machine.id}`,
+    '  random id for this AgentLens install, minted locally on first run. Not a hostname, not a user',
+    '  name, never transmitted (§16); it exists so a future multi-machine merge can say which install',
+    '  produced which data (§2). Per-row attribution is deferred: today every row here is this machine.',
+  ]
 }
 
 export function queryDeps(db: DatabaseSync, dbPath: string, ctx: Ctx): QueryDeps {

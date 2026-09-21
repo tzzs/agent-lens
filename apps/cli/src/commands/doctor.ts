@@ -21,7 +21,7 @@ import { parserVersionDrift, sourceRetention, subagentOrphans, timestampGuesses 
 import { isMissingPrice, PRICE_MISSING, PricingGaps, type PriceEntry } from '@agentlens/pricing'
 import type { FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
-import { displayPath, makeHostCtx, redactHome } from '../context.ts'
+import { displayPath, machineIdentity, machineLines, makeHostCtx, redactHome } from '../context.ts'
 import { getAdapters } from '../adapters.ts'
 import { loadPricing } from '../pricing-store.ts'
 import { GLYPH, formatCount, formatTokens, table } from '../render.ts'
@@ -635,6 +635,10 @@ export async function cmdDoctor(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbP
   const probes = await probeAdapters(adapters, rctx, db)
 
   renderAgents(db, rctx, probes)
+
+  // §2: the store's own identity line — same wording as `status` (§14: one fact, one phrase).
+  ctx.out('')
+  for (const line of machineLines(machineIdentity(db))) ctx.out(line)
 
   ctx.out('')
   renderParsing(db, rctx, probes)
