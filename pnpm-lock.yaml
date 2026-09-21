@@ -45,6 +45,15 @@ importers:
         specifier: workspace:*
         version: link:../../packages/event-model
 
+  adapters/pi:
+    dependencies:
+      '@agentlens/collector':
+        specifier: workspace:*
+        version: link:../../packages/collector
+      '@agentlens/event-model':
+        specifier: workspace:*
+        version: link:../../packages/event-model
+
   adapters/qoder:
     dependencies:
       '@agentlens/collector':
@@ -74,6 +83,9 @@ importers:
       '@agentlens/adapter-opencode':
         specifier: workspace:*
         version: link:../../adapters/opencode
+      '@agentlens/adapter-pi':
+        specifier: workspace:*
+        version: link:../../adapters/pi
       '@agentlens/adapter-qoder':
         specifier: workspace:*
         version: link:../../adapters/qoder

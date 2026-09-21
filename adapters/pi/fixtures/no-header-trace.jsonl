@@ -1,0 +1,3 @@
+{"id":"nh1","type":"message","timestamp":"2026-09-20T11:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"没有会话头的文件"}]}}
+{"id":"nh2","type":"message","parentId":"nh1","timestamp":"2026-09-20T11:00:06.000Z","message":{"role":"assistant","api":"anthropic-messages","provider":"anthropic","model":"gpt-5-mini","stopReason":"stop","responseId":"resp-nh","content":[{"type":"text","text":"头丢了也要能记账。"}],"usage":{"input":10,"output":1,"cacheRead":0,"cacheWrite":0,"totalTokens":11,"cost":{"input":0.0001,"output":0.0001,"cacheRead":0,"cacheWrite":0,"total":0.0002}}}}
+{"id":"nh3","type":"message","parentId":"nh2","timestamp":"2026-09-20T11:00:09.000Z","message":{"role":"user","content":[{"type":"text","text":"继续"}]}}

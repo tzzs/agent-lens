@@ -1,0 +1,4 @@
+{"id":"9e1c0000-0000-4000-8000-0000000000ee","type":"session","version":3,"timestamp":"2026-09-20T12:00:00.000Z","cwd":"/work/err"}
+{"id":"er1","type":"message","parentId":"9e1c0000-0000-4000-8000-0000000000ee","timestamp":"2026-09-20T12:00:05.000Z","message":{"role":"assistant","api":"anthropic-messages","provider":"anthropic","model":"gpt-5-mini","stopReason":"aborted","errorMessage":"Operation aborted","content":[],"usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}}}}
+{"id":"er2","type":"message","timestamp":"2026-09-20T12:02:00.000Z","message":{"role":"toolResult","toolCallId":"call-99","toolName":"bash","content":[{"type":"text","text":"exit 1: permission denied while writing release notes"}],"isError":true}}
+{"id":"er3","type":"thinking_level_change","parentId":"er2","timestamp":"2026-09-20T12:03:00.000Z","level":"high"}

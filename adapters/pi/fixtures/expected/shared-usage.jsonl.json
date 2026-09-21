@@ -1,0 +1,244 @@
+[
+  {
+    "id": "5d09349f6074acb6d3f787b246883e584c62a9256c74c5d1c418bd8e5668d7cd",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "d3d7b4962c39b11b8ac86412a7889ca424b7c5bc7fd374a4b7bac1915e412008",
+    "sessionId": "591140106b9425da193347a868780ea2aa78a5ca9dfcc145357a3414052fa7a4",
+    "projectId": "project:dup",
+    "parentEventId": null,
+    "requestId": null,
+    "timestamp": 1789898400000,
+    "ingestedAt": 1760000000000,
+    "type": "session.start",
+    "subtype": null,
+    "model": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 1,
+    "rawOffset": 0,
+    "payload": null,
+    "metadata": {
+      "mapped": true,
+      "session_scoped": true,
+      "record_id": "9e1c0000-0000-4000-8000-0000000000dd",
+      "upstream_version": 3,
+      "measured_version": 3,
+      "cwd": "/work/dup",
+      "timestamp_raw": "2026-09-20T10:00:00.000Z"
+    }
+  },
+  {
+    "id": "1d50ca779d7ff29b2f65d41eac376984a9a4a2c7f5d2dd4b061b0e3bd78d489c",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "d3d7b4962c39b11b8ac86412a7889ca424b7c5bc7fd374a4b7bac1915e412008",
+    "sessionId": "591140106b9425da193347a868780ea2aa78a5ca9dfcc145357a3414052fa7a4",
+    "projectId": "project:dup",
+    "parentEventId": "5d09349f6074acb6d3f787b246883e584c62a9256c74c5d1c418bd8e5668d7cd",
+    "requestId": null,
+    "timestamp": 1789898403000,
+    "ingestedAt": 1760000000000,
+    "type": "message.assistant",
+    "subtype": "stop",
+    "model": {
+      "provider": "anthropic",
+      "name": "claude-sonnet-4-5"
+    },
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 2,
+    "rawOffset": 132,
+    "payload": {
+      "kind": "assistant_message",
+      "role": "assistant",
+      "text": "第一次落盘的同一响应。"
+    },
+    "metadata": {
+      "mapped": true,
+      "role_raw": "assistant",
+      "api": "anthropic-messages",
+      "stop_reason": "stop",
+      "error_message_present": false,
+      "record_id": "d1",
+      "parent_id": "9e1c0000-0000-4000-8000-0000000000dd",
+      "content_chars": 11
+    }
+  },
+  {
+    "id": "ed2a048e1eac315d34da4f9ac433b5600cdc5309f064afe69100e3df8cee0590",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "d3d7b4962c39b11b8ac86412a7889ca424b7c5bc7fd374a4b7bac1915e412008",
+    "sessionId": "591140106b9425da193347a868780ea2aa78a5ca9dfcc145357a3414052fa7a4",
+    "projectId": "project:dup",
+    "parentEventId": null,
+    "requestId": "resp-dup",
+    "timestamp": 1789898403000,
+    "ingestedAt": 1760000000000,
+    "type": "generation.end",
+    "subtype": "usage:assistant",
+    "model": {
+      "provider": "anthropic",
+      "name": "claude-sonnet-4-5"
+    },
+    "usage": {
+      "inputTokens": 100,
+      "outputTokens": 500,
+      "cacheReadTokens": 9000,
+      "cacheWriteTokens": 0,
+      "reasoningTokens": 0
+    },
+    "usageSource": "reported",
+    "costReported": 0.0061,
+    "costSource": "reported",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 2,
+    "rawOffset": 132,
+    "payload": null,
+    "metadata": {
+      "mapped": true,
+      "reported_fields": [
+        "cacheRead",
+        "cacheWrite",
+        "input",
+        "output"
+      ],
+      "unmapped_fields": [
+        "totalTokens"
+      ],
+      "reasoning_tokens_absent": true,
+      "cache_write_reported": true,
+      "input_includes_cache_read": false,
+      "cost_breakdown": {
+        "input": 0.0001,
+        "output": 0.005,
+        "cacheRead": 0.001,
+        "cacheWrite": 0,
+        "total": 0.0061
+      },
+      "provider_request_id": "resp-dup"
+    }
+  },
+  {
+    "id": "e74d47f13fd7c2104f13bd5da8f3f75e5c5841b45c81d30d15f36fcb63b2fe63",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "d3d7b4962c39b11b8ac86412a7889ca424b7c5bc7fd374a4b7bac1915e412008",
+    "sessionId": "591140106b9425da193347a868780ea2aa78a5ca9dfcc145357a3414052fa7a4",
+    "projectId": "project:dup",
+    "parentEventId": "1d50ca779d7ff29b2f65d41eac376984a9a4a2c7f5d2dd4b061b0e3bd78d489c",
+    "requestId": null,
+    "timestamp": 1789898404000,
+    "ingestedAt": 1760000000000,
+    "type": "message.assistant",
+    "subtype": "stop",
+    "model": {
+      "provider": "anthropic",
+      "name": "claude-sonnet-4-5"
+    },
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 3,
+    "rawOffset": 647,
+    "payload": {
+      "kind": "assistant_message",
+      "role": "assistant",
+      "text": "重述的同一响应。"
+    },
+    "metadata": {
+      "mapped": true,
+      "role_raw": "assistant",
+      "api": "anthropic-messages",
+      "stop_reason": "stop",
+      "error_message_present": false,
+      "record_id": "d2",
+      "parent_id": "d1",
+      "content_chars": 8
+    }
+  },
+  {
+    "id": "144bdb6af454f894b47459b4a5ba2f81309d089c71d9291c99c734900518880a",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "d3d7b4962c39b11b8ac86412a7889ca424b7c5bc7fd374a4b7bac1915e412008",
+    "sessionId": "591140106b9425da193347a868780ea2aa78a5ca9dfcc145357a3414052fa7a4",
+    "projectId": "project:dup",
+    "parentEventId": null,
+    "requestId": "resp-dup",
+    "timestamp": 1789898404000,
+    "ingestedAt": 1760000000000,
+    "type": "generation.end",
+    "subtype": "usage:assistant",
+    "model": {
+      "provider": "anthropic",
+      "name": "claude-sonnet-4-5"
+    },
+    "usage": {
+      "inputTokens": 100,
+      "outputTokens": 500,
+      "cacheReadTokens": 9000,
+      "cacheWriteTokens": 0,
+      "reasoningTokens": 0
+    },
+    "usageSource": "reported",
+    "costReported": 0.0061,
+    "costSource": "reported",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 3,
+    "rawOffset": 647,
+    "payload": null,
+    "metadata": {
+      "mapped": true,
+      "reported_fields": [
+        "cacheRead",
+        "cacheWrite",
+        "input",
+        "output"
+      ],
+      "unmapped_fields": [
+        "totalTokens"
+      ],
+      "reasoning_tokens_absent": true,
+      "cache_write_reported": true,
+      "input_includes_cache_read": false,
+      "cost_breakdown": {
+        "input": 0.0001,
+        "output": 0.005,
+        "cacheRead": 0.001,
+        "cacheWrite": 0,
+        "total": 0.0061
+      },
+      "provider_request_id": "resp-dup"
+    }
+  }
+]

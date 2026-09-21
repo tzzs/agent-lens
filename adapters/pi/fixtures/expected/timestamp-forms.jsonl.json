@@ -1,0 +1,170 @@
+[
+  {
+    "id": "baec2dfc649a9b3179f34172401522f6960f6c98de19470d6842a5702840dc6a",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "19d4aa609dacf8da93a8eb1da4b28d15b6eb3309b7fd6aa8706605708c0642c1",
+    "sessionId": "611e5446f3f2fa249d5a4bc4b2ff85d9273e4355f31339f8b9fb6e67e209eb13",
+    "projectId": "d42d99c3305e156cfed44f339624e342a662ead29b44e32be9d357d4575fd1b3",
+    "parentEventId": null,
+    "requestId": null,
+    "timestamp": 1789916401000,
+    "ingestedAt": 1760000000000,
+    "type": "message.user",
+    "subtype": null,
+    "model": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 1,
+    "rawOffset": 0,
+    "payload": {
+      "kind": "user_message",
+      "role": "user",
+      "text": "ISO 字符串"
+    },
+    "metadata": {
+      "mapped": true,
+      "role_raw": "user",
+      "parent_id": null,
+      "content_chars": 7,
+      "diagnostics": [
+        "session-header-absent",
+        "cwd-absent-unattributed"
+      ],
+      "project_source": "unattributed"
+    }
+  },
+  {
+    "id": "683e2f893102d5cb6a10f5d2c666f1238e1f9c816626cb7eb12862fe6b19d798",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "19d4aa609dacf8da93a8eb1da4b28d15b6eb3309b7fd6aa8706605708c0642c1",
+    "sessionId": "611e5446f3f2fa249d5a4bc4b2ff85d9273e4355f31339f8b9fb6e67e209eb13",
+    "projectId": "d42d99c3305e156cfed44f339624e342a662ead29b44e32be9d357d4575fd1b3",
+    "parentEventId": null,
+    "requestId": null,
+    "timestamp": 1789000000000,
+    "ingestedAt": 1760000000000,
+    "type": "message.user",
+    "subtype": null,
+    "model": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 2,
+    "rawOffset": 146,
+    "payload": {
+      "kind": "user_message",
+      "role": "user",
+      "text": "毫秒数字"
+    },
+    "metadata": {
+      "mapped": true,
+      "role_raw": "user",
+      "parent_id": null,
+      "content_chars": 4,
+      "diagnostics": [
+        "session-header-absent",
+        "cwd-absent-unattributed"
+      ],
+      "project_source": "unattributed"
+    }
+  },
+  {
+    "id": "a60f1465aabdf9450b50183010c9aa4f4fca79ac73afbfa6c6f68d5085618ae3",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "19d4aa609dacf8da93a8eb1da4b28d15b6eb3309b7fd6aa8706605708c0642c1",
+    "sessionId": "611e5446f3f2fa249d5a4bc4b2ff85d9273e4355f31339f8b9fb6e67e209eb13",
+    "projectId": "d42d99c3305e156cfed44f339624e342a662ead29b44e32be9d357d4575fd1b3",
+    "parentEventId": null,
+    "requestId": null,
+    "timestamp": 1789000001000,
+    "ingestedAt": 1760000000000,
+    "type": "message.user",
+    "subtype": null,
+    "model": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 3,
+    "rawOffset": 278,
+    "payload": {
+      "kind": "user_message",
+      "role": "user",
+      "text": "秒级数字"
+    },
+    "metadata": {
+      "mapped": true,
+      "role_raw": "user",
+      "parent_id": null,
+      "content_chars": 4,
+      "diagnostics": [
+        "session-header-absent",
+        "cwd-absent-unattributed"
+      ],
+      "project_source": "unattributed"
+    }
+  },
+  {
+    "id": "70e45c15268fb4205bd06947e7f9be24e48f9d5f06b983ab9d0239f931fa0d7a",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "19d4aa609dacf8da93a8eb1da4b28d15b6eb3309b7fd6aa8706605708c0642c1",
+    "sessionId": "611e5446f3f2fa249d5a4bc4b2ff85d9273e4355f31339f8b9fb6e67e209eb13",
+    "projectId": "d42d99c3305e156cfed44f339624e342a662ead29b44e32be9d357d4575fd1b3",
+    "parentEventId": null,
+    "requestId": null,
+    "timestamp": 1760000000000,
+    "ingestedAt": 1760000000000,
+    "type": "message.user",
+    "subtype": null,
+    "model": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 4,
+    "rawOffset": 407,
+    "payload": {
+      "kind": "user_message",
+      "role": "user",
+      "text": "没有时间戳"
+    },
+    "metadata": {
+      "mapped": true,
+      "role_raw": "user",
+      "parent_id": null,
+      "content_chars": 5,
+      "diagnostics": [
+        "session-header-absent",
+        "cwd-absent-unattributed"
+      ],
+      "project_source": "unattributed"
+    }
+  }
+]

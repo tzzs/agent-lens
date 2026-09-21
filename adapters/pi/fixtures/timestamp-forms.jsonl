@@ -1,0 +1,4 @@
+{"id":"ts1","type":"message","timestamp":"2026-09-20T15:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"ISO 字符串"}]}}
+{"id":"ts2","type":"message","timestamp":1789000000000,"message":{"role":"user","content":[{"type":"text","text":"毫秒数字"}]}}
+{"id":"ts3","type":"message","timestamp":1789000001,"message":{"role":"user","content":[{"type":"text","text":"秒级数字"}]}}
+{"id":"ts4","type":"message","message":{"role":"user","content":[{"type":"text","text":"没有时间戳"}]}}

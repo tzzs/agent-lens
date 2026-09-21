@@ -1,0 +1,2 @@
+{"id":"9e1c0000-0000-4000-8000-0000000000bb","type":"session","version":3,"timestamp":"2026-09-20T18:00:00.000Z","cwd":"/work/beta"}
+{"id":"hb1","type":"message","parentId":"9e1c0000-0000-4000-8000-0000000000bb","timestamp":"2026-09-20T18:00:04.000Z","message":{"role":"user","content":[{"type":"text","text":"第二个会话文件"}]}}
