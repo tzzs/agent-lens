@@ -1,77 +1,94 @@
 <script lang="ts">
-  // Hand-rolled SVG donut. Recharts was listed in the original package.json but it
-  // is a React component library and cannot render inside Svelte 5 without pulling
-  // React back in, so charts are dependency-free local SVG (also keeps the
-  // local-first, no-external-asset rule intact).
+  // Hand-rolled SVG donut (Recharts is React-only; charts stay dependency-free and
+  // local). Long tails fold into "Other" so the legend stays readable; colours come
+  // from the --cat-N theme tokens.
+  import { SERIES } from '../../lib/eventKinds.ts'
+  import { topN } from '../../lib/series.ts'
+
   let {
     data = [],
-    size = 168,
-    thickness = 22,
+    size = 148,
+    thickness = 18,
+    max = 6,
     format = (n: number) => String(n),
+    label = 'breakdown',
   }: {
-    data: { label: string; value: number; color?: string }[]
+    data: { label: string; value: number; title?: string }[]
     size?: number
     thickness?: number
+    max?: number
     format?: (n: number) => string
+    label?: string
   } = $props()
 
-  const palette = ['#4fd1c5', '#7aa2f7', '#f6c453', '#f2777a', '#7fd88f', '#c586c0', '#e5a15c', '#5cc8d6']
-  const rows = $derived(data.filter((d) => Number.isFinite(d.value) && d.value > 0))
+  const rows = $derived(topN(data, max))
   const total = $derived(rows.reduce((a, b) => a + b.value, 0))
   const r = $derived((size - thickness) / 2)
   const c = $derived(2 * Math.PI * r)
+  // a hairline gap between segments reads cleaner than touching arcs
+  const gap = $derived(rows.length > 1 ? 2 : 0)
 
   const arcs = $derived.by(() => {
     let acc = 0
     return rows.map((d, i) => {
       const frac = total === 0 ? 0 : d.value / total
       const seg = {
-        label: d.label,
-        value: d.value,
-        color: d.color ?? palette[i % palette.length],
-        dash: frac * c,
+        ...d,
+        color: 'other' in d && d.other ? 'var(--cat-muted)' : SERIES[i % SERIES.length]!,
+        dash: Math.max(0, frac * c - gap),
         offset: -acc * c,
-        pctv: frac,
+        pct: frac,
       }
       acc += frac
       return seg
     })
   })
+  let active = $state<number | null>(null)
+  const centre = $derived(active === null ? { v: format(total), l: 'total' } : { v: format(arcs[active]!.value), l: arcs[active]!.label })
 </script>
 
-<div class="flex items-center gap-4">
-  {#if total === 0}
-    <div class="grid place-items-center rounded-full border border-dashed border-line text-xs text-mist-500" style="width:{size}px;height:{size}px">
-      no data in range
-    </div>
-  {:else}
-    <svg width={size} height={size} viewBox="0 0 {size} {size}" role="img" aria-label="breakdown donut">
+{#if total === 0}
+  <div class="grid h-[148px] place-items-center rounded-lg border border-dashed border-line-strong text-xs text-ink-3">No data in range</div>
+{:else}
+  <!-- container query: side-by-side only when the card itself is wide enough -->
+  <div class="@container">
+  <div class="flex flex-col items-center gap-4 @md:flex-row @md:items-center">
+    <svg width={size} height={size} viewBox="0 0 {size} {size}" class="shrink-0" role="img" aria-label="{label}: total {format(total)}">
       <g transform="translate({size / 2},{size / 2}) rotate(-90)">
-        <circle r={r} fill="none" stroke="var(--color-ink-800)" stroke-width={thickness} />
-        {#each arcs as a}
+        <circle {r} fill="none" stroke="var(--hover-2)" stroke-width={thickness} />
+        {#each arcs as a, i (a.label)}
           <circle
-            r={r}
+            {r}
             fill="none"
             stroke={a.color}
-            stroke-width={thickness}
+            stroke-width={active === i ? thickness + 4 : thickness}
             stroke-dasharray="{a.dash} {c - a.dash}"
             stroke-dashoffset={a.offset}
+            opacity={active === null || active === i ? 1 : 0.35}
+            class="transition-[opacity,stroke-width] duration-150"
           />
         {/each}
       </g>
-      <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" class="fill-mist-100" font-size="15" font-family="var(--font-mono)">
-        {format(total)}
-      </text>
+      <text x="50%" y="47%" text-anchor="middle" dominant-baseline="central" fill="var(--ink)" font-size="17" font-weight="600" font-family="var(--font-mono)">{centre.v}</text>
+      <text x="50%" y="62%" text-anchor="middle" dominant-baseline="central" fill="var(--ink-3)" font-size="10.5">{centre.l.length > 18 ? centre.l.slice(0, 17) + '…' : centre.l}</text>
     </svg>
-    <ul class="min-w-0 flex-1 space-y-1 text-xs">
-      {#each arcs as a}
-        <li class="flex items-center gap-2">
-          <span class="h-2.5 w-2.5 shrink-0 rounded-sm" style="background:{a.color}"></span>
-          <span class="truncate text-mist-300" title={a.label}>{a.label}</span>
-          <span class="nums ml-auto shrink-0 text-mist-100">{format(a.value)}</span>
-          <span class="nums w-10 shrink-0 text-right text-mist-500">{(a.pctv * 100).toFixed(0)}%</span>
+    <ul class="w-full min-w-0 flex-1 space-y-0.5 text-[13px]">
+      {#each arcs as a, i (a.label)}
+        <li>
+          <div
+            class="flex items-center gap-2 rounded-md px-1.5 py-1 {active === i ? 'bg-hover' : ''}"
+            onpointerenter={() => (active = i)}
+            onpointerleave={() => (active = null)}
+            role="presentation"
+          >
+            <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{a.color}"></span>
+            <span class="min-w-0 flex-1 truncate text-ink-2" title={a.title ?? a.label}>{a.label}</span>
+            <span class="nums shrink-0 text-ink">{format(a.value)}</span>
+            <span class="nums w-9 shrink-0 text-right text-xs text-ink-3">{(a.pct * 100).toFixed(0)}%</span>
+          </div>
         </li>
       {/each}
     </ul>
-  {/if}
-</div>
+  </div>
+  </div>
+{/if}
