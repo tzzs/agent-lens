@@ -71,3 +71,16 @@ export function rowToEvent(row: Row): AgentEvent {
   }
   return event
 }
+
+/**
+ * The one canonical session-timeline order (§14: CLI and Web can never
+ * disagree). Chronological timestamp is primary so sessions whose events come
+ * from several sources still read like the log; raw_seq (per-source, NULLs
+ * last) breaks ties inside equal timestamps, id keeps it deterministic.
+ */
+export function loadSessionEvents(db: DatabaseSync, sessionId: string): AgentEvent[] {
+  const rows = db
+    .prepare('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp, raw_seq IS NULL, raw_seq, id')
+    .all(sessionId) as Row[]
+  return rows.map((r) => rowToEvent(r))
+}

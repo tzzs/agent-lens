@@ -6,7 +6,7 @@
 import { inflateSync } from 'node:zlib'
 import { Buffer } from 'node:buffer'
 import type { DatabaseSync } from 'node:sqlite'
-import { rowToEvent } from '@agentlens/storage'
+import { loadSessionEvents } from '@agentlens/storage'
 import type { FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
 import { queryDeps } from '../context.ts'
@@ -77,16 +77,12 @@ export function cmdSession(db: DatabaseSync, words: string[], flags: FlagView, c
   const wanted = words[0]
   if (!wanted) throw new UsageError("usage: agentlens session <id>  (list ids with `agl sessions`)")
   const sessionId = resolveSessionId(db, wanted)
-  const rows = rowsOf(
-    db,
-    'SELECT * FROM events WHERE session_id = ? ORDER BY timestamp, raw_seq, id',
-    sessionId,
-  )
-  if (rows.length === 0) {
+  // Shared loader keeps this timeline identical to the server's (see §14).
+  const events = loadSessionEvents(db, sessionId)
+  if (events.length === 0) {
     ctx.out(`session ${sessionId} has no events (metrics layer empty)`)
     return 0
   }
-  const events = rows.map((r) => rowToEvent(r))
 
   const payloads = loadPayloads(db, events.map((e) => e.id))
   const contentOff = payloads.size === 0

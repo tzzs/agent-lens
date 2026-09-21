@@ -3,14 +3,14 @@
  * differentiating screen).
  *
  * The session LIST is a cube query grouped by the `session` dim, joined to the
- * `sessions` entity rows for labels; the TIMELINE is the metric layer read in
- * `raw_seq` order with the content layer merged in only where it exists.
+ * `sessions` entity rows for labels; the TIMELINE is the metric layer read via
+ * the shared `loadSessionEvents` loader with the content layer merged in only
+ * where it exists.
  * When `--no-content` was used the response carries `contentAvailable: false`
  * so the UI renders a metrics-only waterfall instead of an error (§3.2).
  */
 import { describeQuery, query, type QueryFilter, type Row } from '@agentlens/query'
-import { rowToEvent } from '@agentlens/storage'
-import type { AgentEvent } from '@agentlens/event-model'
+import { loadSessionEvents } from '@agentlens/storage'
 import type { ServerCtx } from './types.ts'
 import { ApiError } from './errors.ts'
 import { contentLayerPresent, loadPayloads, payloadCountBySession, type PayloadView } from './content.ts'
@@ -150,14 +150,8 @@ export function sessionDetail(ctx: ServerCtx, wanted: string): SessionDetailResp
   const sessionId = resolveSessionId(ctx.db, wanted)
   const spec = { metrics: ['events', 'sessions', 'tokens_total', 'tokens_input', 'tokens_output', 'duration', 'cost_api_equiv'] as const, filter: { session: [sessionId] } }
   const agg = query(ctx.db, { metrics: [...spec.metrics], filter: spec.filter }, ctx.cubeDeps)
-  // raw_seq is the source's own order (the timeline must read like the log did);
-  // timestamp breaks ties across sources.
-  const raw = rowsOf(
-    ctx.db,
-    'SELECT * FROM events WHERE session_id = ? ORDER BY raw_seq IS NULL, raw_seq, timestamp, id',
-    sessionId,
-  )
-  const events: AgentEvent[] = raw.map((r) => rowToEvent(r))
+  // Single shared loader: identical order to `agl session <id>` (§14).
+  const events = loadSessionEvents(ctx.db, sessionId)
   const payloads = loadPayloads(
     ctx.db,
     events.map((e) => e.id),
