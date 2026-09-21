@@ -5,7 +5,7 @@
  * enumeration and fixture tests are stable.
  */
 import { basename } from 'node:path'
-import { walkForFiles } from '@agentlens/collector'
+import { walkForFiles } from '@agentlens/event-model'
 import { deriveSourceId, type HostContext, type SourceSpec } from '@agentlens/event-model'
 import { AGENT_ID } from './record.ts'
 import { projectsDirOf } from './paths.ts'

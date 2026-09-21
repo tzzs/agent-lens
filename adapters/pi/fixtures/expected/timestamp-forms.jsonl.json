@@ -160,6 +160,7 @@
       "role_raw": "user",
       "parent_id": null,
       "content_chars": 5,
+      "timestampGuess": "ingest-clock",
       "diagnostics": [
         "session-header-absent",
         "cwd-absent-unattributed"

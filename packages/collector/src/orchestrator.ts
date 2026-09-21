@@ -18,9 +18,8 @@ import type {
   RecordStream,
   SourceSpec,
 } from '@agentlens/event-model'
-import { isParseFailure } from '@agentlens/event-model'
+import { isParseErrorRecord, isParseFailure, PARSE_ERROR_KEY } from '@agentlens/event-model'
 import { needsRescan, statSource } from './incremental.ts'
-import { isParseErrorRecord, PARSE_ERROR_KEY } from './parse-jsonl.ts'
 import { WalModeRefusedError, journalModeOf } from './sqlite-source.ts'
 import { snapshotWalStore } from './sqlite-snapshot.ts'
 
@@ -32,6 +31,12 @@ export interface SourceCommit {
   size: number
   mtimeMs: number
   parserVersion: number
+  /**
+   * For `sqlite` sources, the table `lastOffset`'s rowid high-water mark indexes (§4.3);
+   * NULL otherwise. A bare high-water integer is meaningless without the table it belongs
+   * to, so it is committed alongside the offset and kept on refusal/error rows too.
+   */
+  sqliteTable?: string | null
   /** Lines/rows consumed by this batch; the sink keeps a running total (it seeds `firstSeq` on the next scan). */
   rowsIngested: number
   scanStartedAt: number
@@ -99,7 +104,13 @@ export interface ScanResult {
   refusal?: string
 }
 
-/** §5.3: parser_version mismatch ⇒ full rescan from 0, safe only because writes are idempotent (§4.2). */
+/**
+ * §5.3: parser_version mismatch ⇒ full rescan from 0. §4.2's idempotent writes alone only cover
+ * additive changes (the same ids replay onto themselves), so `insertEvents` also re-derives a
+ * colliding row's derived columns on conflict — without that a changed session/project id would
+ * no-op against the stale stored value and the repair this rescan exists to perform would silently
+ * not happen.
+ */
 export function rescanSourceOnVersionDrift(
   adapter: Pick<AgentAdapter, 'parserVersion'>,
   saved: Pick<SavedSourceState, 'parserVersion' | 'seen'>,
@@ -151,6 +162,7 @@ export async function scanSource(
     size: statted.size,
     mtimeMs: statted.mtimeMs,
     parserVersion: adapter.parserVersion,
+    sqliteTable: null,
     rowsIngested: batch.linesConsumed,
     scanStartedAt: startedAt,
     scanFinishedAt: ctx.now(),
@@ -244,6 +256,8 @@ async function scanSqliteSource(
         size: stat?.size ?? 0,
         mtimeMs: stat?.mtimeMs ?? 0,
         parserVersion: adapter.parserVersion,
+        // The high-water did not move, but the offset still indexes this table — record it (§4.3).
+        sqliteTable: source.sqliteTable ?? null,
         rowsIngested: 0,
         scanStartedAt: startedAt,
         scanFinishedAt: ctx.now(),
@@ -278,6 +292,7 @@ async function scanSqliteSource(
     size: stat?.size ?? 0,
     mtimeMs: stat?.mtimeMs ?? 0,
     parserVersion: adapter.parserVersion,
+    sqliteTable: source.sqliteTable ?? null,
     rowsIngested: batch.linesConsumed,
     scanStartedAt: startedAt,
     scanFinishedAt: ctx.now(),
@@ -309,6 +324,7 @@ function commitGone(
     size: s.size,
     mtimeMs: s.mtimeMs,
     parserVersion: adapter.parserVersion,
+    sqliteTable: null,
     rowsIngested: 0,
     scanStartedAt: startedAt,
     scanFinishedAt: ctx.now(),

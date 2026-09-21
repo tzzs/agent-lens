@@ -7,10 +7,20 @@ import { tempDir } from './helpers.ts'
 describe('migrations', () => {
   it('applies every migration exactly once and is a no-op on the second run', () => {
     const db = openDatabase(':memory:')
-    expect(migrate(db)).toEqual(['001_init.sql', '002_measurement_round_two.sql', '003_aggregation_policy_per_agent.sql'])
+    expect(migrate(db)).toEqual([
+      '001_init.sql',
+      '002_measurement_round_two.sql',
+      '003_aggregation_policy_per_agent.sql',
+      '004_sqlite_table_in_sources.sql',
+    ])
     expect(migrate(db)).toEqual([])
     const applied = db.prepare('SELECT id FROM schema_migrations').all()
-    expect(applied.map((r) => r.id)).toEqual(['001_init.sql', '002_measurement_round_two.sql', '003_aggregation_policy_per_agent.sql'])
+    expect(applied.map((r) => r.id)).toEqual([
+      '001_init.sql',
+      '002_measurement_round_two.sql',
+      '003_aggregation_policy_per_agent.sql',
+      '004_sqlite_table_in_sources.sql',
+    ])
     db.close()
   })
 
@@ -112,5 +122,35 @@ describe('migrations', () => {
     expect(existsSync(`${path}.pre-migration-001_init.bak`)).toBe(false)
     db.close()
     rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('adds sources.sqlite_table to a database created before §4.3 without disturbing stored rows', () => {
+    const db = openDatabase(':memory:')
+    // A pre-004 deployment: migrations through 003 recorded, `sources` without the extension column.
+    db.exec('CREATE TABLE schema_migrations (id TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)')
+    for (const id of ['001_init.sql', '002_measurement_round_two.sql', '003_aggregation_policy_per_agent.sql']) {
+      db.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, 0)').run(id)
+    }
+    db.exec('CREATE TABLE agents (id TEXT PRIMARY KEY)')
+    db.exec(`CREATE TABLE sources (
+      id TEXT PRIMARY KEY, agent_id TEXT REFERENCES agents(id), path TEXT,
+      kind TEXT CHECK (kind IN ('jsonl','sqlite','ndir')), inode INTEGER, size INTEGER, mtime_ms INTEGER,
+      last_offset INTEGER, parser_version INTEGER, session_id_hint TEXT,
+      status TEXT CHECK (status IN ('active','gone','error','rotated')), last_error TEXT,
+      scan_started_at INTEGER, scan_finished_at INTEGER, rows_ingested INTEGER
+    )`)
+    db.prepare("INSERT INTO agents (id) VALUES ('a1')").run()
+    db.prepare(
+      "INSERT INTO sources (id, agent_id, path, kind, last_offset, status) VALUES ('s1','a1','/x/opencode.db','sqlite',512,'active')",
+    ).run()
+
+    expect(migrate(db)).toEqual(['004_sqlite_table_in_sources.sql'])
+    const cols = (db.prepare('PRAGMA table_info(sources)').all() as { name: string }[]).map((c) => c.name)
+    expect(cols).toContain('sqlite_table')
+    const row = db.prepare("SELECT sqlite_table, last_offset FROM sources WHERE id = 's1'").get() as
+      { sqlite_table: string | null; last_offset: number }
+    expect(row.last_offset).toBe(512) // the stored row survives untouched
+    expect(row.sqlite_table).toBeNull() // reads back as unknown, never a guess
+    db.close()
   })
 })

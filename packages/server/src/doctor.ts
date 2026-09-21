@@ -8,7 +8,7 @@
  * injected — the only inputs the server genuinely cannot produce alone (§5.4).
  * This route scans all usage rows on purpose; hot dashboard routes do not.
  */
-import { parserVersionDrift, sourceRetention, subagentOrphans } from '@agentlens/storage'
+import { parserVersionDrift, sourceRetention, subagentOrphans, timestampGuesses } from '@agentlens/storage'
 import { query } from '@agentlens/query'
 import type { ServerCtx } from './types.ts'
 import { costView, missingPriceModels } from './cost.ts'
@@ -19,7 +19,7 @@ import { usageQualityBlock } from './doctor-usage.ts'
 import { parseFilter } from './request-spec.ts'
 import { rowsOf } from './resolve.ts'
 import { contentLayerPresent, payloadCount } from './content.ts'
-import type { DoctorReport, DoctorSubagentLinkage } from './doctor-types.ts'
+import type { DoctorReport, DoctorSubagentLinkage, DoctorTimestampGuess } from './doctor-types.ts'
 
 const pctOf = (n: number, d: number): number => (d === 0 ? 0 : (n / d) * 100)
 
@@ -37,6 +37,15 @@ export async function doctor(ctx: ServerCtx, sp: URLSearchParams): Promise<Docto
   const subagents: DoctorSubagentLinkage[] = subagentOrphans(ctx.db).map((s) => ({
     ...s,
     orphanPct: pctOf(s.orphan, s.total),
+  }))
+  // §5.2: the same count `agl doctor` prints, from the same storage check.
+  const guessedTimestamps: DoctorTimestampGuess[] = timestampGuesses(ctx.db).map((g) => ({
+    agentId: g.agentId,
+    events: g.events,
+    guessed: g.guessed,
+    guessedPct: pctOf(g.guessed, g.events),
+    fromIngestClock: g.fromIngestClock,
+    fromFileMtime: g.guessed - g.fromIngestClock,
   }))
 
   const withoutRequestId = Number(
@@ -68,6 +77,7 @@ export async function doctor(ctx: ServerCtx, sp: URLSearchParams): Promise<Docto
     usageQuality: { ...usageQuality, withoutRequestId },
     coverage: coverageReport(ctx),
     subagents,
+    guessedTimestamps,
     retention: sourceRetention(ctx.db),
     capabilities: caps.rows
       .filter((r) => String(r.capability_type) !== '')

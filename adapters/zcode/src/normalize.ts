@@ -21,7 +21,11 @@ import {
   deriveErrorFingerprint,
   deriveEventId,
   deriveSessionId,
+  eventTimestamp,
+  PARSE_ERROR_KEY,
   SCHEMA_VERSION,
+  timestampGuess,
+  TIMESTAMP_GUESS_KEY,
   UNATTRIBUTED_PROJECT_ID,
   type AgentEvent,
   type CapabilityRef,
@@ -32,9 +36,9 @@ import {
   type ParseFailure,
   type PayloadDraft,
   type RawRecord,
+  type TimestampOrigin,
   type Usage,
 } from '@agentlens/event-model'
-import { PARSE_ERROR_KEY } from '@agentlens/collector'
 import {
   AGENT_ID,
   BACKGROUND_QUERY_SOURCES,
@@ -84,6 +88,8 @@ interface Scope {
   rowid: number
   nativeId: string | null
   timestamp: number
+  /** §5.2: whether that timestamp is the row's own time or something standing in for it. */
+  timestampOrigin: TimestampOrigin
   sessionId: string
   /** §18 row 3: the row's OWN native session id, so a subagent's work stays separable. */
   threadId: string | null
@@ -189,6 +195,11 @@ function buildScope(record: RawRecord, ctx: NormalizeCtx, value: UnknownRecord):
 
   const rootForId = rootSession ?? inherited?.rootSessionId ?? ctx.sessionHint
   if (rootSession === null && inherited?.rootSessionId) diagnostics.push('session_inherited_from_source_state')
+  const stamp = eventTimestamp(
+    record,
+    ms(value.time_created) ?? ms(value.started_at) ?? ms(value.time_updated) ?? ms(value.completed_at),
+    ctx.now(),
+  )
 
   return {
     ctx,
@@ -197,12 +208,8 @@ function buildScope(record: RawRecord, ctx: NormalizeCtx, value: UnknownRecord):
     data,
     rowid,
     nativeId: str(value.id),
-    timestamp:
-      ms(value.time_created) ??
-      ms(value.started_at) ??
-      ms(value.time_updated) ??
-      ms(value.completed_at) ??
-      (record.occurredAt > 0 ? record.occurredAt : ctx.now()),
+    timestamp: stamp.timestamp,
+    timestampOrigin: stamp.origin,
     sessionId: deriveSessionId(AGENT_ID, rootForId ?? `row:${table}/${rowid}`),
     threadId: ownSession,
     rootSessionId: rootSession,
@@ -263,6 +270,10 @@ function event(s: Scope, init: EventInit): AgentEvent {
   if (s.diagnostics.length > 0) metadata.diagnostics = s.diagnostics.slice()
   if (init.subagentThread ?? s.subagentThread) metadata.subagentThread = true
   const timestamp = init.timestamp ?? s.timestamp
+  // §5.2: an event that names its own row time states a fact; one wearing the scope's stamp
+  // inherits that stamp's provenance, guessed or not.
+  const guess = timestamp === s.timestamp ? timestampGuess(s.timestampOrigin) : null
+  if (guess !== null) metadata[TIMESTAMP_GUESS_KEY] = guess
   return {
     id: deriveEventId({
       sourceId: s.ctx.source.id,

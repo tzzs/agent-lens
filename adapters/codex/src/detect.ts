@@ -6,7 +6,7 @@
  * Only the first few lines of at most three files are touched: rollout files average 1.5 MB
  * and reach 22 MB, so reading one whole file per probe would be wasteful.
  */
-import { isParseErrorRecord, readIncremental, walkForFiles } from '@agentlens/collector'
+import { isParseErrorRecord, readIncremental, walkForFiles } from '@agentlens/event-model'
 import type { Detection, HostContext } from '@agentlens/event-model'
 import { rootOf, sessionsDirsOf } from './paths.ts'
 import { asRecord, str } from './record.ts'

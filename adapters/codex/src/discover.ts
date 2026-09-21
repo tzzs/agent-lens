@@ -6,7 +6,7 @@
  * `sessions/` would under-report. Sorted so `source_id` enumeration stays deterministic.
  */
 import { basename } from 'node:path'
-import { walkForFiles } from '@agentlens/collector'
+import { walkForFiles } from '@agentlens/event-model'
 import { deriveSourceId, type HostContext, type SourceSpec } from '@agentlens/event-model'
 import { sessionsDirsOf, threadHintFromPath } from './paths.ts'
 import { AGENT_ID } from './record.ts'

@@ -2,7 +2,7 @@
  * Adapter contract (docs/plan-v2.md §5.1). Adapters are pure translators: they never
  * open the database, never price a model, and never mutate a source file (§5.2).
  */
-import type { AggregationPolicy, NormalizeResult } from './types.ts'
+import type { AggregationPolicy, NormalizeResult, TimestampOrigin } from './types.ts'
 
 export interface HostContext {
   /**
@@ -54,9 +54,31 @@ export interface RawRecord {
   seq: number
   /** Byte offset of this record's first byte. */
   offset: number
-  /** ms epoch from the record when parseable, else the source mtime. */
+  /** ms epoch from the record when parseable, else the source's own time (see `occurredAtOrigin`). */
   occurredAt: number
+  /**
+   * §5.2: what `occurredAt` actually is when the record stated no time of its own. Absent means
+   * the record's own time — the pre-§19 reading of `occurredAt`, which every parser here keeps.
+   */
+  occurredAtOrigin?: TimestampOrigin
   value: unknown
+}
+
+/**
+ * §5.2: the one way an adapter may settle on an event timestamp — the record's own time first,
+ * then whatever the parser read off the source, and the scan clock only as the last resort and
+ * always labelled. `recordTime` is what the adapter's own rule found (null: it found nothing).
+ */
+export function eventTimestamp(
+  record: RawRecord,
+  recordTime: number | null,
+  now: number,
+): { timestamp: number; origin: TimestampOrigin } {
+  if (recordTime !== null && recordTime > 0) return { timestamp: recordTime, origin: 'record' }
+  if (record.occurredAt > 0) {
+    return { timestamp: record.occurredAt, origin: record.occurredAtOrigin ?? 'record' }
+  }
+  return { timestamp: now, origin: 'ingest-clock' }
 }
 
 export interface ParseCtx {

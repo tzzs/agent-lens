@@ -20,7 +20,7 @@ import { createApp } from '@agentlens/server'
 import type { Ctx } from '../src/context.ts'
 import { GLYPH, formatCount, formatTokens } from '../src/render.ts'
 import { measureUsageQuality, renderUsageQuality, type AgentQuality } from '../src/commands/doctor-usage.ts'
-import { probeAdapters, renderParsing, renderRetention, renderSubagentLinkage } from '../src/commands/doctor.ts'
+import { probeAdapters, renderGuessedTimestamps, renderParsing, renderRetention, renderSubagentLinkage } from '../src/commands/doctor.ts'
 
 const DIR = mkdtempSync(join(tmpdir(), 'agentlens-doctor-agreement-'))
 const NOW = Date.UTC(2026, 8, 21)
@@ -63,6 +63,10 @@ function buildTree(db: DatabaseSync): void {
     ev({ id: 'cx1', agentId: 'codex', requestId: 'r9', usage: usage(20, 4), rawSeq: 1 }),
     ev({ id: 'cx2', agentId: 'codex', requestId: 'r9', usage: usage(30, 6), rawSeq: 2 }),
     ev({ id: 'cx3', agentId: 'codex', usage: null, usageSource: 'missing', type: 'subagent.start', parentEventId: null, rawSeq: 3 }),
+    // §5.2/§19: rows whose source stated no time at all — the date is a labelled stand-in.
+    ev({ id: 'cc7', agentId: 'claude-code', usage: null, usageSource: 'missing', type: 'tool.start', metadata: { timestampGuess: 'ingest-clock' }, rawSeq: 7 }),
+    ev({ id: 'cc8', agentId: 'claude-code', usage: null, usageSource: 'missing', type: 'tool.start', metadata: { timestampGuess: 'file-mtime' }, rawSeq: 8 }),
+    ev({ id: 'cx4', agentId: 'codex', usage: null, usageSource: 'missing', type: 'tool.start', metadata: { timestampGuess: 'ingest-clock' }, rawSeq: 4 }),
   ])
   setAgentAggregations(db, {
     'claude-code': { mode: 'request_max', subagentsIncluded: true },
@@ -152,6 +156,7 @@ beforeAll(async () => {
   renderUsageQuality(rctx, cliRows, adapters)
   renderParsing(db, rctx, await probeAdapters(adapters, rctx, db))
   renderSubagentLinkage(db, rctx)
+  renderGuessedTimestamps(db, rctx)
   renderRetention(db, rctx)
   cli = rctx.outLines
 
@@ -249,6 +254,21 @@ describe('agl doctor vs GET /api/doctor on one database (§14)', () => {
       `${GLYPH.warn} ${formatCount(served.retention.active)} source(s) read to their end · ` +
         'coverage stops where upstream retention stops (§4.4 row 4)',
     )
+  })
+
+  it('agrees on the timestamps no source stated (§5.2, §19)', () => {
+    expect(served.guessedTimestamps).toEqual([
+      { agentId: 'claude-code', events: 8, guessed: 2, guessedPct: 25, fromIngestClock: 1, fromFileMtime: 1 },
+      { agentId: 'codex', events: 4, guessed: 1, guessedPct: 25, fromIngestClock: 1, fromFileMtime: 0 },
+    ])
+    for (const g of served.guessedTimestamps) {
+      expect(cli).toContain(
+        `${GLYPH.warn} ${g.agentId}: ${formatCount(g.guessed)} of ${formatCount(g.events)} events ` +
+          `(${pct(g.guessed, g.events)}%) carry a timestamp the source never stated — ` +
+          `${formatCount(g.fromIngestClock)} dated by the scan clock, ${formatCount(g.fromFileMtime)} by the source file's mtime`,
+      )
+    }
+    expect(cli).toContain('  → time-windowed numbers (`--since`, the Overview window) include these rows whatever their real date is')
   })
 
   it('names the same agents in both reports', () => {

@@ -5,7 +5,12 @@
  */
 import { deepStrictEqual } from 'node:assert'
 import { describe, expect, it } from 'vitest'
-import { deriveSessionId, deriveSessionIdFromSource } from '@agentlens/event-model'
+import {
+  deriveSessionId,
+  deriveSessionIdFromSource,
+  deriveSessionIdFromTimeBucket,
+  type RawRecord,
+} from '@agentlens/event-model'
 import { HOST_PI, PI_AGGREGATION, piAdapter } from '../src/index.ts'
 import { UNATTRIBUTED_PROJECT_ID } from '../src/normalize.ts'
 import {
@@ -128,5 +133,65 @@ describe('adapter surface', () => {
       'parse',
       'parserVersion',
     ])
+  })
+})
+
+const MIN = 60 * 1000
+/** A whole 30-minute boundary, so a bucket offset lands exactly where the test says. */
+const BUCKET_T0 = Date.UTC(2026, 8, 20, 12, 0)
+
+/**
+ * §4.1 tier 3: a trace file with no `session` header, no file-name hint and no record `id`
+ * has nothing to key a session on but its own clock, so records group by 30-minute bucket
+ * rather than each becoming a session.
+ */
+describe('session id from the source + time bucket (§4.1 tier 3)', () => {
+  const sourceId = ctxFor('idless-trace.jsonl').source.id
+
+  function record(seq: number, atMs: number, extra: Record<string, unknown> = {}): RawRecord {
+    return {
+      seq,
+      offset: seq * 128,
+      occurredAt: atMs,
+      value: {
+        type: 'message',
+        timestamp: new Date(atMs).toISOString(),
+        message: { role: 'user', content: [{ type: 'text', text: 'idless record' }] },
+        ...extra,
+      },
+    }
+  }
+
+  async function sessionIdsOf(records: RawRecord[]): Promise<string[]> {
+    const ctx = ctxFor('idless-trace.jsonl')
+    resetStateFor(ctx)
+    const out: string[] = []
+    for (const r of records) {
+      const result = await piAdapter.normalize(r, ctx)
+      if ('failure' in result) throw new Error(`seq ${r.seq} failed: ${result.failure.reason}`)
+      expect(result.events.length, `seq ${r.seq} produced no event`).toBeGreaterThan(0)
+      out.push(result.events[0]!.sessionId)
+    }
+    return out
+  }
+
+  it('records under 30 minutes apart join one session instead of one session per record', async () => {
+    const ids = await sessionIdsOf([record(1, BUCKET_T0 + MIN), record(2, BUCKET_T0 + 12 * MIN), record(3, BUCKET_T0 + 29 * MIN)])
+    const bucketed = deriveSessionIdFromTimeBucket(sourceId, BUCKET_T0 + MIN)
+    expect(ids).toEqual([bucketed, bucketed, bucketed])
+  })
+
+  it('a gap over 30 minutes starts a second session', async () => {
+    const ids = await sessionIdsOf([record(1, BUCKET_T0 + MIN), record(2, BUCKET_T0 + 46 * MIN)])
+    expect(ids).toEqual([
+      deriveSessionIdFromTimeBucket(sourceId, BUCKET_T0 + MIN),
+      deriveSessionIdFromTimeBucket(sourceId, BUCKET_T0 + 46 * MIN),
+    ])
+    expect(ids[0]).not.toBe(ids[1])
+  })
+
+  it('a record id still names its own session (tier 2 untouched)', async () => {
+    const ids = await sessionIdsOf([record(1, BUCKET_T0 + MIN, { id: 'p-idless-1' })])
+    expect(ids).toEqual([deriveSessionIdFromSource(sourceId, 'p-idless-1')])
   })
 })

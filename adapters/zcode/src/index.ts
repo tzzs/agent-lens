@@ -19,7 +19,9 @@ import { parse } from './parse.ts'
 import { AGENT_ID, HOST_ID } from './record.ts'
 
 /** Bump when the mapping rules change: a mismatch forces a full rescan (§5.3). */
-export const PARSER_VERSION = 1
+// §5.3: identity derivation changed (tier-3 session bucket, §5.2 timestamp provenance),
+// so stored rows must be replayed and repaired rather than left at the old ids.
+export const PARSER_VERSION = 2
 
 /**
  * §18 row 2 — the fold ZCode's rows are honest about.

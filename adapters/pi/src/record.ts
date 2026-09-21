@@ -17,7 +17,7 @@ export const HOST_PI = 'pi'
 /** `session` header `version` measured at 3 on every one of the 6 files (§二.1). */
 export const MEASURED_TRACE_VERSION = 3
 
-export { PARSE_ERROR_KEY } from '@agentlens/collector'
+export { PARSE_ERROR_KEY } from '@agentlens/event-model'
 
 export interface UnknownRecord {
   [key: string]: unknown
@@ -56,9 +56,10 @@ export function typeName(value: unknown): string | null {
 
 /**
  * §二: every record's top-level `timestamp` is ISO text in the census. Epoch numbers are
- * accepted (seconds scaled) because the census cannot prove ISO is universal.
+ * accepted (seconds scaled) because the census cannot prove ISO is universal. `null` means the
+ * record states no time, and §5.2 makes the caller say what stood in.
  */
-export function timestampMs(rec: UnknownRecord, fallback: number): number {
+export function timestampMs(rec: UnknownRecord): number | null {
   const iso = str(rec.timestamp)
   if (iso) {
     const ms = Date.parse(iso)
@@ -66,7 +67,7 @@ export function timestampMs(rec: UnknownRecord, fallback: number): number {
   }
   const epoch = num(rec.timestamp)
   if (epoch !== null) return epoch < 1e11 ? epoch * 1000 : epoch
-  return fallback
+  return null
 }
 
 export function recordIdOf(rec: UnknownRecord): string | null {

@@ -8,7 +8,7 @@
  *    (`part.message_id`, `part.session_id`, `session.parent_id`), because
  *    without them a part row has no session, no role and no thread.
  */
-import { PARSE_ERROR_KEY, truncate } from '@agentlens/collector'
+import { PARSE_ERROR_KEY, truncate } from '@agentlens/event-model'
 import type { DatabaseSync } from 'node:sqlite'
 import type { ByteOffset, ParseCtx, ParseTail, RecordStream, SourceSpec } from '@agentlens/event-model'
 import { ms, parseJson, TABLE_MESSAGE, TABLE_PART, TABLE_SESSION, type OpenCodeTable, type UnknownRecord } from './record.ts'
@@ -102,6 +102,7 @@ export async function* parse(source: SourceSpec, from: ByteOffset, ctx: ParseCtx
           seq: rowid,
           offset: rowid,
           occurredAt: Date.now(),
+          occurredAtOrigin: 'ingest-clock',
           value: {
             [PARSE_ERROR_KEY]: `json-parse: undecodable ${table}.data`,
             rawLine: truncate(raw),
@@ -122,10 +123,14 @@ export async function* parse(source: SourceSpec, from: ByteOffset, ctx: ParseCtx
         __rowid: rowid,
         __root_session_id: nativeSession ? (roots.get(nativeSession) ?? nativeSession) : null,
       }
+      // §5.2: a row that states no time has nothing per-row to read — the store's file mtime
+      // belongs to whichever row was written last — so only the scan clock can stand in.
+      const ownTime = ms(row.time_created) ?? ms(row.time_updated)
       yield {
         seq: rowid,
         offset: rowid,
-        occurredAt: ms(row.time_created) ?? ms(row.time_updated) ?? Date.now(),
+        occurredAt: ownTime ?? Date.now(),
+        occurredAtOrigin: ownTime === null ? 'ingest-clock' : 'record',
         value,
       }
     }

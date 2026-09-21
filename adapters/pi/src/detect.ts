@@ -8,7 +8,7 @@
  * binary stamp, so it is reported as a version proxy and §5.3 drift detection rests on
  * `parserVersion` plus the unknown-type count regardless.
  */
-import { walkForFiles } from '@agentlens/collector'
+import { walkForFiles } from '@agentlens/event-model'
 import type { Detection, HostContext } from '@agentlens/event-model'
 import { sessionsDirOf, settingsFileOf, rootOf } from './paths.ts'
 import { asRecord, str } from './record.ts'

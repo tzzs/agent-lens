@@ -11,7 +11,7 @@ import type { Usage } from '@agentlens/event-model'
 export const AGENT_ID = 'codex'
 
 /** The one marker convention lives in the collector, so any framing path is recognised. */
-export { PARSE_ERROR_KEY } from '@agentlens/collector'
+export { PARSE_ERROR_KEY } from '@agentlens/event-model'
 
 export interface UnknownRecord {
   [key: string]: unknown
@@ -335,7 +335,7 @@ export function blocksText(payload: UnknownRecord): string | null {
 }
 
 /** ISO-8601 at the envelope level, like Claude's; epoch seconds appear in `payload`. */
-export function timestampMs(rec: UnknownRecord, payload: UnknownRecord, fallback: number): number {
+export function timestampMs(rec: UnknownRecord, payload: UnknownRecord): number | null {
   for (const value of [rec.timestamp, payload.timestamp]) {
     if (typeof value === 'string') {
       const ms = Date.parse(value)
@@ -344,5 +344,5 @@ export function timestampMs(rec: UnknownRecord, payload: UnknownRecord, fallback
       return value < 1e11 ? value * 1000 : value
     }
   }
-  return fallback
+  return null
 }

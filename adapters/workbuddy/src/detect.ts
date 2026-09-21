@@ -8,7 +8,7 @@
  * `agentVersion` stays null and §5.3's drift detection rests on `parserVersion` plus the
  * unknown-type count instead of pretending to know a version.
  */
-import { walkForFiles } from '@agentlens/collector'
+import { walkForFiles } from '@agentlens/event-model'
 import type { Detection, HostContext } from '@agentlens/event-model'
 import { projectsDirOf, rootOf } from './paths.ts'
 import { sqliteDiagnostics } from './sqlite.ts'

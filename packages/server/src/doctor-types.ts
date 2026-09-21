@@ -34,6 +34,18 @@ export interface DoctorSubagentLinkage {
   orphanPct: number
 }
 
+/** §5.2: events whose stored timestamp the source never stated, counted per agent. */
+export interface DoctorTimestampGuess {
+  agentId: string
+  events: number
+  guessed: number
+  guessedPct: number
+  /** The unbounded case (§19): dated by the instant the scan ran. */
+  fromIngestClock: number
+  /** Bounded by the source file's last write instead. */
+  fromFileMtime: number
+}
+
 export interface DoctorReport {
   generatedAt: number
   adaptersInstalled: boolean
@@ -62,6 +74,8 @@ export interface DoctorReport {
   coverage: ReturnType<typeof coverageReport>
   /** §4.4 row 8: subagent events whose parent the time heuristic could not resolve. */
   subagents: DoctorSubagentLinkage[]
+  /** §5.2: per-agent count of events whose time the source never stated. */
+  guessedTimestamps: DoctorTimestampGuess[]
   /** §4.4 row 4: sources upstream deleted or rotated after they were read. */
   retention: RetentionCounts
   capabilities: { type: string; events: number; errors: number }[]

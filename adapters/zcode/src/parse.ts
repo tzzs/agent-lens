@@ -12,7 +12,7 @@
  *    file, which §18 row 7 keeps refusing; when the collector copied a WAL store and folded
  *    it, `storePath` is that rollback-mode copy in our directory.
  */
-import { PARSE_ERROR_KEY, truncate } from '@agentlens/collector'
+import { PARSE_ERROR_KEY, truncate } from '@agentlens/event-model'
 import type { DatabaseSync } from 'node:sqlite'
 import type { ByteOffset, ParseCtx, ParseTail, RecordStream, SourceSpec } from '@agentlens/event-model'
 import {
@@ -161,6 +161,7 @@ export async function* parse(source: SourceSpec, from: ByteOffset, ctx: ParseCtx
           seq: rowid,
           offset: rowid,
           occurredAt: Date.now(),
+          occurredAtOrigin: 'ingest-clock',
           value: {
             [PARSE_ERROR_KEY]: `json-parse: undecodable ${table}.data`,
             rawLine: truncate(raw),
@@ -179,12 +180,20 @@ export async function* parse(source: SourceSpec, from: ByteOffset, ctx: ParseCtx
         __rowid: rowid,
         __root_session_id: nativeSession ? (roots.get(nativeSession) ?? nativeSession) : null,
       }
+      // §5.2: a row that states no time has nothing per-row to read — the store's file mtime
+      // belongs to whichever row was written last — so only the scan clock can stand in.
       let occurredAt: number | null = null
       for (const column of timeColumns) {
         occurredAt = ms(row[column])
         if (occurredAt !== null) break
       }
-      yield { seq: rowid, offset: rowid, occurredAt: occurredAt ?? Date.now(), value }
+      yield {
+        seq: rowid,
+        offset: rowid,
+        occurredAt: occurredAt ?? Date.now(),
+        occurredAtOrigin: occurredAt === null ? 'ingest-clock' : 'record',
+        value,
+      }
     }
   } finally {
     handle.db.close()

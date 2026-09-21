@@ -20,18 +20,12 @@ importers:
 
   adapters/claude-code:
     dependencies:
-      '@agentlens/collector':
-        specifier: workspace:*
-        version: link:../../packages/collector
       '@agentlens/event-model':
         specifier: workspace:*
         version: link:../../packages/event-model
 
   adapters/codex:
     dependencies:
-      '@agentlens/collector':
-        specifier: workspace:*
-        version: link:../../packages/collector
       '@agentlens/event-model':
         specifier: workspace:*
         version: link:../../packages/event-model
@@ -47,27 +41,18 @@ importers:
 
   adapters/pi:
     dependencies:
-      '@agentlens/collector':
-        specifier: workspace:*
-        version: link:../../packages/collector
       '@agentlens/event-model':
         specifier: workspace:*
         version: link:../../packages/event-model
 
   adapters/qoder:
     dependencies:
-      '@agentlens/collector':
-        specifier: workspace:*
-        version: link:../../packages/collector
       '@agentlens/event-model':
         specifier: workspace:*
         version: link:../../packages/event-model
 
   adapters/workbuddy:
     dependencies:
-      '@agentlens/collector':
-        specifier: workspace:*
-        version: link:../../packages/collector
       '@agentlens/event-model':
         specifier: workspace:*
         version: link:../../packages/event-model

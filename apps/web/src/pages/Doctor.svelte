@@ -62,6 +62,7 @@
     parsing: { parserDrift?: { checked: number; drifted: number; unmapped: number; unscanned: number; stale: { agentId: string; parserVersion: number; sources: number }[] } }
     usageQuality: { modes?: FoldMode[]; perAgent?: PerAgentQuality[] }
     subagents?: { agentId: string; total: number; orphan: number; orphanPct: number }[]
+    guessedTimestamps?: { agentId: string; events: number; guessed: number; guessedPct: number; fromIngestClock: number; fromFileMtime: number }[]
     retention?: { gone: number; rotated: number; active: number }
   }
   const depth = $derived(d as unknown as DoctorDepth | undefined)
@@ -69,6 +70,7 @@
   const foldModes = $derived(depth?.usageQuality.modes ?? [])
   const drift = $derived(depth?.parsing.parserDrift ?? null)
   const subagents = $derived(depth?.subagents ?? [])
+  const guessedTimestamps = $derived(depth?.guessedTimestamps ?? [])
   const retention = $derived(depth?.retention ?? null)
   const share = (n: number, total: number): string => (total === 0 ? '0.0%' : `${((n / total) * 100).toFixed(1)}%`)
   /** The CLI's own wording for the fold rule, so both reports say the same thing (§14). */
@@ -419,6 +421,34 @@
             Their tokens and cost ARE counted; only the timeline's tree placement is unknown.
           </p>
         {/if}
+      {/if}
+    </Surface>
+
+    <Surface
+      title="Invented timestamps"
+      info="§5.2: an event whose source stated no time gets one anyway — the source file's last write, or the instant the scan ran. The rows are real activity; only their date is a stand-in."
+    >
+      {#if guessedTimestamps.length === 0}
+        <p class="text-[13px] text-ink-3">Every ingested event carries a timestamp its source stated (§5.2).</p>
+      {:else}
+        <dl class="text-[13px]">
+          {#each guessedTimestamps as g (g.agentId)}
+            <div class={dlRow}>
+              <dt class="min-w-0 truncate text-ink-2" title={g.agentId}>{g.agentId}</dt>
+              <dd class="nums shrink-0 text-orange">
+                {formatInt(g.guessed)} of {formatInt(g.events)} guessed
+                <span class="text-ink-3">({share(g.guessed, g.events)})</span>
+              </dd>
+            </div>
+          {/each}
+        </dl>
+        <p class="mt-3 text-xs text-ink-3">
+          Time-windowed numbers — <span class="nums">--since</span>, this page's window — include these rows whatever their real
+          date is. <span class="nums">{formatInt(guessedTimestamps.reduce((n, g) => n + g.fromIngestClock, 0))}</span> are dated by
+          the scan clock, which bounds nothing;
+          <span class="nums">{formatInt(guessedTimestamps.reduce((n, g) => n + g.fromFileMtime, 0))}</span> by the source file's
+          last write, which does (§19).
+        </p>
       {/if}
     </Surface>
 

@@ -75,6 +75,7 @@ function makeSink(
         lastOffset: p.lastOffset,
         parserVersion: p.parserVersion,
         sessionIdHint: source.sessionHint ?? null,
+        sqliteTable: p.sqliteTable ?? null,
         status: p.status,
         rowsIngested: (prev?.rows_ingested ?? 0) + p.rowsIngested,
         scanStartedAt: p.scanStartedAt,

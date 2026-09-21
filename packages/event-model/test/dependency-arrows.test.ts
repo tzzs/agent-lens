@@ -67,8 +67,16 @@ describe('§5.4 dependency arrows', () => {
     expect(violations(edges, (e) => !e.from.startsWith('adapter-') || !e.to.startsWith('adapter-'))).toEqual([])
   })
 
-  it('adapters stay leaves: event-model plus the shared collector, nothing above', () => {
-    expect(violations(edges, (e) => !e.from.startsWith('adapter-') || e.to === 'event-model' || e.to === 'collector')).toEqual([])
+  // §5.4: the only arrow an adapter may take is `adapters → event-model`.
+  // collector is the scheduler that consumes adapters, so an adapter importing
+  // it closes a package-level cycle. The framing helpers adapters need
+  // (walkForFiles, parseJsonlRecords, readIncremental, PARSE_ERROR_KEY…) moved
+  // to event-model to make this enforceable, and no adapter is exempt.
+
+  it('adapters import event-model only: never collector (their consumer), never each other', () => {
+    expect(
+      violations(edges, (e) => !e.from.startsWith('adapter-') || e.to === 'event-model'),
+    ).toEqual([])
   })
 
   it('core packages cannot reach into an adapter, which is how agents stay pluggable', () => {

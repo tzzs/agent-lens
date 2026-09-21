@@ -14,6 +14,7 @@ import {
   aggregateRequestTokens,
   aggregateUsage,
   DEFAULT_AGGREGATION,
+  TIMESTAMP_GUESS_KEY,
   type AgentEvent,
   type AggregationMode,
   type AggregationPolicy,
@@ -251,4 +252,67 @@ export function sourceRetention(db: DatabaseSync): RetentionCounts {
      FROM sources`,
   )[0]
   return { gone: Number(row?.gone ?? 0), rotated: Number(row?.rotated ?? 0), active: Number(row?.active ?? 0) }
+}
+
+export interface SqliteSourceRow {
+  agentId: string
+  path: string | null
+  /** The table `lastOffset`'s rowid high-water counts; null for a row stored before §4.3's column. */
+  sqliteTable: string | null
+  lastOffset: number
+}
+
+/**
+ * §4.3: every `sqlite` source with the table its watermark indexes — a bare `last_offset` is
+ * meaningless without it. Shared by the CLI and served doctor so neither re-derives the rows
+ * (§14); a `NULL` table is reported as unknown rather than guessed from the path.
+ */
+export function sqliteSources(db: DatabaseSync): SqliteSourceRow[] {
+  return rowsOf(
+    db,
+    `SELECT agent_id, path, sqlite_table, last_offset FROM sources
+     WHERE kind = 'sqlite' ORDER BY path, id`,
+  ).map((r) => ({
+    agentId: String(r.agent_id ?? ''),
+    path: r.path === null || r.path === undefined ? null : String(r.path),
+    sqliteTable: r.sqlite_table === null || r.sqlite_table === undefined ? null : String(r.sqlite_table),
+    lastOffset: Number(r.last_offset ?? 0),
+  }))
+}
+
+export interface TimestampGuessCounts {
+  agentId: string
+  events: number
+  /** Of those, the ones whose date was NOT read from the source (§5.2): a guess, and labelled one. */
+  guessed: number
+  /** Guessed with the scan clock rather than the source file's mtime — the unbounded case (§19). */
+  fromIngestClock: number
+}
+
+/**
+ * §5.2 / §19: events stored under a timestamp their source never stated. Every time-windowed
+ * number — `--since`, the Overview window — includes them whatever their real date is, so the
+ * count belongs in the report next to those numbers rather than inside the ingest log.
+ *
+ * Agents with nothing to report are absent: this is a list of doubts, not a per-agent census.
+ */
+export function timestampGuesses(db: DatabaseSync): TimestampGuessCounts[] {
+  const guessedPath = `'$.${TIMESTAMP_GUESS_KEY}'`
+  return rowsOf(
+    db,
+    `SELECT COALESCE(agent_id, '') AS agent,
+            COUNT(*) AS events,
+            SUM(CASE WHEN json_extract(metadata, ${guessedPath}) IS NOT NULL THEN 1 ELSE 0 END) AS guessed,
+            SUM(CASE WHEN json_extract(metadata, ${guessedPath}) = 'ingest-clock' THEN 1 ELSE 0 END) AS from_clock
+     FROM events
+     GROUP BY agent`,
+  )
+    .map((r) => ({
+      agentId: String(r.agent),
+      events: Number(r.events),
+      guessed: Number(r.guessed ?? 0),
+      fromIngestClock: Number(r.from_clock ?? 0),
+    }))
+    .filter((r) => r.guessed > 0)
+    .sort((a, b) => b.guessed - a.guessed || a.agentId.localeCompare(b.agentId))
 }

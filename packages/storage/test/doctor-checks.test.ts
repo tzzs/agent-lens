@@ -13,6 +13,7 @@ import {
   parserVersionDrift,
   sourceRetention,
   subagentOrphans,
+  timestampGuesses,
   usageQuality,
 } from '../src/doctor-checks.ts'
 
@@ -196,5 +197,34 @@ describe('sourceRetention (§4.4 row 4)', () => {
     expect(r.rotated).toBe(1)
     // The 4 versioned sources plus the FK placeholders `insertEvents` leaves per agent.
     expect(r.active).toBe(7)
+  })
+})
+
+describe('timestampGuesses (§5.2, §19)', () => {
+  it('counts the events whose source stated no time, and keeps the scan-clock case apart', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentlens-timestamp-guesses-'))
+    const gdb = openDatabase(join(dir, 'guesses.db'))
+    try {
+      migrate(gdb)
+      insertEvents(gdb, [
+        ev({ id: 'g1', agentId: 'claude-code', metadata: { timestampGuess: 'ingest-clock' }, rawSeq: 1 }),
+        ev({ id: 'g2', agentId: 'claude-code', metadata: { timestampGuess: 'file-mtime' }, rawSeq: 2 }),
+        ev({ id: 'g3', agentId: 'claude-code', metadata: { subagentThread: true }, rawSeq: 3 }),
+        ev({ id: 'g4', agentId: 'claude-code', rawSeq: 4 }),
+        // An unrelated key must not count, and one agent's doubt must not leak into another's row.
+        ev({ id: 'g5', agentId: 'codex', metadata: { timestampGuess: null }, rawSeq: 5 }),
+        ev({ id: 'g6', agentId: 'codex', metadata: { other: 'ingest-clock' }, rawSeq: 6 }),
+      ])
+      expect(timestampGuesses(gdb)).toEqual([
+        { agentId: 'claude-code', events: 4, guessed: 2, fromIngestClock: 1 },
+      ])
+    } finally {
+      gdb.close()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('says nothing about the shared report DB, where every row states its own time', () => {
+    expect(timestampGuesses(db)).toEqual([])
   })
 })

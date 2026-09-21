@@ -13,10 +13,11 @@ import type {
   SourceSpec,
 } from '@agentlens/event-model'
 import { SCHEMA_VERSION, deriveEventId } from '@agentlens/event-model'
-import { parseJsonlRecords } from '../src/parse-jsonl.ts'
-import type { EventSink, SavedSourceState, SourceCommit } from '../src/orchestrator.ts'
+import { parseJsonlRecords } from '@agentlens/event-model'
+import type { EventSink, ScanCtx, SavedSourceState, SourceCommit } from '../src/orchestrator.ts'
 import { rescanSourceOnVersionDrift, scanSource } from '../src/orchestrator.ts'
 import { snapshotPathFor } from '../src/sqlite-snapshot.ts'
+import { insertEvents, migrate, openDatabase, updateSourceProgress, type SourceProgress } from '@agentlens/storage'
 
 let currentTmp: string | null = null
 
@@ -331,6 +332,7 @@ describe('scanSource', () => {
     const r1 = await scanSource(sqliteParseAdapter(), source, ctx)
     expect(r1.events).toBe(2)
     expect(sink.commits.at(-1)!.lastOffset).toBe(2) // rowid high-water
+    expect(sink.commits.at(-1)!.sqliteTable).toBe('messages') // the table it counts (§4.3)
     const db2 = new DatabaseSync(path)
     db2.prepare('INSERT INTO messages (payload) VALUES (?)').run(rec(3))
     db2.close()
@@ -514,4 +516,231 @@ describe('scanSource · WAL store through a snapshot copy (§18 row 7)', () => {
     const { chmod } = await import('node:fs/promises')
     await chmod(path, mode)
   }
+})
+
+describe('sqlite scan persists the table its watermark counts (§4.3)', () => {
+  /** A sink that writes the real `sources` row through storage, mirroring the CLI's. */
+  function storageSink(db: ReturnType<typeof openDatabase>, source: SourceSpec, agentId: string): EventSink {
+    return {
+      writeEvents: () => {},
+      writeParseFailure: () => {},
+      commitSource: (p: SourceCommit) => {
+        const prev = db.prepare('SELECT rows_ingested FROM sources WHERE id = ?').get(p.id) as
+          { rows_ingested: number | null } | undefined
+        const progress: SourceProgress = {
+          id: p.id, agentId, path: p.path, kind: source.kind,
+          inode: p.inode, size: p.size, mtimeMs: p.mtimeMs,
+          lastOffset: p.lastOffset, parserVersion: p.parserVersion,
+          sessionIdHint: source.sessionHint ?? null,
+          sqliteTable: p.sqliteTable ?? null,
+          status: p.status, rowsIngested: (prev?.rows_ingested ?? 0) + p.rowsIngested,
+          scanStartedAt: p.scanStartedAt, scanFinishedAt: p.scanFinishedAt, lastError: p.lastError,
+        }
+        updateSourceProgress(db, progress)
+      },
+    }
+  }
+  const freshSaved = (): SavedSourceState => ({
+    lastOffset: 0, inode: 0, size: 0, mtimeMs: 0, parserVersion: 1, linesConsumed: 0,
+  })
+
+  it('records the table name beside the rowid high-water after a real scan', async () => {
+    const { DatabaseSync } = await import('node:sqlite')
+    const storePath = await tmpPath('persist.db')
+    const store = new DatabaseSync(storePath)
+    store.exec('CREATE TABLE messages (payload TEXT)')
+    store.prepare('INSERT INTO messages (payload) VALUES (?)').run(rec(1))
+    store.prepare('INSERT INTO messages (payload) VALUES (?)').run(rec(2))
+    store.close()
+
+    const db = openDatabase(':memory:')
+    migrate(db)
+    const source: SourceSpec = { id: 'src-persist', path: storePath, kind: 'sqlite', sqliteTable: 'messages' }
+    await scanSource(sqliteParseAdapter(), source, {
+      sink: storageSink(db, source, 'fake'),
+      saved: freshSaved(),
+      agentId: 'fake',
+      hostId: 'fake',
+      resolveProject: () => 'proj-1',
+      now: () => 1700000000000,
+    })
+    const row = db.prepare("SELECT sqlite_table, last_offset FROM sources WHERE id = 'src-persist'").get() as
+      { sqlite_table: string | null; last_offset: number }
+    expect(row.sqlite_table).toBe('messages') // the table the watermark counts
+    expect(row.last_offset).toBe(2)
+    db.close()
+  })
+
+  it('leaves the column NULL for a jsonl source', async () => {
+    const path = await tmpPath('persist.jsonl')
+    await writeFile(path, rec(1) + '\n')
+    const db = openDatabase(':memory:')
+    migrate(db)
+    const source = sourceFor(path)
+    await scanSource(fakeAdapter(), source, {
+      sink: storageSink(db, source, 'fake'),
+      saved: freshSaved(),
+      agentId: 'fake',
+      hostId: 'fake',
+      resolveProject: () => 'proj-1',
+      now: () => 1700000000000,
+    })
+    const row = db.prepare('SELECT sqlite_table FROM sources WHERE id = ?').get(source.id) as
+      { sqlite_table: string | null }
+    expect(row.sqlite_table).toBeNull()
+    db.close()
+  })
+})
+
+/**
+ * §5.3 + §4.2: a `parser_version` bump re-scans from offset 0, and the ONLY thing that makes
+ * that safe is the write path. For an *additive* parser change, `INSERT OR IGNORE` suffices —
+ * the replayed ids all exist and land on themselves. But the very change the version exists to
+ * cover — a re-derivation of an already-stored row's derived identity columns (session/project/
+ * thread) — collides on `event.id` (a fingerprint that omits them) and would be thrown away,
+ * leaving the source on the *old* ids and the store silently mixing two schemes. The write must
+ * therefore REPAIR the derived columns on conflict, not ignore them.
+ */
+describe('§5.3 drift repairs a stored row\'s derived columns', () => {
+  /** Same records, but the "v2" parser derives session/project/thread differently — the
+   * only honest simulation of a parser change without touching a real adapter. */
+  function driftingAdapter(v2: boolean, parserVersion: number): AgentAdapter {
+    return {
+      id: 'fake',
+      displayName: 'Fake',
+      parserVersion,
+      aggregation: { mode: 'request_max', subagentsIncluded: true },
+      async detect(_ctx: HostContext) {
+        return { present: true }
+      },
+      async *discover(): AsyncIterable<SourceSpec> {},
+      parse: (source, from, ctx) => parseJsonlRecords(source, from, ctx),
+      async normalize(record: RawRecord, ctx: NormalizeCtx): Promise<NormalizeResult> {
+        const value = record.value as { text?: string }
+        const tag = v2 ? 'new' : 'old'
+        const event: AgentEvent = {
+          id: deriveEventId({
+            sourceId: ctx.source.id,
+            rawSeq: record.seq,
+            type: 'message.user',
+            timestamp: record.occurredAt,
+            discriminator: value.text ?? null,
+          }),
+          schemaVersion: SCHEMA_VERSION,
+          agentId: ctx.agentId,
+          hostId: ctx.hostId,
+          sourceId: ctx.source.id,
+          sessionId: `sess-${tag}`,
+          projectId: `proj-${tag}`,
+          threadId: `thread-${tag}`,
+          timestamp: record.occurredAt,
+          type: 'message.user',
+          usageSource: 'missing',
+          status: 'ok',
+          rawSeq: record.seq,
+          rawOffset: record.offset,
+        }
+        return { events: [event] }
+      },
+    }
+  }
+
+  /** A sink that writes the real rows through storage, as the CLI does. */
+  function dbSink(db: ReturnType<typeof openDatabase>): { sink: EventSink; saved: SavedSourceState } {
+    const saved: SavedSourceState = {
+      lastOffset: 0, inode: 0, size: 0, mtimeMs: 0, parserVersion: 1, linesConsumed: 0,
+    }
+    const sink: EventSink = {
+      writeEvents: (evs) => { insertEvents(db, evs) },
+      writeParseFailure: () => {},
+      commitSource: (p) => {
+        const prev = db.prepare('SELECT rows_ingested FROM sources WHERE id = ?').get(p.id) as
+          { rows_ingested: number | null } | undefined
+        updateSourceProgress(db, {
+          id: p.id, agentId: 'fake', path: p.path, kind: 'jsonl',
+          inode: p.inode, size: p.size, mtimeMs: p.mtimeMs,
+          lastOffset: p.lastOffset, parserVersion: p.parserVersion,
+          sessionIdHint: null, sqliteTable: null, status: p.status,
+          rowsIngested: (prev?.rows_ingested ?? 0) + p.rowsIngested,
+          scanStartedAt: p.scanStartedAt, scanFinishedAt: p.scanFinishedAt, lastError: p.lastError,
+        })
+        Object.assign(saved, {
+          lastOffset: p.lastOffset, inode: p.inode, size: p.size, mtimeMs: p.mtimeMs,
+          parserVersion: p.parserVersion, linesConsumed: saved.linesConsumed + p.rowsIngested, seen: true,
+        })
+      },
+    }
+    return { sink, saved }
+  }
+
+  const cols = (db: ReturnType<typeof openDatabase>) =>
+    db.prepare('SELECT session_id, project_id, thread_id FROM events ORDER BY raw_seq').all()
+      .map((r) => ({ s: String(r.session_id), p: String(r.project_id), t: String(r.thread_id) }))
+  const eventCountOf = (db: ReturnType<typeof openDatabase>, session: string): number => {
+    const row = db.prepare('SELECT event_count FROM sessions WHERE id = ?').get(session) as
+      { event_count: number } | undefined
+    return row?.event_count ?? -1
+  }
+  const byteState = (db: ReturnType<typeof openDatabase>) =>
+    JSON.stringify({
+      events: db.prepare('SELECT rowid AS _r, id, session_id, project_id, thread_id, type, status FROM events ORDER BY rowid').all(),
+      sessions: db.prepare('SELECT rowid AS _r, id, event_count FROM sessions ORDER BY rowid').all(),
+    })
+
+  async function firstScan(): Promise<{ store: ReturnType<typeof openDatabase>; source: SourceSpec; ctx: ScanCtx }> {
+    const path = await tmpPath('drift-repair.jsonl')
+    await writeFile(path, [rec(1), rec(2), rec(3)].map((s) => s + '\n').join(''))
+    const store = openDatabase(':memory:')
+    migrate(store)
+    const source: SourceSpec = { id: 'src-drift', path, kind: 'jsonl' }
+    const { sink, saved } = dbSink(store)
+    const ctx: ScanCtx = {
+      sink, saved,
+      agentId: 'fake', hostId: 'fake-cli', resolveProject: () => null, now: () => 1700000000000,
+    }
+    await scanSource(driftingAdapter(false, 1), source, ctx)
+    return { store, source, ctx }
+  }
+
+  it('the first pass stores the old derivation', async () => {
+    const { store } = await firstScan()
+    expect(cols(store)).toEqual([
+      { s: 'sess-old', p: 'proj-old', t: 'thread-old' },
+      { s: 'sess-old', p: 'proj-old', t: 'thread-old' },
+      { s: 'sess-old', p: 'proj-old', t: 'thread-old' },
+    ])
+    store.close()
+  })
+
+  it('a version bump re-scan overwrites session/project/thread instead of keeping the stale ids', async () => {
+    const { store, ctx, source } = await firstScan()
+    const second = await scanSource(driftingAdapter(true, 2), source, ctx)
+    expect(second.action).toBe('version-drift')
+    expect(second.events).toBe(3) // whole source re-read from offset 0
+    // The repair lands: stored rows now carry the NEW derivation, not the collide-and-drop old one.
+    expect(cols(store)).toEqual([
+      { s: 'sess-new', p: 'proj-new', t: 'thread-new' },
+      { s: 'sess-new', p: 'proj-new', t: 'thread-new' },
+      { s: 'sess-new', p: 'proj-new', t: 'thread-new' },
+    ])
+    // …and the session the events just left stops claiming them.
+    expect(eventCountOf(store, 'sess-old')).toBe(0)
+    expect(eventCountOf(store, 'sess-new')).toBe(3)
+    store.close()
+  })
+
+  it('re-scanning the repaired parser from offset 0 is a byte-identical no-op (§4.2)', async () => {
+    const { store, ctx, source } = await firstScan()
+    await scanSource(driftingAdapter(true, 2), source, ctx)
+    const afterRepair = byteState(store)
+    // Force a from-zero re-read with the SAME parser version (mirrors watch's rescanFromZero):
+    // the whole batch is rewritten, so this exercises the conflict guard, not a stat-based skip.
+    const replay = await scanSource(driftingAdapter(true, 2), source, {
+      ...ctx,
+      saved: { lastOffset: 0, inode: 0, size: 0, mtimeMs: 0, parserVersion: 2, linesConsumed: 0, seen: true },
+    })
+    expect(replay.events).toBe(3) // whole file re-read and written again
+    expect(byteState(store)).toBe(afterRepair)
+    store.close()
+  })
 })

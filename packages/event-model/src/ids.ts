@@ -25,6 +25,46 @@ export function deriveSessionIdFromSource(sourceId: string, firstRecordUuid: str
   return digest(['session-from-source', sourceId, firstRecordUuid])
 }
 
+/** §4.1 tier 3's bucket width: a gap of this long opens a new session. */
+export const SESSION_TIME_BUCKET_MS = 30 * 60 * 1000
+
+/**
+ * §4.1 tier 3 — the source has neither a native session id nor a record uuid.
+ *
+ * Bucketed on fixed 30-minute epochs rather than "gap since the previous record", because
+ * a running counter is not reproducible: a scan resumed mid-file has no previous record, so
+ * the same bytes would yield two different session ids and break §4.2's replay safety. The
+ * accepted cost is that one record on each side of a boundary starts a second session.
+ */
+export function deriveSessionIdFromTimeBucket(
+  sourceId: string,
+  timestampMs: number,
+  bucketMs: number = SESSION_TIME_BUCKET_MS,
+): string {
+  return digest(['session-from-bucket', sourceId, String(Math.floor(timestampMs / bucketMs))])
+}
+
+export interface SessionIdInput {
+  agentId: string
+  /** Tier 1: the record's native session id — or the hint that stands in for it. */
+  nativeSessionId?: string | null
+  sourceId: string
+  /** Tier 2: the record's own uuid. */
+  recordUuid?: string | null
+  /** Tier 3: this record's timestamp, ms epoch. */
+  timestampMs: number
+}
+
+/**
+ * §4.1's three session-id tiers in one place, so no adapter can reorder or skip one.
+ * Tiers 1 and 2 keep their original digests byte for byte: stored rows already carry them.
+ */
+export function resolveSessionId(input: SessionIdInput): string {
+  if (input.nativeSessionId) return deriveSessionId(input.agentId, input.nativeSessionId)
+  if (input.recordUuid) return deriveSessionIdFromSource(input.sourceId, input.recordUuid)
+  return deriveSessionIdFromTimeBucket(input.sourceId, input.timestampMs)
+}
+
 /**
  * §4.1 — fingerprint = `hash(source_id + raw_seq + type + occurred_at + role/name)`.
  * Deterministic across rescans, so `INSERT OR IGNORE` replays are no-ops (§4.2).

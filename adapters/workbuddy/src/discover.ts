@@ -11,7 +11,7 @@
  * the database is reported as a refusal by `sqlite.ts` instead, and `detect()` carries
  * that into doctor. See the note in index.ts on where the guard properly belongs.
  */
-import { walkForFiles } from '@agentlens/collector'
+import { walkForFiles } from '@agentlens/event-model'
 import { deriveSourceId, type HostContext, type SourceSpec } from '@agentlens/event-model'
 import { AGENT_ID } from './record.ts'
 import { projectsDirOf } from './paths.ts'

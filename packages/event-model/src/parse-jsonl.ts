@@ -7,7 +7,9 @@
  * can report it as a `ParseFailure` (§5.2 rule 1). Adapters whose session files
  * are plain JSONL can re-export `parseJsonlRecords` as their `parse`.
  */
-import type { ByteOffset, ParseCtx, RawRecord, RecordStream, SourceSpec } from '@agentlens/event-model'
+import { stat } from 'node:fs/promises'
+import type { ByteOffset, ParseCtx, RawRecord, RecordStream, SourceSpec } from './adapter.ts'
+import type { TimestampOrigin } from './types.ts'
 import { isOversizedLine, parseLine, readIncremental } from './incremental.ts'
 
 /** Set on a record whose line could not be decoded, so normalize can report it (§5.2 rule 1). */
@@ -41,8 +43,8 @@ export function truncate(text: string): string {
 
 const TS_FIELDS = ['timestamp', 'created_at', 'createdAt', 'time', 'ts', 'created'] as const
 
-/** Best-effort generic timestamp extraction; adapters refine semantics (§5.1 RawRecord.occurredAt). */
-export function resolveOccurredAt(value: unknown, fallback: number): number {
+/** §5.2: the record's own time, or `null` when it states none — the caller then has to say what it substituted. */
+export function recordOccurredAt(value: unknown): number | null {
   if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
     const obj = value as Record<string, unknown>
     for (const field of TS_FIELDS) {
@@ -54,7 +56,29 @@ export function resolveOccurredAt(value: unknown, fallback: number): number {
       }
     }
   }
-  return fallback
+  return null
+}
+
+/** Best-effort generic timestamp extraction; adapters refine semantics (§5.1 RawRecord.occurredAt). */
+export function resolveOccurredAt(value: unknown, fallback: number): number {
+  return recordOccurredAt(value) ?? fallback
+}
+
+/** A record's `occurredAt` paired with what it is (§5.1). */
+interface OccurredAt {
+  occurredAt: number
+  occurredAtOrigin: TimestampOrigin
+}
+
+/**
+ * §5.2: an undated line is dated by its own source file's last write, which really does bound
+ * it, and only a file that cannot be stat-ed leaves the scan clock. Stat-ed once per parse.
+ */
+async function sourceStamp(path: string): Promise<OccurredAt> {
+  const st = await stat(path).catch(() => null)
+  return st
+    ? { occurredAt: st.mtimeMs, occurredAtOrigin: 'file-mtime' }
+    : { occurredAt: Date.now(), occurredAtOrigin: 'ingest-clock' }
 }
 
 /**
@@ -71,6 +95,8 @@ export async function* parseJsonlRecords(
     firstSeq,
     maxLineBytes: ctx.maxLineBytes,
   })
+  let undated: Promise<OccurredAt> | null = null
+  const sourceStampOnce = (): Promise<OccurredAt> => (undated ??= sourceStamp(source.path))
   try {
     let produced = 0
     while (true) {
@@ -85,18 +111,34 @@ export async function* parseJsonlRecords(
       const seq = 'seq' in item ? item.seq : firstSeq + produced
       produced++
       if (isOversizedLine(item)) {
-        yield markerRecord(seq, item.offset, `oversized-line: ${item.bytes} bytes exceed maxLineBytes`, '')
+        yield markerRecord(
+          seq,
+          item.offset,
+          `oversized-line: ${item.bytes} bytes exceed maxLineBytes`,
+          '',
+          await sourceStampOnce(),
+        )
         continue
       }
       const parsed = parseLine(item)
       if (!parsed.ok) {
-        yield markerRecord(parsed.seq, parsed.offset, `json-parse: ${parsed.error}`, truncate(parsed.text))
+        yield markerRecord(
+          parsed.seq,
+          parsed.offset,
+          `json-parse: ${parsed.error}`,
+          truncate(parsed.text),
+          await sourceStampOnce(),
+        )
         continue
       }
+      const own = recordOccurredAt(parsed.value)
+      const stamp: OccurredAt =
+        own !== null ? { occurredAt: own, occurredAtOrigin: 'record' } : await sourceStampOnce()
       yield {
         seq,
         offset: parsed.offset,
-        occurredAt: resolveOccurredAt(parsed.value, Date.now()),
+        occurredAt: stamp.occurredAt,
+        occurredAtOrigin: stamp.occurredAtOrigin,
         value: parsed.value,
       }
     }
@@ -106,7 +148,13 @@ export async function* parseJsonlRecords(
   }
 }
 
-function markerRecord(seq: number, offset: number, reason: string, rawLine: string): RawRecord {
+function markerRecord(
+  seq: number,
+  offset: number,
+  reason: string,
+  rawLine: string,
+  stamp: OccurredAt,
+): RawRecord {
   const marker: ParseErrorMarker = { [PARSE_ERROR_KEY]: reason, rawLine }
-  return { seq, offset, occurredAt: Date.now(), value: marker }
+  return { seq, offset, occurredAt: stamp.occurredAt, occurredAtOrigin: stamp.occurredAtOrigin, value: marker }
 }

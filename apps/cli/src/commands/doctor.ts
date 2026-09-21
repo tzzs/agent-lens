@@ -17,7 +17,7 @@ import { stat } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { deriveSessionId, type AgentAdapter, type Detection, type HostContext, type SourceSpec } from '@agentlens/event-model'
-import { parserVersionDrift, sourceRetention, subagentOrphans } from '@agentlens/storage'
+import { parserVersionDrift, sourceRetention, subagentOrphans, timestampGuesses } from '@agentlens/storage'
 import { isMissingPrice, PRICE_MISSING, PricingGaps, type PriceEntry } from '@agentlens/pricing'
 import type { FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
@@ -445,6 +445,29 @@ export function renderSubagentLinkage(db: DatabaseSync, rctx: Ctx): void {
   }
 }
 
+/**
+ * §5.2 / §19: events stored under a timestamp their source never stated. A warning, never an
+ * error — the rows are real activity, only their date is a stand-in — but the count has to sit
+ * next to the time-windowed numbers that quietly include them.
+ */
+export function renderGuessedTimestamps(db: DatabaseSync, rctx: Ctx): void {
+  // Shared with `GET /api/doctor`: one query, one number on both exits (§14).
+  const rows = timestampGuesses(db)
+  if (rows.length === 0) {
+    rctx.out(`${GLYPH.ok} every ingested event carries a timestamp its source stated (§5.2)`)
+    return
+  }
+  for (const r of rows) {
+    const fromMtime = r.guessed - r.fromIngestClock
+    rctx.out(
+      `${GLYPH.warn} ${r.agentId}: ${formatCount(r.guessed)} of ${formatCount(r.events)} events ` +
+        `(${pct(r.guessed, r.events)}) carry a timestamp the source never stated — ` +
+        `${formatCount(r.fromIngestClock)} dated by the scan clock, ${formatCount(fromMtime)} by the source file's mtime`,
+    )
+  }
+  rctx.out('  → time-windowed numbers (`--since`, the Overview window) include these rows whatever their real date is')
+}
+
 export function renderRetention(db: DatabaseSync, rctx: Ctx): void {
   // Shared with `GET /api/doctor`: the same two status counts, one implementation (§14).
   const { gone: goneCount, rotated, active } = sourceRetention(db)
@@ -623,6 +646,7 @@ export async function cmdDoctor(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbP
   ctx.out('')
   await renderCoverage(db, rctx, probes)
   renderSubagentLinkage(db, rctx)
+  renderGuessedTimestamps(db, rctx)
   renderRetention(db, rctx)
 
   ctx.out('')

@@ -11,8 +11,11 @@ import {
   deriveEventId,
   deriveSessionId,
   deriveSessionIdFromSource,
+  eventTimestamp,
   projectIdForCwd,
   SCHEMA_VERSION,
+  timestampGuess,
+  TIMESTAMP_GUESS_KEY,
   UNATTRIBUTED_PROJECT_ID,
   type AgentEvent,
   type CapabilityRef,
@@ -23,6 +26,7 @@ import {
   type ParseFailure,
   type PayloadDraft,
   type RawRecord,
+  type TimestampOrigin,
   type Usage,
 } from '@agentlens/event-model'
 import {
@@ -107,6 +111,8 @@ interface Scope {
   projectSource: 'cwd' | 'session' | 'unattributed'
   requestId: string | null
   timestamp: number
+  /** §5.2: whether that timestamp is the record's own time or something standing in for it. */
+  timestampOrigin: TimestampOrigin
   rawSeq: number
   rawOffset: number
   model: ModelRef | null
@@ -179,6 +185,7 @@ function buildScope(record: RawRecord, ctx: NormalizeCtx, state: ScanState): Sco
 
   const usage = usageOf(rec)
   const cwd = cwdOf(rec)
+  const stamp = eventTimestamp(record, timestampMs(rec), ctx.now())
   const diagnosticsOut = [...diagnostics]
   if (marker === false) diagnosticsOut.push('codebuddy-local-marker-false')
   if (sessionKey === null) diagnosticsOut.push('session-id-inferred-from-record')
@@ -195,7 +202,8 @@ function buildScope(record: RawRecord, ctx: NormalizeCtx, state: ScanState): Sco
     requestId:
       nativeRequestIdOf(rec) ??
       (recId ? `req#${sessionKey ?? ctx.source.id}/${recId}` : null),
-    timestamp: timestampMs(rec, record.occurredAt || ctx.now()),
+    timestamp: stamp.timestamp,
+    timestampOrigin: stamp.origin,
     rawSeq: record.seq,
     rawOffset: record.offset,
     model: modelRefOf(rec),
@@ -258,6 +266,9 @@ function semanticEvents(s: Scope): AgentEvent[] {
 function event(s: Scope, init: EventInit): AgentEvent {
   const usage = init.usage ?? null
   const metadata: Record<string, unknown> = { ...(init.metadata ?? {}) }
+  // §5.2: an invented timestamp must not pose as a fact — `--since` counts these rows either way.
+  const guess = timestampGuess(s.timestampOrigin)
+  if (guess !== null) metadata[TIMESTAMP_GUESS_KEY] = guess
   if (s.diagnostics.length > 0) metadata.diagnostics = s.diagnostics.slice()
   const marker = s.rec[CODEBUDDY_LOCAL_MARKER]
   if (typeof marker === 'boolean') metadata.codebuddy_local = marker

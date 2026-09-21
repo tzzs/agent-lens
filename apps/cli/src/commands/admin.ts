@@ -5,7 +5,7 @@
  */
 import type { DatabaseSync } from 'node:sqlite'
 import type { BillingMode, PriceEntry } from '@agentlens/pricing'
-import { assertBillingMode, fetchLitellmSnapshot } from '@agentlens/pricing'
+import { assertBillingMode, fetchLitellmSnapshot, LITELLM_PRICES_URL } from '@agentlens/pricing'
 import { prune } from '@agentlens/storage'
 import { UsageError, type FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
@@ -36,9 +36,28 @@ export async function cmdPricing(
   }
 }
 
-export async function cmdPricingUpdate(dbPath: string, ctx: Ctx): Promise<number> {
+export interface PricingUpdateDeps {
+  /** Upstream price map; overridden only by tests and mirrors (§9). */
+  url?: string
+  /** Stands in for `globalThis.fetch` so the refresh path is testable offline. */
+  fetchImpl?: (url: string, init?: { signal?: AbortSignal }) => Promise<Response>
+  now?: () => number
+}
+
+/**
+ * §8: the fetched map is what every historical cost is priced from, CLI and dashboard
+ * alike — both read the one file written here through `loadPricing`.
+ */
+export async function cmdPricingUpdate(
+  dbPath: string,
+  ctx: Ctx,
+  deps: PricingUpdateDeps = {},
+): Promise<number> {
   try {
-    const snapshot = await fetchLitellmSnapshot()
+    const snapshot = await fetchLitellmSnapshot(deps.url ?? LITELLM_PRICES_URL, {
+      fetchImpl: deps.fetchImpl,
+      now: deps.now,
+    })
     writeSnapshot(dbPath, snapshot)
     ctx.out(
       `${GLYPH.ok} price snapshot updated: ${formatCount(snapshot.entries.length)} entries ` +

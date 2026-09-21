@@ -9,11 +9,13 @@
 import {
   deriveErrorFingerprint,
   deriveEventId,
+  eventTimestamp,
   UNATTRIBUTED_PROJECT_ID,
-  deriveSessionId,
-  deriveSessionIdFromSource,
+  resolveSessionId,
   projectIdForCwd,
   SCHEMA_VERSION,
+  timestampGuess,
+  TIMESTAMP_GUESS_KEY,
   type AgentEvent,
   type CapabilityRef,
   type EventType,
@@ -23,6 +25,7 @@ import {
   type ParseFailure,
   type PayloadDraft,
   type RawRecord,
+  type TimestampOrigin,
   type Usage,
 } from '@agentlens/event-model'
 import {
@@ -115,6 +118,8 @@ interface Scope {
   projectId: string
   projectSource: 'cwd' | 'session' | 'unattributed'
   timestamp: number
+  /** §5.2: whether that timestamp is the record's own time or something standing in for it. */
+  timestampOrigin: TimestampOrigin
   rawSeq: number
   rawOffset: number
   diagnostics: string[]
@@ -177,13 +182,20 @@ function buildScope(record: RawRecord, ctx: NormalizeCtx, state: ScanState): Sco
     state.noteHeader(sessionIdOf(rec), cwdOf(rec))
   }
   // §4.1: header id first; a headerless file inherits the session its filename names
-  // (append-per-session); only a file with neither falls back to the record-keyed id.
+  // (append-per-session); only a file with neither falls back to the lower tiers.
   const sessionKey = state.headerSession() ?? ctx.sessionHint ?? null
   if (state.headerSession() === null && ctx.sessionHint) diagnostics.push('session-header-absent')
   const recId = recordIdOf(rec)
-  const sessionId = sessionKey
-    ? deriveSessionId(AGENT_ID, sessionKey)
-    : deriveSessionIdFromSource(ctx.source.id, recId ?? `seq-${record.seq}`)
+  const stamp = eventTimestamp(record, timestampMs(rec), ctx.now())
+  // §4.1 tier 3: neither a header/hint nor a record id ⇒ join the source's 30-minute
+  // bucket; the old per-record key made every such line its own session.
+  const sessionId = resolveSessionId({
+    agentId: AGENT_ID,
+    nativeSessionId: sessionKey,
+    sourceId: ctx.source.id,
+    recordUuid: recId,
+    timestampMs: stamp.timestamp,
+  })
   if (sessionKey === null) diagnostics.push('session-id-derived-from-record')
 
   return {
@@ -194,7 +206,8 @@ function buildScope(record: RawRecord, ctx: NormalizeCtx, state: ScanState): Sco
     sessionKey,
     sessionId,
     ...projectFor(ctx, state, sessionId, diagnostics),
-    timestamp: timestampMs(rec, record.occurredAt || ctx.now()),
+    timestamp: stamp.timestamp,
+    timestampOrigin: stamp.origin,
     rawSeq: record.seq,
     rawOffset: record.offset,
     diagnostics,
@@ -251,6 +264,9 @@ function event(s: Scope, init: EventInit): AgentEvent {
   const usage = init.usage ?? null
   const costReported = init.costReported ?? null
   const metadata: Record<string, unknown> = { ...(init.metadata ?? {}) }
+  // §5.2: an invented timestamp must not pose as a fact — `--since` counts these rows either way.
+  const guess = timestampGuess(s.timestampOrigin)
+  if (guess !== null) metadata[TIMESTAMP_GUESS_KEY] = guess
   if (s.diagnostics.length > 0) metadata.diagnostics = s.diagnostics.slice()
   if (s.projectSource !== 'cwd') metadata.project_source = s.projectSource
   return {

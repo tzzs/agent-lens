@@ -8,7 +8,7 @@
  * faithful fallback for a file whose header was lost — the header itself always wins in
  * `normalize()`.
  */
-import { walkForFiles } from '@agentlens/collector'
+import { walkForFiles } from '@agentlens/event-model'
 import { basename } from 'node:path'
 import { deriveSourceId, type HostContext, type SourceSpec } from '@agentlens/event-model'
 import { AGENT_ID } from './record.ts'

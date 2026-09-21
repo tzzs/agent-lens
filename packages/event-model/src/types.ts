@@ -123,6 +123,25 @@ export interface PayloadDraft {
   text: string
 }
 
+/**
+ * §5.2: where an event's timestamp came from. Only `record` is a time the source itself
+ * stated; the other two stand in for it, and a stand-in has to travel with a label.
+ *
+ * `file-mtime` is kept distinct from `ingest-clock` because they are guesses of different
+ * size: a session file's last write really does bound the lines inside it (a file untouched
+ * for a year cannot hold today's activity), while the ingest clock is the instant of the scan
+ * — the §19 failure, where 2,158 year-old lines shared the second `agl scan` ran.
+ */
+export type TimestampOrigin = 'record' | 'file-mtime' | 'ingest-clock'
+
+/** Metadata key carrying the guess; absent means the timestamp is a fact (§5.2). */
+export const TIMESTAMP_GUESS_KEY = 'timestampGuess'
+
+/** The `timestampGuess` metadata value, or `null` when the source stated the time itself. */
+export function timestampGuess(origin: TimestampOrigin): Exclude<TimestampOrigin, 'record'> | null {
+  return origin === 'record' ? null : origin
+}
+
 export interface AgentEvent {
   /** Deterministic fingerprint (§4.1); makes replay idempotent (§4.2). */
   id: string
@@ -138,7 +157,7 @@ export interface AgentEvent {
   requestId?: string | null
   /** §18: source-grain thread. Codex files are threads and one session spans many of them. */
   threadId?: string | null
-  /** ms epoch, as reported by the source. */
+  /** ms epoch; where the source stated none, `metadata.timestampGuess` says what stood in (§5.2). */
   timestamp: number
   ingestedAt?: number
   type: EventType
