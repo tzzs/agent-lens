@@ -68,6 +68,15 @@ missing price tables, sources refused for WAL side effects, fold policies per ag
 (`docs/plan-v2.md` §18), upstream files that no longer exist, and events whose timestamp
 had to be invented at ingest time.
 
+Each store carries one random install id, which `agl status` prints. It exists so two
+databases could later be merged without guessing which rows came from where; it is not a
+hostname, not derived from anything about you, and never sent anywhere.
+
+Upgrading re-derives what the parsers already stored. When an identity or timestamp rule
+changes, the first `agl scan` after the update re-reads every source once and repairs
+those columns in place — about 32 seconds over 535 MB of real logs on the machine this
+was measured on. Every scan after that is a no-op.
+
 ## Development
 
 ```bash
