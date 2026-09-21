@@ -71,18 +71,24 @@ export function startServer(options: StartOptions = {}): RunningServer {
   if (options.runMigrations !== false) migrate(db)
 
   const pricing = dbPath ? priceTableFor(dbPath) : null
+  // Everything else on `options` is a `ServerDeps` field and travels as-is: listing them
+  // out one by one is how an injected dep (adapters, once) can go missing in silence.
+  const {
+    db: _db,
+    now: _now,
+    dbPath: _dbPath,
+    port: _port,
+    host: _host,
+    allowExternalBind: _external,
+    runMigrations: _migrations,
+    ...injected
+  } = options
   const ctx = createContext({
+    ...injected,
     db,
     now: options.now ?? Date.now,
     ...(options.priceResolver ? { priceResolver: options.priceResolver } : pricing ? { priceResolver: (p: string, m: string, t: number) => pricing.table.lookup(p, m, t) } : {}),
     ...(pricing ? { priceTableSize: () => pricing.table.size() } : {}),
-    ...(options.billingModeFor ? { billingModeFor: options.billingModeFor } : {}),
-    ...(options.aggregation ? { aggregation: options.aggregation } : {}),
-    ...(options.staticDir ? { staticDir: options.staticDir } : {}),
-    ...(options.scan ? { scan: options.scan } : {}),
-    ...(options.capabilityCatalog ? { capabilityCatalog: options.capabilityCatalog } : {}),
-    ...(options.changeSource ? { changeSource: options.changeSource } : {}),
-    ...(options.homedir ? { homedir: options.homedir } : {}),
     ...(dbPath ? { dbPath } : {}),
   })
 
