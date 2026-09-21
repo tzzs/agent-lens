@@ -1,0 +1,3 @@
+{"id":"n1","timestamp":"2026-09-20T11:00:01.000Z","type":"message","role":"user","content":"a record with neither sessionId nor cwd"}
+{"id":"n2","timestamp":"2026-09-20T11:00:02.000Z","type":"message","role":"assistant","cwd":"/work/nested/deep","sessionId":"wb-sess-n","content":"now the trace has an identity","__codebuddyLocal":true}
+{"id":"n3","timestamp":"2026-09-20T11:00:03.000Z","type":"reasoning","content":"this record inherits both the session and the project"}

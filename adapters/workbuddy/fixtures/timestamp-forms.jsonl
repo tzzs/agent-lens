@@ -1,0 +1,4 @@
+{"id":"t1","timestamp":"2026-09-20T15:00:01.000Z","type":"message","role":"user","cwd":"/work/alpha","sessionId":"wb-sess-t","content":"iso text"}
+{"id":"t2","timestamp":1789000000,"type":"message","role":"assistant","cwd":"/work/alpha","sessionId":"wb-sess-t","content":"seconds epoch"}
+{"id":"t3","timestamp":1789000001000,"type":"reasoning","cwd":"/work/alpha","sessionId":"wb-sess-t","content":"millis epoch"}
+{"id":"t4","type":"message","role":"user","cwd":"/work/alpha","sessionId":"wb-sess-t","content":"no timestamp at all"}

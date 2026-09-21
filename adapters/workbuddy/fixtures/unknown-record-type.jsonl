@@ -1,0 +1,4 @@
+{"id":"u1","timestamp":"2026-09-20T12:00:01.000Z","type":"tool-progress","cwd":"/work/alpha","sessionId":"wb-sess-u","callId":"call-9","percent":40,"note":"a record type WorkBuddy added after the census"}
+{"id":"u2","timestamp":"2026-09-20T12:00:02.000Z","type":42,"cwd":"/work/alpha","sessionId":"wb-sess-u"}
+{"id":"u3","timestamp":"2026-09-20T12:00:03.000Z","cwd":"/work/alpha","sessionId":"wb-sess-u","whatever":{"a":1}}
+{"id":"u4","timestamp":"2026-09-20T12:00:04.000Z","type":"","cwd":"/work/alpha","sessionId":"wb-sess-u"}
