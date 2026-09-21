@@ -77,6 +77,14 @@ changes, the first `agl scan` after the update re-reads every source once and re
 those columns in place — about 32 seconds over 535 MB of real logs on the machine this
 was measured on. Every scan after that is a no-op.
 
+A scan also gives project rows their name back, once. Sources that are unchanged are
+skipped rather than re-read, so a project recorded before naming existed would otherwise
+print as a hash forever; each scan ends by proving a root for those rows, and it writes
+one only when the path reproduces the hash already stored. Rows that cannot be proven
+keep the hash — on this machine every codex project does, because codex records its
+working directory only inside transcripts, and a guess would label a project with a
+directory it never used.
+
 ## Development
 
 ```bash
