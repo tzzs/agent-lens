@@ -68,6 +68,14 @@ export interface ParseCtx {
   signal?: AbortSignal
   /** Lines longer than this are reported as an unparseable marker instead of buffered (§4.3). */
   maxLineBytes?: number
+  /**
+   * Where to read a `kind:'sqlite'` source's store from; differs from `source.path`
+   * when the collector copied a WAL store out of a directory neither we nor the app
+   * should be disturbed by. Adapters that open the store themselves MUST read from
+   * `storePath` when set, and MUST NOT create or modify any file at that path beyond
+   * what SQLite needs.
+   */
+  storePath?: string
 }
 
 /**

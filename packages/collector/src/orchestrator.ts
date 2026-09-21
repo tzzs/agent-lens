@@ -22,6 +22,7 @@ import { isParseFailure } from '@agentlens/event-model'
 import { needsRescan, statSource } from './incremental.ts'
 import { isParseErrorRecord, PARSE_ERROR_KEY } from './parse-jsonl.ts'
 import { WalModeRefusedError, journalModeOf } from './sqlite-source.ts'
+import { snapshotWalStore } from './sqlite-snapshot.ts'
 
 export interface SourceCommit {
   id: string
@@ -69,6 +70,11 @@ export interface ScanCtx {
   resolveProject(cwd: string | null | undefined): string | null
   now(): number
   signal?: AbortSignal
+  /**
+   * Where a WAL store is copied to before it is read (§18 row 7, `sqlite-snapshot.ts`).
+   * Unset ⇒ WAL stores are reported as a refusal instead, with the offset untouched.
+   */
+  snapshotDir?: string
   maxLineBytes?: number
 }
 
@@ -211,40 +217,48 @@ async function scanSqliteSource(
   // inode/size heuristics do not apply, and §5.3 drift restarts the stream from 0.
   const fromRowid = drift ? 0 : ctx.saved.lastOffset
   const firstSeq = drift ? 1 : ctx.saved.linesConsumed + 1
+  let storePath = source.path
   if (journalModeOf(source.path) === 'wal') {
-    // §5.2: a store we will not open is a reported fact, not a dead scan. The offset
-    // stays where it was because nothing was read.
-    const err = new WalModeRefusedError(source.path)
-    const stat = await statSource(source.path)
-    ctx.sink.commitSource({
-      id: source.id,
-      path: source.path,
-      lastOffset: fromRowid,
-      inode: stat?.inode ?? 0,
-      size: stat?.size ?? 0,
-      mtimeMs: stat?.mtimeMs ?? 0,
-      parserVersion: adapter.parserVersion,
-      rowsIngested: 0,
-      scanStartedAt: startedAt,
-      scanFinishedAt: ctx.now(),
-      status: 'error',
-      lastError: err.message,
-    })
-    return {
-      action: 'skip',
-      linesConsumed: 0,
-      events: 0,
-      failures: 0,
-      nextOffset: fromRowid,
-      nextSeq: ctx.saved.linesConsumed + 1,
-      refusal: err.message,
+    try {
+      // Copying is not opening (§18 row 7): the snapshot fold makes a rollback-mode
+      // file the adapter may then read through its own read-only guard.
+      if (!ctx.snapshotDir) throw new WalModeRefusedError(source.path)
+      storePath = snapshotWalStore(source.path, { dir: ctx.snapshotDir })
+    } catch (err) {
+      if (!(err instanceof WalModeRefusedError)) throw err
+      // §5.2: a store we will not open is a reported fact, not a dead scan. The offset
+      // stays where it was because nothing was read.
+      const stat = await statSource(source.path)
+      ctx.sink.commitSource({
+        id: source.id,
+        path: source.path,
+        lastOffset: fromRowid,
+        inode: stat?.inode ?? 0,
+        size: stat?.size ?? 0,
+        mtimeMs: stat?.mtimeMs ?? 0,
+        parserVersion: adapter.parserVersion,
+        rowsIngested: 0,
+        scanStartedAt: startedAt,
+        scanFinishedAt: ctx.now(),
+        status: 'error',
+        lastError: err.message,
+      })
+      return {
+        action: 'skip',
+        linesConsumed: 0,
+        events: 0,
+        failures: 0,
+        nextOffset: fromRowid,
+        nextSeq: ctx.saved.linesConsumed + 1,
+        refusal: err.message,
+      }
     }
   }
   const stat = await statSource(source.path)
-  const normalizeCtx = buildNormalizeCtx(ctx, source)
+  const normalizeCtx = buildNormalizeCtx(ctx, source, storePath)
   // §5.1: framing is the adapter's job for row stores too — only its `parse` can
   // produce the joined row shape its `normalize` expects.
-  const stream = adapter.parse(source, { offset: fromRowid, firstSeq }, buildParseCtx(ctx, source))
+  const stream = adapter.parse(source, { offset: fromRowid, firstSeq }, buildParseCtx(ctx, source, storePath))
   const batch = await consumeRecords(stream, adapter, source, ctx, normalizeCtx)
 
   if (batch.events.length > 0) ctx.sink.writeEvents(batch.events)
@@ -297,7 +311,7 @@ function commitGone(
   return { action: 'gone', linesConsumed: 0, events: 0, failures: 0, nextOffset: s.lastOffset, nextSeq: s.linesConsumed + 1 }
 }
 
-function buildParseCtx(ctx: ScanCtx, source: SourceSpec): ParseCtx {
+function buildParseCtx(ctx: ScanCtx, source: SourceSpec, storePath?: string): ParseCtx {
   return {
     source,
     agentId: ctx.agentId,
@@ -305,12 +319,15 @@ function buildParseCtx(ctx: ScanCtx, source: SourceSpec): ParseCtx {
     sessionHint: source.sessionHint ?? null,
     signal: ctx.signal,
     maxLineBytes: ctx.maxLineBytes,
+    // Only row stores get an explicit one: it differs from `source.path` when a WAL
+    // store was snapshotted (§18 row 7), and equals it otherwise.
+    storePath: storePath ?? source.path,
   }
 }
 
-function buildNormalizeCtx(ctx: ScanCtx, source: SourceSpec): NormalizeCtx {
+function buildNormalizeCtx(ctx: ScanCtx, source: SourceSpec, storePath?: string): NormalizeCtx {
   return {
-    ...buildParseCtx(ctx, source),
+    ...buildParseCtx(ctx, source, storePath),
     resolveProject: ctx.resolveProject,
     now: ctx.now,
   }

@@ -16,6 +16,7 @@ import { SCHEMA_VERSION, deriveEventId } from '@agentlens/event-model'
 import { parseJsonlRecords } from '../src/parse-jsonl.ts'
 import type { EventSink, SavedSourceState, SourceCommit } from '../src/orchestrator.ts'
 import { rescanSourceOnVersionDrift, scanSource } from '../src/orchestrator.ts'
+import { snapshotPathFor } from '../src/sqlite-snapshot.ts'
 
 let currentTmp: string | null = null
 
@@ -121,15 +122,16 @@ function sourceFor(path: string): SourceSpec {
 }
 
 /** §5.1 sqlite framing done the way a real adapter does it: `parse` runs the row
- * query (rowid high-water in, rowid-keyed records out); the orchestrator never reads columns. */
+ * query (rowid high-water in, rowid-keyed records out); the orchestrator never reads
+ * columns. Like every honest adapter it reads `ctx.storePath`, not `source.path`. */
 function sqliteParseAdapter(parserVersion = 1): AgentAdapter {
   const base = fakeAdapter(parserVersion)
   return {
     ...base,
-    parse: (source, from) =>
+    parse: (source, from, ctx) =>
       (async function* () {
         const { DatabaseSync } = await import('node:sqlite')
-        const db = new DatabaseSync(source.path, { open: true, readOnly: true })
+        const db = new DatabaseSync(ctx.storePath ?? source.path, { open: true, readOnly: true })
         let lastRowid = from.offset
         try {
           const sql = `SELECT rowid AS r, payload AS p FROM "${source.sqliteTable}" WHERE rowid > ? ORDER BY rowid ASC`
@@ -346,4 +348,147 @@ describe('scanSource', () => {
     expect(existsSync(`${path}-wal`)).toBe(false)
     expect(existsSync(`${path}-shm`)).toBe(false)
   })
+})
+
+describe('scanSource · WAL store through a snapshot copy (§18 row 7)', () => {
+  let cleanupDirs: string[] = []
+
+  afterEach(async () => {
+    for (const d of cleanupDirs) await rm(d, { recursive: true, force: true })
+    cleanupDirs = []
+  })
+
+  /** A foreign store left exactly as a live app keeps it: WAL header, `-wal` and `-shm` on disk. */
+  async function walFixture(): Promise<{ path: string; dir: string; close(): void }> {
+    const { DatabaseSync } = await import('node:sqlite')
+    const { mkdtemp } = await import('node:fs/promises')
+    const dir = await mkdtemp(join(tmpdir(), 'collector-wal-foreign-'))
+    cleanupDirs.push(dir)
+    const path = join(dir, 'opencode.db')
+    // The connection that wrote the rows stays open, because that is what a live
+    // OpenCode is: closing it would checkpoint and delete `-wal`, and the fixture
+    // would no longer look like a WAL store at all.
+    const writer = new DatabaseSync(path)
+    writer.exec('PRAGMA journal_mode = WAL')
+    writer.exec('CREATE TABLE messages (payload TEXT)')
+    const ins = writer.prepare('INSERT INTO messages (payload) VALUES (?)')
+    ins.run(rec(1))
+    ins.run(rec(2))
+    return { path, dir, close: () => writer.close() }
+  }
+
+  async function stamps(path: string): Promise<Record<string, string>> {
+    const { statSync } = await import('node:fs')
+    const out: Record<string, string> = {}
+    for (const p of [path, `${path}-wal`, `${path}-shm`]) {
+      try {
+        const s = statSync(p)
+        out[p.slice(path.length)] = `${s.size}:${s.mtimeMs}:${s.ino}`
+      } catch {
+        out[p.slice(path.length)] = 'absent'
+      }
+    }
+    return out
+  }
+
+  function walSource(path: string): SourceSpec {
+    return { id: 'src-wal-snap', path, kind: 'sqlite', sqliteTable: 'messages' }
+  }
+
+  it('events flow end-to-end and the foreign directory is provably untouched', async () => {
+    const { existsSync, readdirSync } = await import('node:fs')
+    const { mkdtemp } = await import('node:fs/promises')
+    const { journalModeOf } = await import('../src/sqlite-source.ts')
+    const host = await walFixture()
+    const snapDir = await mkdtemp(join(tmpdir(), 'collector-wal-snap-'))
+    cleanupDirs.push(snapDir)
+    await chmod(snapDir, 0o700)
+    try {
+      expect(existsSync(`${host.path}-wal`)).toBe(true)
+      expect(existsSync(`${host.path}-shm`)).toBe(true)
+      const beforeStamps = await stamps(host.path)
+      const beforeListing = readdirSync(host.dir).sort()
+
+      const source = walSource(host.path)
+      const sink = new FakeSink()
+      const ctx = { ...ctxFor(sink, source), snapshotDir: snapDir }
+      const result = await scanSource(sqliteParseAdapter(), source, ctx)
+
+      expect(result.events).toBe(2)
+      expect(sink.events.map((e) => (e.metadata as { text: string }).text)).toEqual(['msg-1', 'msg-2'])
+      expect(sink.commits.at(-1)!.lastOffset).toBe(2) // rowid high-water from the copy
+      // Foreign store untouched at the byte level …
+      expect(await stamps(host.path)).toEqual(beforeStamps)
+      // … and no new path appeared in its directory.
+      expect(readdirSync(host.dir).sort()).toEqual(beforeListing)
+      // The snapshot is a plain, sidecar-free rollback database — that is what lets
+      // adapters keep their own read-only guard.
+      const copy = snapshotPathFor(host.path, snapDir)
+      expect(journalModeOf(copy)).toBe('rollback')
+      expect(existsSync(`${copy}-wal`)).toBe(false)
+      expect(existsSync(`${copy}-shm`)).toBe(false)
+    } finally {
+      await chmod(snapDir, 0o700)
+      host.close()
+    }
+  })
+
+  it('a second scan of an unchanged store performs no copy at all', async () => {
+    const { statSync } = await import('node:fs')
+    const { mkdtemp } = await import('node:fs/promises')
+    const host = await walFixture()
+    const snapDir = await mkdtemp(join(tmpdir(), 'collector-wal-snap-'))
+    cleanupDirs.push(snapDir)
+    try {
+      const source = walSource(host.path)
+      const sink = new FakeSink()
+      const ctx = { ...ctxFor(sink, source), snapshotDir: snapDir }
+      await scanSource(sqliteParseAdapter(), source, ctx)
+      const copy = snapshotPathFor(host.path, snapDir)
+      const firstCopy = statSync(copy)
+
+      // Make ANY write into the snapshot directory fatal: deleting or re-copying the
+      // snapshot needs write permission. An unchanged signature must hit the cache instead.
+      await chmod(snapDir, 0o500)
+      const second = await scanSource(sqliteParseAdapter(), source, { ...ctx, saved: sink.persisted })
+      await chmod(snapDir, 0o700)
+
+      expect(second.linesConsumed).toBe(0)
+      expect(second.events).toBe(0)
+      const after = statSync(copy)
+      expect(after.ino).toBe(firstCopy.ino) // same file, not a fresh copy
+      expect(after.mtimeMs).toBe(firstCopy.mtimeMs)
+    } finally {
+      await chmod(snapDir, 0o700)
+      host.close()
+    }
+  })
+
+  it('a store that grew gets a fresh copy and only the new rows', async () => {
+    const { DatabaseSync } = await import('node:sqlite')
+    const { mkdtemp } = await import('node:fs/promises')
+    const host = await walFixture()
+    const snapDir = await mkdtemp(join(tmpdir(), 'collector-wal-snap-'))
+    cleanupDirs.push(snapDir)
+    try {
+      const source = walSource(host.path)
+      const sink = new FakeSink()
+      const ctx = { ...ctxFor(sink, source), snapshotDir: snapDir }
+      await scanSource(sqliteParseAdapter(), source, ctx)
+      const appender = new DatabaseSync(host.path)
+      appender.prepare('INSERT INTO messages (payload) VALUES (?)').run(rec(3))
+      appender.close()
+      const second = await scanSource(sqliteParseAdapter(), source, { ...ctx, saved: sink.persisted })
+      expect(second.events).toBe(1)
+      expect(sink.events.at(-1)!.metadata).toEqual({ text: 'msg-3' })
+      expect(sink.commits.at(-1)!.lastOffset).toBe(3)
+    } finally {
+      host.close()
+    }
+  })
+
+  async function chmod(path: string, mode: number): Promise<void> {
+    const { chmod } = await import('node:fs/promises')
+    await chmod(path, mode)
+  }
 })
