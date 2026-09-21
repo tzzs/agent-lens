@@ -3,37 +3,29 @@
   // (since/agent/host); it never computes anything itself.
   import { SINCE_OPTIONS, range } from '../lib/filter.svelte.js'
   import { options } from '../lib/live.svelte.js'
+  import Segmented from './ui/Segmented.svelte'
 
-  const sel = 'rounded-md border border-line bg-ink-850 px-2.5 py-1.5 text-xs text-mist-100 outline-none focus:border-signal'
+  const SHORT: Record<string, string> = { '24h': '24h', '7d': '7d', '30d': '30d', '90d': '90d', '365d': '1y' }
+  const sel =
+    'h-7 max-w-40 truncate rounded-full bg-surface pl-3 pr-7 text-xs text-ink shadow-btn outline-none hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent appearance-none bg-no-repeat'
+  const chevron =
+    "background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\");background-position:right 9px center"
 </script>
 
-<div class="flex flex-wrap items-center gap-2">
-  <label class="flex items-center gap-1.5 text-[11px] text-mist-500">
-    <span>range</span>
-    <select class={sel} bind:value={range.since}>
-      {#each SINCE_OPTIONS as o (o.value)}
-        <option value={o.value}>{o.label}</option>
-      {/each}
-    </select>
-  </label>
+<div class="flex items-center gap-2">
+  <Segmented label="Time range" bind:value={range.since} options={SINCE_OPTIONS.map((o) => ({ value: o.value, label: SHORT[o.value] ?? o.label }))} />
 
-  <label class="flex items-center gap-1.5 text-[11px] text-mist-500">
-    <span>agent</span>
-    <select class={sel} bind:value={range.agent}>
-      <option value="">all agents</option>
-      {#each options.agents as a (a.agentId)}
-        <option value={a.agentId}>{a.displayName || a.agentId}</option>
-      {/each}
-    </select>
-  </label>
+  <select class={sel} style={chevron} bind:value={range.agent} aria-label="Agent">
+    <option value="">All agents</option>
+    {#each options.agents as a (a.agentId)}
+      <option value={a.agentId}>{a.displayName || a.agentId}</option>
+    {/each}
+  </select>
 
-  <label class="flex items-center gap-1.5 text-[11px] text-mist-500">
-    <span>host</span>
-    <select class={sel} bind:value={range.host}>
-      <option value="">all hosts</option>
-      {#each options.hosts as h (h)}
-        <option value={h}>{h}</option>
-      {/each}
-    </select>
-  </label>
+  <select class={sel} style={chevron} bind:value={range.host} aria-label="Host">
+    <option value="">All hosts</option>
+    {#each options.hosts as h (h)}
+      <option value={h}>{h}</option>
+    {/each}
+  </select>
 </div>
