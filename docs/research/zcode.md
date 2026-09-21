@@ -1,0 +1,143 @@
+# 实测简报 · ZCode 本地数据
+
+- 日期：2026-09-22　机器：darwin/arm64　脚本：`probe-zcode.mjs`（`node docs/research/probe-zcode.mjs [dataRoot]`，默认 `$ZCODE_HOME` 或 `~/.zcode`）
+- 结论先行：**ZCode 在本机已安装并留下完整会话数据**，数据根 `~/.zcode`（755 文件 / 约 400MB）。采集源是 **`cli/db/db.sqlite`（WAL，30.0MB）**——一个把用量埋点做到 40 列的自描述库；`session`/`message`/`part` 三表是 **OpenCode 形状**（`adapters/opencode` 的映射可复用），另附 `model_usage`/`turn_usage`/`tool_usage` 三张聚合表。
+- 本轮最重要的两条：**同一次调用的 token 在这份数据里存了 5 份**（§三），以及 **`message.data.cost` 恒为 0**（§四，编码套餐计费，映射成 `cost_reported` 会把 1.68 亿 token 报成 $0）。
+- 版本线索：引擎 `schema_migration.app_version = 0.16.5`（22 条迁移）；桌面 App `3.11.2 → 3.12.1`（rollout 请求头 `x-zcode-app-version`，两条都有）。**两套版本号不是一条线**，漂移检测要分开记。
+
+---
+
+## 一、数据根与采集源
+
+| 路径 | 内容 | 是否采集 |
+|---|---|---|
+| `~/.zcode/cli/db/db.sqlite` | **会话 + 用量主库**（WAL，30.0MB，`-wal` 0B / `-shm` 32KB） | ✅ 唯一 token 源 |
+| `~/.zcode/v2/tasks-index.sqlite` | 桌面 App 的任务索引（WAL，0.3MB + `-wal` 3.9MB），`tasks(10)` | ⚠️ 本轮不采（§二 宿主结论） |
+| `~/.zcode/cli/log/zcode-YYYY-MM-DD.jsonl` | 结构化运行日志 8 文件 / 27,001 行（`level`/`module`/`event`，info 26,845 / warn 483 / error 73） | ❌ 日志，非账本 |
+| `~/.zcode/cli/rollout/model-io-<session>.jsonl` | 逐请求**完整**请求/响应体，仅 3 会话 / 96 条 | ❌ 见 §六（部分覆盖 + 含 Cookie/验证码头） |
+| `~/.zcode/cli/artifacts/<sess>/call_*-tool-result-*.json` | 工具输出落盘文件（565 个 json） | ❌ 内容层之外 |
+| `~/.zcode/cli/agents/<sess>/agent_<id>/{metadata.json,output.txt,task.output}` | 子代理运行产物，`metadata.json` 18 键含 `parentToolUseId`/`childSessionId`/`totalTokens` | ❌ 第 5 份 rollup（§三） |
+| `~/.zcode/cli/plugins/` | 能力静态面：`installed_plugins.json{version,plugins}`、`marketplaces/{claude,zcode}-plugins-official`、`data/` 8 个 `*@zcode-plugins-official`（browser-use、computer-use、document-skills、github、lark-cli、mimosa、skill-creator、zcode-guide） | ✅ `capabilities()` |
+| `~/.zcode/cli/memories/projects/<name>-<12hex>/memory` | 项目记忆目录 | ❌ |
+| `~/.zcode/v2/{credentials,provider_config,bot-*}.json` | 凭据 —— **不读取内容**，探针与适配器都不碰 | ❌ |
+| `~/Library/Application Support/ZCode/session/` | 桌面 Electron 的浏览器 profile（Cookies/GPUCache/IndexedDB），**不是**会话数据 | ❌ |
+
+**两个 `.sqlite` 都是 WAL** ⇒ §18 row 7 硬约束生效：`probe-zcode.mjs` 与本适配器一律**先复制（含 `-wal`，从不含 `-shm`）到快照目录、`PRAGMA journal_mode=DELETE` 折成回滚模式，再打开副本**。实测探测前后源库 `size:mtime` 逐字节相同。
+
+### 活动窗口
+
+`message` / `model_usage` / `tool_usage` 的时间范围完全一致：**2026-09-12 20:29:07 → 2026-09-13 21:15:51 UTC**（38 会话 / 1,395 请求 / 1,851 工具调用）。`cli/log/` 里有 9-20 的文件，但 9-13 21:15 之后再无 `model.request.*` / `tool.call.*` 事件——那之后的日志只有 memory_sample 与心跳。**本机数据是一次 25 小时的高强度使用**，不是长期采样，样本代表性有限（对账够用，趋势分析不够）。
+
+---
+
+## 二、宿主切分：`cli/` 这个路径名是陷阱
+
+`session` 表 25 列，**没有任何 entrypoint / origin / platform 列**（与 OpenCode 同样诚实处理）。唯一可用的旁证在另一个库：
+
+```
+v2/tasks-index.sqlite.tasks.task_id  →  cli/db/db.sqlite.session.id     10/10 命中，0 孤儿
+根会话（parent_id IS NULL, task_type=interactive）= 10，其中属于桌面 tasks 的 = 10，CLI-only = 0
+子代理会话（parent_id 非空, task_type=subagent_child）= 28
+```
+
+即：**本机 100% 的流量由桌面 App（3.11.2/3.12.1）产生，而数据全部躺在名为 `cli/` 的目录里**——和 Claude Desktop 把 96.8% 的量记在 `~/.claude` 下是同一类坑。据此判定：
+
+1. **禁止**因为路径里有 `cli` 就写 `host_id = 'zcode-cli'`。那正是 §六 差异化主张要打脸的错误。
+2. v1 取 `host_id = 'zcode'`（单宿主，不臆造切分），把桌面关联留作**已知缺口**：跨库把 `tasks-index` 的 task_id 集合并进来需要第二条 `sqlite` 源，而 `host_id` 是每条事件上的列、无法等另一条源的行先到——事件模型不支持这种跨源依赖，硬做就要改结构，违反 §15 M5「Schema 冻结」。
+3. `tasks` 表另带 `provider='glm'`、`model='builtin:bigmodel-start-plan/GLM-5.3-Flash'`、`mode='yolo'`、`title`、`workspace_path` —— 若将来做宿主切分，这是唯一可用外键；本轮只在简报里备案。
+
+---
+
+## 三、⚠️ 同一次调用的 token 存了 5 份（本 Adapter 的头号地雷）
+
+| # | 位置 | 基数 | 粒度 | 与 `model_usage` 的关系（实测） |
+|---|---|---|---|---|
+| 1 | **`model_usage` 表** | 1,395 | 一次模型调用 = 一行 | 基准；`COUNT(*) = COUNT(DISTINCT id) = COUNT(DISTINCT logical_request_id) = 1395`，`attempt_index` 全为 0 |
+| 2 | `part` 里 `data.type='step-finish'` | 1,355 | 一次调用一步 | `tokens.total/input` 与 `finish_reason` **逐行相等 1355/1355**；差的 40 行是 error/cancelled |
+| 3 | `message.data.tokens`（+ `.cost`） | 1,414 assistant | 一条助手消息 | 同值（`{total,input,output,reasoning,cache:{read,write}}`） |
+| 4 | `turn_usage` 表 | 89 | 一个 turn 的 rollup | `SUM(computed_total_tokens)=167,547,131` vs 同 turn 的 `model_usage` 之和 `167,541,215`；per-turn input/output 精确相等 80/89 |
+| 5 | `session_target.tokens_used` / `cli/agents/*/metadata.json.totalTokens` | 1 / 若干 | 目标级 / 子代理级 rollup | 例：某 target `tokens_used=2,021,795`，是其会话内调用的求和 |
+
+**规则：token 只从 `model_usage` 读，usage 只挂在 `generation.end` 一条事件上。** 2/3/4/5 号副本一律不进 `usage`；需要留证据的（`turn_usage`、`session_target`）写进 `metadata.rollup`，与 `adapters/opencode` 对 `session.cost/tokens` 的处理同构（§18 row 1）。理由：`part`/`message` 行是 **UPDATE 复用同一 rowid**（step-finish 在请求结束时才写入对应 part，message.data 事后被改写），而 rowid 高水位恢复意味着**已扫过的行不会被重读**——把 usage 挂在那上面会随扫描时机得失不等；`model_usage` 是 insert-only，且每请求一行、自带 `logical_request_id`。
+
+## 四、token 口径与对账锚点
+
+`model_usage` 的列名是 **Anthropic/Claude 方言**（`cache_creation_input_tokens` / `cache_read_input_tokens`，§18 row 4 的第 5 种方言家族），但**语义是 Codex 那一类：`input` 已包含 `cache_read`**。
+
+```
+全表求和： input 166,230,363  output 1,363,621  reasoning 0  cache_creation 0  cache_read 158,848,192
+          provider_total 167,593,984   computed_total 167,593,984
+恒等式：   computed_total == input+output                    1395/1395  ← 成立
+          computed_total == input+output+cache_read         40/1395    ← 恰为 cache_read=0 的那些行
+          computed_total == 四桶相加                          40/1395    ← 同上
+          cache_read <= input                              1395/1395
+```
+
+⇒ 映射必须**减去**缓存：**`inputTokens = input_tokens − cache_read_input_tokens − cache_creation_input_tokens`**（非负兜底），`cacheRead/Write` 各自成桶。`provider_total_tokens`、`computed_total_tokens` 是 rollup，**永不求和**。`reasoning_tokens` 本机恒 0（`raw_usage_json` 里也没有该字段，列名是 `inputTokens/outputTokens/totalTokens/cacheReadTokens/cacheWriteTokens`）。
+
+### 对账（`ccusage@20.0.23`，独立工具，口径互不商量）
+
+把 `ZCODE_HOME` 指向折好滚回模式的**副本**后运行 `ccusage zcode daily -j -O -z UTC`（不碰对方真库）：
+
+| 字段 | ccusage | 本适配器目标值 | 推导 |
+|---|---|---|---|
+| `inputTokens` | **7,382,171** | 7,382,171 | `166,230,363 − 158,848,192`，逐位相同 ⇒ 减法口径成立 |
+| `cacheReadTokens` | **158,848,192** | 158,848,192 | 直取 |
+| `outputTokens` | **1,363,621** | 1,363,621 | 直取 |
+| `totalTokens` | **167,593,984** | 167,593,984 | = `computed_total` 全表求和（含 367 条 subagent 行） |
+| `totalCost` | 0.0，`missingPricing:true`，`unpricedModels:["GLM-5.3-Flash"]` | — | 见下 |
+
+**MUST 断言这四条**（`reconcile-zcode-ccusage.mjs` + 快照基线，同 claude/codex 惯例）。`subagentsIncluded: true` 是由这张表**量出来的**：ccusage 的 zcode 头条含子代理，排除它们会少算 15,657,611 token（9.3%）。
+
+### cost：字段在，但恒为 0
+
+`message.data.cost` 在 1,414 条助手消息上 **max=0、sum=0**，`step-finish.cost` 同为 0，而 `provider_id` 是 `builtin:bigmodel-start-plan` / `account:bigmodel-start-plan`（智谱 BigModel 编码套餐）。**套餐计费下 `cost:0` 的含义是"不按 token 计价"，不是"免费"** ⇒ 适配器**不得**把它写进 `costReported`（那等于宣称 $0 用了 1.68 亿 token，正是 §18 row 1 禁止的假零）。规则：`costReported = null`、`costSource = 'none'`，交给价格层算等价 API 成本。
+
+价格覆盖缺口（独立证据）：`packages/pricing/src/default-snapshot.json` 有 `zai.glm-4.7`、`zai.glm-4.7-flash`、`zai.glm-5`，**没有 `GLM-5.3-Flash`**；ccusage 同样报 `unpricedModels`。⇒ 本机 zcode 的 cost 会是 NULL，这是正确结果，不是 bug；`doctor` 要能把它讲成"未定价"而不是"零成本"。
+
+## 五、维度词表（全部实测，白名单照此写）
+
+- `query_source`：`main_turn` 1,018（151.9M tok）/ `subagent` 367（15.7M）/ `session_title` 8 / `goal_summary_title` 1 / `target_completion_verification` 1 —— **后三类是模型自发的后台调用**，与用户轮次无关，但 token 是真花的，保留在账上并在 subtype/metadata 里标注。
+- `agent`：`zcode-agent` 1,028 / `zcode-general-purpose` 303 / `zcode-Explore` 64；`mode`：`yolo` 1,377 / `plan` 18；`task_type`：`interactive` 1,028 / `subagent_child` 367。
+- `status`：`completed` 1,365 / `error` 28 / `cancelled` 2；`finish_reason`：`tool-calls` 1,287 / `stop` 78 / NULL 30。
+- `error_type`：`rate_limited` 25 / `unknown` 3 / `cancelled` 2 / `timeout` 1 / `network_error` 1（error/cancelled 行的 token 全为 0，`input_zero=30` 与之吻合）。
+- 模型只有一种：`GLM-5.3-Flash`，`variant`：`max` 1,363 / `low` 23 / `disabled` 9 ⇒ `ModelRef{provider: provider_id, name: model_id, tier: variant}`。
+- **`trace_id` 绝不能当请求键**：1,395 行只有 10 个不同 `trace_id`，最大的一个跨 499 行 / **15 个会话**。请求键是 `logical_request_id`（= 助手 `message.id`，`msg_…`；`id` 列是 `usage_model_<query_source>_<msgId>_<attempt>`）。
+- 子代理归属是**确定性外键**，不需要 Claude 式时间启发：`query_source='subagent'` ⟺ `session.parent_id IS NOT NULL`，实测 367/367 完全一致；`agents/*/metadata.json.parentToolUseId` 还能指回派生它的那次 `Agent` 工具调用。
+- `message.data.semantics`（1,603 条全覆盖）：`origin` ∈ `real_user`/`agent_runtime`/`system`，`kind` 分布：`assistant_response` 1,385 / `todo_reminder` 94 / `user_prompt` 89 / `timeline_event` 29 / `background_notification` 5 / `system_reminder` 1，另带 `uiVisibility`/`providerVisibility`/`transcriptVisibility`。
+  - ⚠️ **按 `role` 映射会把用户轮次虚报 2.12×**：`role='user'` 有 189 条，其中真实用户输入只有 89 条，其余 100 条是 todo/system/background 注入。规则：`origin='real_user'` → `message.user`；`assistant_response` → `message.assistant`；其余 4 类 → `type='unknown'` + `subtype=kind`（§5.3 保留 subtype 而非丢弃，Timeline 看得见注入，Turn 计数不被污染）。
+- `part.data.type`：`tool` 1,851 / `step-start` 1,385 / `step-finish` 1,355 / `text` 1,004 / `reasoning` 928 / `timeline` 29 / `file` 4；`part.data` 最大 185,959 B（read/write 类工具的整页正文都在这）⇒ 内容层沿用 OpenCode 的 `FILE_BODY_*_TOOLS` 排除表与 4KiB/32KiB 截断。
+- 能力面（比 Claude 多一列）：`tool_usage` 除 `tool_name` 外带 `read_only` / `destructive` / `side_effect_scope ∈ {system 672, workspace 593, none 463, session 99, network 19, userInteraction 3}` / `exit_code` / `output_bytes` / `truncated` / `duration_ms`。`approval_status` 恒 `none`（yolo 模式）。工具名是 **Claude Code 方言**（Bash/Edit/Read/Write/TodoWrite/Agent/WebFetch/Skill/AskUserQuestion/ExitPlanMode/TaskOutput/TaskStop）+ `mcp__server__tool` 两级与 `mcp__plugin_<plugin>_<server>__<tool>` 三级并存。
+- **工具结果只从 `tool_usage` 读，不读 `part` 里的 tool state**：`part` 行 rowid 会被 UPDATE 复用（pending→completed），增量扫描重读不到；`tool_usage` 是 insert-only，且 1,851 行的 `tool_call_id` 与 `part.data.callID` **1:1 完全对齐**（实测 `eq=1851/1851`）。⇒ `part.tool` 出 `tool.start`（能力 + 入参），`tool_usage` 出 `tool.end`/`tool.result`（状态、耗时、退出码、副作用分类）。
+
+## 六、rollout / 日志通道：为什么都不采
+
+`cli/rollout/model-io-*.jsonl` 每行一次调用（`type='model_io'`，含 `requestId/attempt/model/request/response/sessionId/querySource/startedAt/turnId`，usage 在 `response.providerMetadata.anthropic.usage`）。三条实测理由排除它：
+
+1. **覆盖不全**：38 个会话只有 3 个有 rollout 文件；`sess_e03c6cb0` 在 `model_usage` 里有 172 行，rollout 只有 75 条 ⇒ 受 `v2/setting.json` 的 `modelIoFullRetentionEnabled` 控制，是开关型详细日志。
+2. **id 空间不同**：rollout 的 `requestId` 是 provider 侧 id，**0/96 命中** `logical_request_id` ⇒ 与主库对账只能靠会话+时间窗，天然不可靠；用它当请求键会绕过主库的 1:1 保证。
+3. **时间戳方言不同**：rollout 是 ISO 字符串、`attempt` 从 1 起；主库是 epoch ms、`attempt_index` 从 0 起。加上正文含完整 prompt、`Cookie`/`set-cookie`、`x-aliyun-captcha-verify-param` —— **隐私成本远大于收益**（token 已在主库里逐字段相等）。
+
+`cli/log/*.jsonl` 同理：它有 `core.runtime/model.request.*`、`adapters.model/model.request.completed` 1,427 条，但只带 `durationMs`/`status`，不带 token；与主库争不了口径，本轮不采（error 可见性已由 `model_usage.error_*` 覆盖）。
+
+## 七、事件映射定稿（`adapters/zcode`）
+
+| 源（`kind:'sqlite'`，id 盐 = `{db}#{table}`） | 事件 |
+|---|---|
+| `session`（38） | `session.start`（title/mode/version/rollup 进 metadata）；子代理会话再出 `subagent.start`；`time_archived` 非空才出 `session.end`（本机 0 条） |
+| `message`（1,603） | 按 §五 的 `semantics` 规则；`data.error` 出 `error` 事件；**不带 usage**（副本 #3） |
+| `part`（6,556） | `step-start`→`generation.start`；`tool`→`tool.start`（`Agent`→`subagent.start`，`Skill`→`skill.invoke`，`mcp__*`→`mcp.invoke`）；`text`/`reasoning`→内容事件；`step-finish`→`unknown`+`subtype='step-finish-duplicate-of-model_usage'`（**不产 usage**，留漂移证据）；`timeline`/`file`→`unknown`+subtype |
+| `model_usage`（1,395） | `generation.end`：唯一 usage 载体，`requestId=logical_request_id`，`threadId=turn_id`，`metadata.subagentThread` 由 `session.parent_id` 决定，`status/error_type/error_code` + `deriveErrorFingerprint`，`duration_ms`/`time_to_first_token_ms` 进 metadata |
+| `tool_usage`（1,851） | `tool.end` + `tool.result`：`parentEventId` 由 `tool_call_id` 反查 `part.tool` 的事件 id；带 `exit_code`/`output_bytes`/`side_effect_scope`/`read_only`/`destructive` |
+
+- **`turn_usage` / `session_target` / `agents/*/metadata.json` 不是源**（rollup，§三）。
+- 宿主：`host_id = 'zcode'`（§二）。项目：`session.directory`/`session.path` 喂 `ctx.resolveProject`（本机 2 个目录 = cable-info 35 + picko 3 会话），native `project_id`（`proj_users-tanzz-workspaces-cable-info`）记进 metadata 供对账，不参与归一化（§4.1 三步归一仍是权威）。
+- `ParserVersion = 1`；`aggregation = { mode: 'per_record_sum', subagentsIncluded: true }` —— `mode` 的依据是"`model_usage` 每请求恰一行、每行只说这一次调用"（`request_max` 在此算术等价，但声明要说清粒度，且未来出现重试行时 `per_record_sum` 不会把真实花费折没）。
+- 会话表里 `session.version` 只记到 `0.16.5` ⇒ `Detection.agentVersion` 取 `schema_migration.app_version`，同时把 `v2/setting.json` 的桌面版本留在 metadata（漂移证据跨版本采集，§5.3）。
+
+## 八、待实测确认（下一轮）
+
+1. **纯 CLI 用户的形态**：本机 100% 桌面流量，`zcode` 命令行独立跑起来时 `tasks-index.sqlite` 是否为空、`session` 是否出现别的标记 —— 决定 §二的宿主切分能不能做。
+2. `variant='disabled'`(9) 与 `reasoning_tokens` 恒 0 的关系；`GLM-5.3-Flash` 的思考模式是否落到 `part.data.reasoning` 而非 token 桶。
+3. 非套餐（`account:*` 之外是否有按量付费 provider）下 `cost` 是否变非零 —— 若变，`costSource='reported'` 的分支要提前留好，并注意套餐/按量混用时 `0` 与 `null` 的语义差别。
+4. `session_task_link`/`workflow_*`/`dwf_*` 五张表本机全空（自动化/off-peak 功能），启用后是不是第 6 份用量口径；`off_peak_tasks` 在桌面库里已有表结构。
