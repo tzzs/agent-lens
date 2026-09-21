@@ -19,6 +19,7 @@ import type { Ctx } from '../context.ts'
 import { makeHostCtx, redactHome } from '../context.ts'
 import { adapterAggregations, getAdapters } from '../adapters.ts'
 import { table } from '../render.ts'
+import { repairProjectRoots } from './projects.ts'
 
 export interface ScanOutcome {
   adaptersFound: number
@@ -32,6 +33,12 @@ export interface ScanOutcome {
    * separately for `scan`, `watch` and `--serve` to report.
    */
   refusals: SourceRefusal[]
+  /**
+   * Project rows that had no `canonical_root` and were repaired once this scan ended
+   * (§4.1, `commands/projects.ts`). Optional because synthetic outcomes (rendering
+   * tests) never touch a database; `runScan` always fills it.
+   */
+  projectsRepaired?: number
 }
 
 export interface SourceRefusal {
@@ -176,6 +183,11 @@ export async function runScan(
       onSource?.(adapter.id, source, result.events, result.failures, result.action)
     }
   }
+  // §4.1 attribution repair for rows that predate project naming: `skip`ped sources
+  // never re-ingest, so their project rows are given the root back from the evidence
+  // still in the store (persisted cwds, decodable `sources.path`). Idempotent, and a
+  // no-op once every row has a root.
+  outcome.projectsRepaired = repairProjectRoots(db, { homedir: ctx.homedir }).repaired.length
   return outcome
 }
 
@@ -197,6 +209,9 @@ export async function cmdScan(db: DatabaseSync, flags: FlagView, ctx: Ctx): Prom
     ctx.out('✓ up to date — no new rows since last scan')
   }
   ctx.out(`${outcome.sourcesScanned} sources scanned · ${outcome.events} events ingested · ${outcome.failures} parse failures`)
+  if (outcome.projectsRepaired) {
+    ctx.out(`+ ${outcome.projectsRepaired} existing project ${outcome.projectsRepaired === 1 ? 'row' : 'rows'} attributed to a directory (§4.1)`)
+  }
   for (const line of refusalLines(outcome, ctx)) ctx.out(line)
   return 0
 }
