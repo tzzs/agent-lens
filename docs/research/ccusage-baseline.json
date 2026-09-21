@@ -1,4 +1,11 @@
 {
+  "window": {
+    "since": "2026-08-22",
+    "until": "2026-09-20",
+    "capturedAt": "2026-09-21T15:30:14Z",
+    "command": "ccusage claude daily -j -b -O -z UTC --since 2026-08-22 --until 2026-09-20",
+    "note": "The oracle window ends on the last CLOSED UTC day. ccusage sees a corpus that is still being appended to, so records can land on the capture day after the capture ran; every earlier day is byte-stable (verified by re-running the command above: all 15 day rows reproduced exactly)."
+  },
   "daily": [
     {
       "cacheCreationTokens": 298856,
@@ -255,7 +262,7 @@
         {
           "cacheCreationTokens": 0,
           "cacheReadTokens": 0,
-          "cost": 0.0,
+          "cost": 0,
           "inputTokens": 5714,
           "missingPricing": true,
           "modelName": "deepseek-flash",

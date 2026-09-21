@@ -6,7 +6,8 @@
  *   claude-code adapter → collector `scanSource` (through `runScan`, the only sanctioned
  *   driver) → `insertEvents` (content layer OFF, §3.2/§10) → the §7 cube
  * and compares it with the committed `ccusage claude daily -j -b -O -z UTC` oracle for
- * the window 2026-08-22 → 2026-09-21 (UTC, both endpoints inclusive). Nothing here
+ * the window recorded in that file (UTC, both endpoints inclusive; it ends on the last
+ * closed day — see the note on `BASELINE_WINDOW`). Nothing here
  * re-implements framing, dedupe or cost: a green run means the product path itself
  * reproduces ccusage.
  *
@@ -54,8 +55,25 @@ vi.mock('../src/adapters.ts', async (importOriginal) => {
 })
 
 // ---- window + oracle: byte-identical to docs/research/reconcile-ccusage.mjs ----
-const SINCE = '2026-08-22'
-const UNTIL = '2026-09-21' // ccusage --since/--until are UTC and inclusive
+const HOME = homedir()
+const PROJECTS_DIR = join(HOME, '.claude/projects')
+const BASELINE_PATH = fileURLToPath(new URL('../../../docs/research/ccusage-baseline.json', import.meta.url))
+
+/**
+ * The window is READ FROM the oracle instead of being hardcoded. ccusage is run over a
+ * corpus that is still being appended to, so the snapshot must stop on the last CLOSED UTC
+ * day: `until` is deliberately one day before `capturedAt`. Hardcoding a window that runs
+ * to "today" made this gate fail on the next day's run for a reason that is not a bug
+ * (measured: 1.61M tokens on the post-snapshot day), and a gate that fails because the
+ * calendar moved gets ignored, which is worse than no gate.
+ */
+const BASELINE_WINDOW = (
+  JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) as {
+    window: { since: string; until: string; capturedAt: string; command: string }
+  }
+).window
+const SINCE = BASELINE_WINDOW.since
+const UNTIL = BASELINE_WINDOW.until // ccusage --since/--until are UTC and inclusive
 const SINCE_MS = Date.parse(`${SINCE}T00:00:00Z`)
 const UNTIL_MS = Date.parse(`${UNTIL}T23:59:59.999Z`)
 /** The §15 M3 cost anchor, measured on this machine. */
@@ -63,9 +81,6 @@ const ANCHOR_USD = 667.96
 /** $0.01: see the tolerance rationale on the cost test. */
 const COST_TOLERANCE_USD = 0.01
 
-const HOME = homedir()
-const PROJECTS_DIR = join(HOME, '.claude/projects')
-const BASELINE_PATH = fileURLToPath(new URL('../../../docs/research/ccusage-baseline.json', import.meta.url))
 
 /** ccusage's four reported token buckets ↔ the cube's metrics ↔ our Bucket key. */
 const FIELDS = [
@@ -323,18 +338,19 @@ describe.skipIf(SKIP_REASON !== null)(
       const base = readBaseline()
       const ours = daysOf(cube(['day']))
       const baseDays = [...base.byDay.keys()].sort()
-      const lastBaselined = baseDays[baseDays.length - 1]!
-      // The baseline is a snapshot of a corpus that is still growing, so days after its last
-      // one can legitimately appear. They are only allowed to carry no usage at all: a single
-      // token there means the window bound or the timestamp-to-UTC-day mapping moved.
-      for (const day of [...ours.keys()].filter((d) => !base.byDay.has(d) && d > lastBaselined)) {
-        expect(
-          bucketTotal(ours.get(day)!),
-          `day ${day} is past the baseline snapshot yet carries ${fmt(bucketTotal(ours.get(day)!))} tokens: the window bound moved`,
-        ).toBe(0)
+      // The window ends on the snapshot's last day, so anything outside it is excluded by the
+      // filter rather than asserted about. Report the excluded growth: silently narrowing the
+      // gate is how a gate stops meaning anything.
+      const later = query(db, { metrics: ['tokens_total'], dims: ['day'], filter: { since: UNTIL_MS + 1 } }, queryDeps(db, dbPath, ctx()))
+      if (later.rows.length > 0) {
+        console.warn(
+          `[reconcile-ccusage] ${later.rows.length} day(s) after ${UNTIL} are outside the oracle window and unjudged ` +
+            `(${later.rows.map((r) => `${r.day}=${fmt(Number(r.tokens_total))}`).join(' ')}); ` +
+            `regenerate the snapshot with \`${BASELINE_WINDOW.command}\` to cover them`,
+        )
       }
       expect(
-        [...baseDays.filter((d) => !ours.has(d)), ...[...ours.keys()].filter((d) => !base.byDay.has(d) && d <= lastBaselined)].sort(),
+        [...baseDays.filter((d) => !ours.has(d)), ...[...ours.keys()].filter((d) => !base.byDay.has(d))].sort(),
         'the set of days differs from the baseline: a day we invented or dropped means the window bound or the timestamp→UTC-day mapping drifted' +
           diagnostics(ours, base),
       ).toEqual([])
