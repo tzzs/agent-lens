@@ -1,10 +1,11 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ReadOnlyUnsupportedError, readSqliteIncremental } from '../src/sqlite-source.ts'
+import { ReadOnlyUnsupportedError, WalModeRefusedError, journalModeOf, readSqliteIncremental } from '../src/sqlite-source.ts'
 
 let currentTmp: string | null = null
 let dir: string = ''
@@ -108,5 +109,33 @@ describe('readSqliteIncremental (§4.3)', () => {
     expect(err).toBeInstanceOf(Error)
     expect(err.name).toBe('ReadOnlyUnsupportedError')
     expect(err.message).toContain('read-only')
+  })
+
+  it('refuses a WAL-mode store before connecting, and leaves no sidecar behind (§18 row 7)', async () => {
+    await tmpDir()
+    const { path, db } = makeDb('wal.db')
+    db.exec('PRAGMA journal_mode = WAL')
+    db.prepare('INSERT INTO messages (payload) VALUES (?)').run('foreign row')
+    db.close() // a clean close checkpoints and removes -wal/-shm, the header stays at 2
+    expect(journalModeOf(path)).toBe('wal')
+    expect(existsSync(path + '-wal')).toBe(false)
+
+    expect(() =>
+      readSqliteIncremental(path, { table: 'messages', rowidColumn: 'rowid', column: 'payload', fromRowid: 0 }),
+    ).toThrow(WalModeRefusedError)
+    expect(existsSync(path + '-wal')).toBe(false)
+    expect(existsSync(path + '-shm')).toBe(false)
+  })
+
+  it('reads a rollback-journal store, and calls a non-database neither', async () => {
+    await tmpDir()
+    const { path, db } = makeDb('plain.db')
+    db.prepare('INSERT INTO messages (payload) VALUES (?)').run('row')
+    db.close()
+    expect(journalModeOf(path)).toBe('rollback')
+    const notDb = join(dir, 'not-a-db.db')
+    await writeFile(notDb, 'a jsonl file someone named .db')
+    expect(journalModeOf(notDb)).toBe('not-a-database')
+    expect(journalModeOf(join(dir, 'absent.db'))).toBe('not-a-database')
   })
 })

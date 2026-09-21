@@ -36,6 +36,7 @@ function fakeAdapter(parserVersion = 1): AgentAdapter {
     id: 'fake',
     displayName: 'Fake',
     parserVersion,
+    aggregation: { mode: 'request_max', subagentsIncluded: true },
     async detect(_ctx: HostContext) {
       return { present: true }
     },
