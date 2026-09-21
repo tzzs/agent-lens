@@ -12,6 +12,13 @@
 // Stale-while-revalidate: once a page has data, a re-run keeps `status: 'ready'`
 // and only raises `refreshing`, so a live tick never flashes the page back to a
 // spinner. `since` is when the current request started, for elapsed-time UI.
+//
+// `run()` is called from $effects, so its body runs untracked: reading `state`
+// here must not subscribe the caller's effect to this loader, or every response
+// would re-trigger the effect and refetch forever. Callers declare their real
+// inputs explicitly (`void range.since`, `void live.lastTick`, …).
+
+import { untrack } from 'svelte'
 
 /**
  * @template T
@@ -37,7 +44,11 @@ export function loader(fn) {
   let inFlight = false
   let dirty = false
 
-  async function run() {
+  function run() {
+    return untrack(go)
+  }
+
+  async function go() {
     if (inFlight) {
       dirty = true
       return
@@ -66,7 +77,7 @@ export function loader(fn) {
       // numbers from the superseded request never read as settled.
       state.refreshing = dirty
     }
-    if (dirty) await run()
+    if (dirty) await go()
   }
 
   return { state, run }
