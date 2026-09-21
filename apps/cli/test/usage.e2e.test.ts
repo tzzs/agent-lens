@@ -69,7 +69,7 @@ describe('agentlens usage --by model (e2e against a temp db file)', () => {
     expect(out).toContain('140')
     expect(out).not.toContain('280')
     expect(out).toContain('n/a') // unpriced model is n/a, never $0 (§8)
-    expect(out).toContain('total: 2 events · 1 sessions · 140 tokens (deduped) · n/a api-equiv')
+    expect(out).toContain('total: 2 events · 1 sessions · 140 tokens (deduped) · n/a cost · n/a api-equiv')
   })
 
   it('pricing override then usage renders a real cost', async () => {
@@ -108,5 +108,44 @@ describe('agentlens usage --by model (e2e against a temp db file)', () => {
   it('unknown command exits 2; unknown flag exits 2', async () => {
     expect(await runCli(makeCtx(['frobnicate', '--db', dbPath]).ctx)).toBe(2)
     expect(await runCli(makeCtx(['usage', '--nope', 'x', '--db', dbPath]).ctx)).toBe(2)
+  })
+})
+
+describe('agl usage --no-subagents (§18 row 3 explicit switch)', () => {
+  const subDb = join(tmp, 'usage-subagents.db')
+  const subUsage = { inputTokens: 500, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 }
+
+  it('default keeps subagent rows and prints no exclusion label; the flag drops them and says so', async () => {
+    const db = openDatabase(subDb)
+    migrate(db)
+    insertEvents(db, [
+      ev({ id: 'p'.repeat(64), requestId: 'req-p', usage, model: { provider: 'anthropic', name: 'test-model-e2e' } }),
+      ev({
+        id: 'q'.repeat(64),
+        requestId: 'req-q',
+        usage: subUsage,
+        model: { provider: 'anthropic', name: 'test-model-e2e' },
+        metadata: { subagentThread: true },
+      }),
+    ])
+    db.close()
+
+    const plain = makeCtx(['usage', '--by', 'session', '--db', subDb])
+    expect(await runCli(plain.ctx)).toBe(0)
+    const plainOut = plain.lines.join('\n')
+    // include-by-default is deliberate (spec.ts); the number then needs no label.
+    expect(plainOut).toContain('total: 2 events · 1 sessions · 640 tokens (deduped)')
+    expect(plainOut).not.toContain('subagent')
+
+    const ex = makeCtx(['usage', '--by', 'session', '--no-subagents', '--db', subDb])
+    expect(await runCli(ex.ctx)).toBe(0)
+    const out = ex.lines.join('\n')
+    expect(out).toContain('total: 1 events · 1 sessions · 140 tokens (deduped)')
+    // §14: the printed 口径 must match the number — an excluded total says so.
+    expect(out).toContain('subagent threads excluded')
+
+    const explained = makeCtx(['usage', '--no-subagents', '--explain', '--db', subDb])
+    expect(await runCli(explained.ctx)).toBe(0)
+    expect(explained.lines.join('\n')).toContain('includeSubagentThreads=false')
   })
 })

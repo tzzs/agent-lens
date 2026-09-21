@@ -17,8 +17,12 @@ const USAGE_METRICS: Metric[] = [
   'tokens_input',
   'tokens_output',
   'tokens_cache_read',
+  'cost_total',
   'cost_api_equiv',
 ]
+
+// Cube metrics whose value is dollars, not a count: `null` must print `n/a`, never `$0` (§8).
+const USD_METRICS: Metric[] = ['cost_total', 'cost_api_equiv']
 
 const HEADER: Record<string, string> = {
   events: 'Events',
@@ -27,6 +31,7 @@ const HEADER: Record<string, string> = {
   tokens_input: 'Input',
   tokens_output: 'Output',
   tokens_cache_read: 'CacheR',
+  cost_total: 'Cost',
   cost_api_equiv: 'Cost(api-equiv)',
   time: 'Time',
   day: 'Day',
@@ -60,10 +65,14 @@ export function cmdUsage(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath: st
   } catch (err) {
     throw new UsageError((err as Error).message)
   }
+  const cubeFilter = filter(db, ctx, flags)
+  // §18 row 3 explicit switch, off by default: totals include subagent threads unless
+  // asked otherwise, and an excluded number must then say so (§14: 口径 matches the figure).
+  if (flags.bool('no-subagents')) cubeFilter.includeSubagentThreads = false
   const spec = {
     metrics: USAGE_METRICS,
     dims,
-    filter: filter(db, ctx, flags),
+    filter: cubeFilter,
     limit: flags.num('limit'),
   }
   if (flags.bool('explain')) ctx.out(describeQuery(spec) + '\n')
@@ -73,14 +82,18 @@ export function cmdUsage(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath: st
   const rows = res.rows.map((r) => [
     ...dims.map((d) => String(r[d] ?? '')),
     ...USAGE_METRICS.map((m) =>
-      m === 'cost_api_equiv' ? formatUsd(r[m] as number | null) : formatTokens(r[m] as number),
+      USD_METRICS.includes(m) ? formatUsd(r[m] as number | null) : formatTokens(r[m] as number),
     ),
   ])
-  const aligns: Align[] = [...dims.map((): Align => 'left'), 'right', 'right', 'right', 'right', 'right', 'right', 'right']
+  const aligns: Align[] = [...dims.map((): Align => 'left'), ...USAGE_METRICS.map((): Align => 'right')]
   ctx.out(table(headers, rows, aligns))
+  const subagentBasis =
+    cubeFilter.includeSubagentThreads === false ? ' · subagent threads excluded (--no-subagents)' : ''
   ctx.out(
     `total: ${formatCount(res.totals.events ?? 0)} events · ${formatCount(res.totals.sessions ?? 0)} sessions · ` +
-      `${formatTokens(res.totals.tokens_total)} tokens (deduped) · ${formatUsd(res.totals.cost_api_equiv)} api-equiv`,
+      `${formatTokens(res.totals.tokens_total)} tokens (deduped) · ${formatUsd(res.totals.cost_total)} cost` +
+      ` · ${formatUsd(res.totals.cost_api_equiv)} api-equiv` +
+      subagentBasis,
   )
   if (res.truncated) ctx.out(`! truncated to ${spec.limit} rows — order: ${dims.join(',')}; use --limit or filters`)
   return 0

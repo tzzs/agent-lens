@@ -72,8 +72,8 @@
       {/snippet}
     </InsightCard>
 
-    <InsightCard label="Cost" info="Actual folds each agent's billing mode (subscriptions and local models spend $0); est. is tokens × list price (§8).">
-      <CostFigure value={d.cards.cost.actualUsd} basis="actual" partial={d.cards.cost.actualPartial} size="lg" />
+    <InsightCard label="Cost" info="Actual is what the run cost: the agent's own reported figure where it logs one, otherwise priced tokens folded through its billing mode, so a subscription or local model spends $0 (§8, §18). est. is the same tokens at API list price.">
+      <CostFigure value={d.cards.cost.totalUsd} basis="actual" partial={d.cards.cost.totalPartial} size="lg" />
       {#snippet detail()}
         <div class="space-y-1 text-xs">
           <div class="flex justify-between gap-2"><span class="text-ink-3">API equivalent</span><CostFigure value={d.cards.cost.apiEquivalentUsd} basis="est" partial={d.cards.cost.apiEquivalentPartial} showLabel={false} /></div>

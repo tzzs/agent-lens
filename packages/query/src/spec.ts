@@ -21,6 +21,18 @@ export const METRICS = [
    * about different things, so they are separate metrics and are never added together.
    */
   'cost_reported',
+  /**
+   * §18 row 1 query priority (reported > computed) resolved INSIDE the cube, so no
+   * caller has to pick a metric and can double count an event whose reported cost and
+   * priced tokens describe the same work: within a group, cost = what the agent
+   * reported — folded per its §18 stage-1 policy so duplicates count once — plus the
+   * CASH price (§8 billing mode) of ONLY the requests that reported nothing. This is
+   * §8's "实际花费"; `cost_api_equiv` is its "等价 API 价值" for the same tokens, which
+   * is why a subscription or local agent reads $0 here and a real number there.
+   * NULL when a group has neither fact, and NULL whenever a never-reported slice has no
+   * price: never $0 (§8).
+   */
+  'cost_total',
 ] as const
 export type Metric = (typeof METRICS)[number]
 
