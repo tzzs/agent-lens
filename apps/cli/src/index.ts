@@ -13,7 +13,7 @@ import { defaultCtx, redactHome, type Ctx } from './context.ts'
 import { ensureDataDir } from './pricing-store.ts'
 import { bucketTs } from '@agentlens/query'
 import { GLYPH, formatCount, formatTokens, formatUsd } from './render.ts'
-import { cmdScan, refusalLines, runScan } from './commands/scan.ts'
+import { cmdScan, refusalLines, runScan, snapshotsDirFor } from './commands/scan.ts'
 import { cmdWatch } from './commands/watch.ts'
 import { cmdStatus } from './commands/status.ts'
 import { cmdDoctor } from './commands/doctor.ts'
@@ -25,7 +25,8 @@ import { cmdPricingOverride, cmdPricingUpdate, cmdPrune } from './commands/admin
 import { query } from '@agentlens/query'
 import { queryDeps } from './context.ts'
 import { serveDashboard } from './serve.ts'
-import { filter } from './commands/shared.ts'
+import { filter, rowsOf } from './commands/shared.ts'
+import { createContext, coverageReport } from '@agentlens/server'
 
 export const DASHBOARD_URL = 'http://localhost:7317'
 
@@ -70,6 +71,55 @@ function cliVersion(): string {
   }
 }
 
+/**
+ * §14: what the first screen owes the user is coverage and the host split, not a
+ * disclaimer that the numbers are estimates. A scan that looks complete while
+ * upstream retention already deleted history has to say so, and §1.5's measured
+ * 94.6%-desktop split is the single easiest way to misread a total.
+ */
+const HOST_SKEW_FLOOR = 0.8
+const HOST_SKEW_MIN_EVENTS = 20
+
+function hostSkew(db: DatabaseSync): string | null {
+  const byAgent = new Map<string, { host: string; n: number }[]>()
+  for (
+    const r of rowsOf(
+      db,
+      `SELECT agent_id, COALESCE(NULLIF(host_id, ''), '(none)') AS host, COUNT(*) AS n
+       FROM events GROUP BY agent_id, host`,
+    )
+  ) {
+    const agent = String(r.agent_id)
+    byAgent.set(agent, [...(byAgent.get(agent) ?? []), { host: String(r.host), n: Number(r.n) }])
+  }
+  let best: { agent: string; host: string; share: number; other: string } | null = null
+  for (const [agent, hosts] of byAgent) {
+    if (hosts.length < 2) continue
+    const total = hosts.reduce((sum, h) => sum + h.n, 0)
+    if (total < HOST_SKEW_MIN_EVENTS) continue
+    const ranked = [...hosts].sort((a, b) => b.n - a.n)
+    const share = ranked[0]!.n / total
+    if (share < HOST_SKEW_FLOOR || ranked[0]!.host === agent) continue
+    if (best && best.share >= share) continue
+    best = { agent, host: ranked[0]!.host, share, other: ranked[1]!.host }
+  }
+  if (!best) return null
+  return (
+    `${GLYPH.warn} ${(best.share * 100).toFixed(1)}% of ${best.agent} events came from host ` +
+    `${best.host}, not ${best.other} — every figure above is split by host (§1.5)`
+  )
+}
+
+/** The §14 warning lines, or nothing at all when coverage and hosts are clean. */
+export function bannerWarnings(db: DatabaseSync, ctx: Ctx): string[] {
+  const lines: string[] = []
+  const coverage = coverageReport(createContext({ db, now: ctx.now, homedir: ctx.homedir }))
+  if (coverage.banner) lines.push(`${GLYPH.warn} ${coverage.banner}`)
+  const skew = hostSkew(db)
+  if (skew) lines.push(skew)
+  return lines
+}
+
 async function cmdBare(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath: string): Promise<number> {
   ctx.out('AgentLens')
   ctx.out('')
@@ -106,6 +156,7 @@ async function cmdBare(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath: stri
   ctx.out(
     `today: ${formatTokens(today.tokens_total)} tokens · ${formatUsd(today.cost_api_equiv)} api-equiv`,
   )
+  for (const line of bannerWarnings(db, ctx)) ctx.out(line)
   if (flags.bool('serve')) {
     const handle = await (ctx.serve ?? serveDashboard)(db, dbPath, flags, ctx, deps)
     ctx.out('')
@@ -185,6 +236,9 @@ export async function runCli(ctx: Ctx): Promise<number> {
   }
 
   const dbPath = flags.str('db') ?? defaultDbPath(ctx.homedir)
+  // Copies of other apps' WAL stores live beside our own database, never next to
+  // theirs (§18 row 7).
+  const scanCtx: Ctx = { ...ctx, snapshotDir: snapshotsDirFor(dbPath) }
   let db: DatabaseSync
   try {
     ensureDataDir(dbPath)
@@ -195,7 +249,7 @@ export async function runCli(ctx: Ctx): Promise<number> {
     return 1
   }
   try {
-    return await dispatch(db, words, flags, ctx, dbPath)
+    return await dispatch(db, words, flags, scanCtx, dbPath)
   } catch (err) {
     if (err instanceof UsageError) {
       ctx.err(`error: ${err.message}`)
