@@ -2,7 +2,7 @@
  * `scan` (§9) — the ONLY CLI path that writes events; every read command goes
  * through the cube so numbers cannot drift between commands.
  */
-import { basename } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { projectIdForCwd, type AgentAdapter, type SourceSpec } from '@agentlens/event-model'
 import { scanSource, type EventSink, type SavedSourceState, type SourceCommit } from '@agentlens/collector'
 import { insertEvents, recordParseFailure, setAgentAggregations, updateSourceProgress, type SourceProgress } from '@agentlens/storage'
@@ -116,6 +116,7 @@ export async function runScan(
         hostId: adapter.id,
         resolveProject: (cwd) => (cwd ? projectIdForCwd(cwd) : null),
         now: ctx.now,
+        snapshotDir: ctx.snapshotDir,
       })
       outcome.sourcesScanned++
       outcome.events += result.events
@@ -147,6 +148,11 @@ export async function cmdScan(db: DatabaseSync, flags: FlagView, ctx: Ctx): Prom
   ctx.out(`${outcome.sourcesScanned} sources scanned · ${outcome.events} events ingested · ${outcome.failures} parse failures`)
   for (const line of refusalLines(outcome, ctx)) ctx.out(line)
   return 0
+}
+
+/** §18 row 7: WAL stores are read through a copy that lives in our own data directory. */
+export function snapshotsDirFor(dbPath: string): string {
+  return join(dirname(dbPath), 'snapshots')
 }
 
 /** §18 row 7 stores left alone on purpose, spelled out rather than folded into "failures". */

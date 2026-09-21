@@ -105,6 +105,7 @@ function makeTarget(db: DatabaseSync, ctx: Ctx, adapter: AgentAdapter, source: S
         hostId: adapter.id,
         resolveProject: (cwd) => (cwd ? projectIdForCwd(cwd) : null),
         now: ctx.now,
+        snapshotDir: ctx.snapshotDir,
       })
     },
   }

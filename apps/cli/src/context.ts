@@ -22,6 +22,11 @@ export interface Ctx {
   env: NodeJS.ProcessEnv
   now: () => number
   /**
+   * Where a WAL-mode third-party store is copied to before anything reads it
+   * (§18 row 7, `sqlite-snapshot.ts`). Unset ⇒ such stores stay refused.
+   */
+  snapshotDir?: string
+  /**
    * `--serve` plug point (§14). Tests inject a stub so the suite never binds a socket
    * or launches a browser; the real implementation lives in `serve.ts`.
    */
