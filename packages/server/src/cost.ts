@@ -223,9 +223,38 @@ export interface UnpricedModel extends ModelSpend {
   buckets: string[]
 }
 
+/** A model priced at its own last-seen date, plus who answered. */
+export interface ModelPrice extends ModelSpend {
+  buckets: string[]
+  /**
+   * Which source the table answered with (§8), or null when it answered nothing. A model the
+   * resolution never saw carries no provenance either way: the row is not "litellm-priced",
+   * it is simply not described by this pass.
+   */
+  source: PriceEntry['source'] | null
+}
+
 /** The one key the §8 gap set and its readers join on; a model name may contain `:`. */
 export function unpricedModelKey(provider: string, model: string): string {
   return `${provider}\u0000${model}`
+}
+
+/**
+ * The single pass that answers "what is this model's price, and where did it come from".
+ * Both halves of `/api/models` — each row's `priced`/`priceSource` and the `unpriced` list —
+ * read it, because they are two views of one resolution and a second lookup per surface is
+ * exactly how the same model came to read priced on one screen and gapped on another (§14).
+ */
+export function modelPrices(db: DatabaseSync, priceFor: PriceResolver, now: number): ModelPrice[] {
+  return modelSpend(db, now).map((m) => {
+    const entry = priceFor(m.provider, m.model, m.lastSeen)
+    return { ...m, buckets: unpricedBuckets(entry, m), source: entry?.source ?? null }
+  })
+}
+
+/** The §8 gap predicate, stated once: a row whose spent buckets lack a price. */
+export function isGapped(m: { buckets: string[] }): boolean {
+  return m.buckets.length > 0
 }
 
 /**
@@ -237,23 +266,44 @@ export function unpricedModelKey(provider: string, model: string): string {
  * render the same `(provider, model)` four times, which Svelte rejects as a duplicate
  * `{#each}` key and the count overstates by the tier fan-out.
  */
-export function unpricedModels(db: DatabaseSync, priceFor: PriceResolver, now: number): UnpricedModel[] {
-  const byKey = new Map<string, UnpricedModel>()
-  for (const m of modelSpend(db, now)) {
-    const buckets = unpricedBuckets(priceFor(m.provider, m.model, m.lastSeen), m)
-    if (buckets.length === 0) continue
+export function gappedModels(prices: readonly ModelPrice[]): ModelPrice[] {
+  const byKey = new Map<string, ModelPrice>()
+  for (const m of prices) {
+    if (!isGapped(m)) continue
     const key = unpricedModelKey(m.provider, m.model)
     const seen = byKey.get(key)
     if (!seen) {
-      byKey.set(key, { ...m, buckets })
+      byKey.set(key, { ...m, buckets: m.buckets })
       continue
     }
     seen.events += m.events
     for (const f of ['input', 'output', 'cacheRead', 'cacheWrite', 'reasoning'] as const) seen[f] += m[f]
     seen.lastSeen = Math.max(seen.lastSeen ?? 0, m.lastSeen ?? 0)
-    seen.buckets = [...new Set([...seen.buckets, ...buckets])].sort()
+    seen.buckets = [...new Set([...seen.buckets, ...m.buckets])].sort()
   }
   return [...byKey.values()]
+}
+
+/**
+ * The same join, for the rows: a model behind several tiers is gapped when ANY tier row is
+ * (each tier row only spent its own tokens, so only it can be missing that bucket's price),
+ * and it has one source because the lookup that answered it ignores tier.
+ */
+export function priceVerdictsByModel(
+  prices: readonly ModelPrice[],
+): Map<string, { gapped: boolean; source: PriceEntry['source'] | null }> {
+  const out = new Map<string, { gapped: boolean; source: PriceEntry['source'] | null }>()
+  for (const m of prices) {
+    const key = unpricedModelKey(m.provider, m.model)
+    const seen = out.get(key) ?? { gapped: false, source: null }
+    out.set(key, { gapped: seen.gapped || isGapped(m), source: seen.source ?? m.source })
+  }
+  return out
+}
+
+/** The §8 unpriced set, from a fresh resolution (§11's pricing gap line). */
+export function unpricedModels(db: DatabaseSync, priceFor: PriceResolver, now: number): UnpricedModel[] {
+  return gappedModels(modelPrices(db, priceFor, now))
 }
 
 /** Models present in the data with no price at their last-seen date (§11 pricing gap line). */

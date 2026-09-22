@@ -125,17 +125,21 @@ const RULES: Rule[] = [
   },
   {
     what: 'which models are unpriced, and which of their buckets lack a price (§8, §11)',
-    home: '@agentlens/server → cost.ts modelSpend / unpricedBuckets / missingPriceModels',
+    home: '@agentlens/server → cost.ts modelSpend / unpricedBuckets / modelPrices / gappedModels',
     statedIn: 'packages/server/src/cost.ts',
     forbidden: [
       { re: /isMissingPrice/, why: 'the per-bucket test is the rule; the server used to ask only "is the entry null", so a gap the cube rendered as n/a went unreported' },
       { re: /PRICE_MISSING/, why: 'the same rule in its sentinel form' },
       { re: /FROM models m LEFT JOIN events/, why: 'one model-spend read; the two copies differed in how they filled `last_seen`, which is the price lookup date' },
+      { re: /\.buckets\.length/, why: '"is this row a gap" is `isGapped`/`gappedModels`; a surface re-writing the predicate is a second verdict on the same resolution' },
     ],
     calls: [
       { file: 'apps/cli/src/commands/doctor.ts', symbol: 'modelSpend' },
       { file: 'apps/cli/src/commands/doctor.ts', symbol: 'unpricedBuckets' },
-      { file: 'packages/server/src/models.ts', symbol: 'missingPriceModels' },
+      { file: 'packages/server/src/models.ts', symbol: 'modelPrices' },
+      { file: 'packages/server/src/models.ts', symbol: 'gappedModels' },
+      { file: 'packages/server/src/models.ts', symbol: 'isGapped' },
+      { file: 'packages/server/src/doctor.ts', symbol: 'missingPriceModels' },
     ],
   },
   {
@@ -222,7 +226,7 @@ describe('§14: one owner per shared rule, surfaces may not re-implement it', ()
       { pkg: 'packages/event-model', names: ['projectLabel'] },
       {
         pkg: 'packages/server',
-        names: ['coverageReport', 'retentionPhrase', 'modelSpend', 'unpricedBuckets', 'missingPriceModels', 'actualUsdFor'],
+        names: ['coverageReport', 'retentionPhrase', 'modelSpend', 'unpricedBuckets', 'modelPrices', 'gappedModels', 'isGapped', 'missingPriceModels', 'actualUsdFor'],
       },
     ]
     for (const { pkg, names } of owners) {
