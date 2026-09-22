@@ -129,7 +129,9 @@ describe('agl doctor against a synthetic store', () => {
   })
 
   it('reports the retention hole and the history-only session', () => {
-    expect(out).toContain('session dirs under ~/.claude/projects exist but contain no session files (upstream retention, §4.4 row 4)')
+    expect(out).toContain(
+      'session dirs under ~/.claude/projects still exist but hold no session files (upstream retention, every dir in the live store whether ingested or not, §4.4 row 4)',
+    )
     expect(out).toContain('→ history is incomplete')
     expect(out).toContain('2 sessions named in ~/.claude/history.jsonl')
     expect(out).toContain('1 known only from history.jsonl')

@@ -18,7 +18,16 @@ import { basename, dirname, extname, isAbsolute } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { deriveSessionId, type AgentAdapter, type Detection, type HostContext, type SourceSpec } from '@agentlens/event-model'
 import { parserVersionDrift, sourceRetention, subagentOrphans, timestampGuesses } from '@agentlens/storage'
-import { isMissingPrice, PRICE_MISSING, PricingGaps, type PriceEntry } from '@agentlens/pricing'
+import {
+  coverageReport,
+  createContext,
+  INGESTED_RETENTION,
+  modelSpend,
+  projectRowsPhrase,
+  retentionPhrase,
+  unpricedBuckets,
+  UPSTREAM_RETENTION,
+} from '@agentlens/server'
 import type { FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
 import { displayPath, machineIdentity, machineLines, makeHostCtx, redactHome } from '../context.ts'
@@ -146,7 +155,7 @@ export async function probeAdapters(adapters: readonly AgentAdapter[], rctx: Ctx
     probe.ext = mostUsedExt(probe.files.map((f) => f.path))
     // The store ROOT, not the deepest shared prefix of the surviving files: with one project
     // left on disk the prefix would be that project dir, and the Agents glob plus §4.4 row 4's
-    // "dirs that exist but hold no session files" would then describe a scope nobody scanned.
+    // emptied-dir check would then describe a scope nobody scanned.
     probe.storeDir =
       sessionStoreRoot(probe.files.map((f) => f.path), detection.dataRoot ?? null) ?? storeDirFromDb(db, adapter.id)
     if (probe.storeDir) probe.survey = await surveySessionStore(probe.storeDir, probe.ext)
@@ -359,15 +368,15 @@ export async function renderCoverage(db: DatabaseSync, rctx: Ctx, probes: readon
     }
     if (p.survey.emptyDirs.length === 0) {
       rctx.out(
-        `${GLYPH.ok} ${p.adapter.id}: all ${formatCount(p.survey.dirs)} dirs under ${shown} contain session files ` +
+        `${GLYPH.ok} ${p.adapter.id}: all ${formatCount(p.survey.dirs)} session dirs under ${shown} hold session files ` +
           `(${formatCount(p.survey.files)} files / ${formatBytes(p.survey.bytes)})`,
       )
       continue
     }
-    rctx.out(
-      `${GLYPH.warn} ${p.adapter.id}: ${formatCount(p.survey.emptyDirs.length)} of ${formatCount(p.survey.dirs)} session dirs under ${shown} ` +
-        'exist but contain no session files (upstream retention, §4.4 row 4)',
-    )
+    // The clause is `retentionPhrase`'s, shared with the dashboard banner, and it names its own
+    // population: this sweep counts every dir in the live store, ingested or not, while the
+    // banner's count is bounded by the `sources` table. Two questions, two honest labels (§14).
+    rctx.out(`${GLYPH.warn} ${p.adapter.id}: ${retentionPhrase(UPSTREAM_RETENTION, p.survey.emptyDirs.length, p.survey.dirs, shown)}`)
     rctx.out('  → history is incomplete: whatever those dirs held was never ingested and cannot be recovered from disk')
     if (p.survey.unreadableDirs.length > 0) {
       rctx.out(`${GLYPH.err} ${formatCount(p.survey.unreadableDirs.length)} of those dirs exist but are not readable (locked?)`)
@@ -375,6 +384,16 @@ export async function renderCoverage(db: DatabaseSync, rctx: Ctx, probes: readon
   }
   if (probes.every((p) => !p.detection?.present)) {
     rctx.out(`${GLYPH.none} no agent store detected — nothing was read, so completeness cannot be claimed`)
+  }
+  // The other half of §11's Coverage block, from the same `coverageReport` the dashboard reads:
+  // what THIS STORE can see. Printed beside the store-wide sweep so the two numbers on one
+  // screen are visibly two populations rather than one disagreement (§14).
+  const ingested = coverageReport(createContext({ db, now: rctx.now, homedir: rctx.homedir }))
+  if (ingested.emptyDirs.length > 0) {
+    rctx.out(`${GLYPH.warn} ${retentionPhrase(INGESTED_RETENTION, ingested.emptyDirs.length)}`)
+  }
+  if (ingested.projectDirsWithoutSessions.length > 0) {
+    rctx.out(`${GLYPH.warn} ${projectRowsPhrase(ingested.projectDirsWithoutSessions.length)}`)
   }
   return renderHistoryCoverage(db, rctx, probes)
 }
@@ -481,34 +500,12 @@ export function renderRetention(db: DatabaseSync, rctx: Ctx): void {
   )
 }
 
-interface ModelSpend {
-  provider: string
-  name: string
-  lastSeen: number
-  events: number
-  input: number
-  output: number
-  cacheRead: number
-  cacheWrite: number
-  reasoning: number
-}
-
 /**
- * Which of the buckets this model actually spent have no price. Absent `reasoning` is NOT a
- * gap — `computeCost` bills reasoning tokens as output when litellm lists no separate price —
- * but the PRICE_MISSING sentinel is, exactly like a missing entry (§8: unknown ≠ $0).
+ * §8's unpriced set and §11's read of it come from `modelSpend` + `unpricedBuckets`, the same
+ * two calls `/api/doctor` and `/api/models` make: one model could otherwise read "missing
+ * price" on one surface and priced on the other (§14). Only the roll-ups below — priced event
+ * share, undated entries — are phrased for the terminal here.
  */
-function unpricedBuckets(entry: PriceEntry | null, m: ModelSpend): string[] {
-  if (!entry) return ['price entry']
-  const gaps: string[] = []
-  if (m.input > 0 && isMissingPrice(entry.inputPerMTok)) gaps.push('input')
-  if (m.output > 0 && isMissingPrice(entry.outputPerMTok)) gaps.push('output')
-  if (m.cacheRead > 0 && isMissingPrice(entry.cacheReadPerMTok)) gaps.push('cacheRead')
-  if (m.cacheWrite > 0 && isMissingPrice(entry.cacheWritePerMTok)) gaps.push('cacheWrite')
-  if (m.reasoning > 0 && entry.reasoningPerMTok === PRICE_MISSING) gaps.push('reasoning')
-  return gaps
-}
-
 export function renderPricing(db: DatabaseSync, rctx: Ctx, dbPath: string): void {
   rctx.out('Pricing')
   const { table: priceTable, snapshot, overrideCount } = loadPricing(dbPath)
@@ -517,61 +514,34 @@ export function renderPricing(db: DatabaseSync, rctx: Ctx, dbPath: string): void
     `${GLYPH.ok} ${formatCount(priceTable.size())} models priced (source: ${snapshot.source === 'bundled' ? 'bundled snapshot' : 'updated snapshot'}` +
       `${overrideCount ? `, ${overrideCount} overrides` : ''})`,
   )
-  const models: ModelSpend[] = rowsOf(
-    db,
-    `SELECT m.provider AS provider, m.name AS name,
-            COALESCE(MAX(e.timestamp), ?) AS last_seen, COUNT(e.id) AS events,
-            COALESCE(SUM(e.input_tokens), 0) AS input, COALESCE(SUM(e.output_tokens), 0) AS output,
-            COALESCE(SUM(e.cache_read_tokens), 0) AS cache_read, COALESCE(SUM(e.cache_write_tokens), 0) AS cache_write,
-            COALESCE(SUM(e.reasoning_tokens), 0) AS reasoning
-     FROM models m LEFT JOIN events e ON e.model_rowid = m.rowid
-     GROUP BY m.rowid`,
-    now,
-  ).map((r) => ({
-    provider: String(r.provider),
-    name: String(r.name),
-    lastSeen: Number(r.last_seen),
-    events: Number(r.events),
-    input: Number(r.input),
-    output: Number(r.output),
-    cacheRead: Number(r.cache_read),
-    cacheWrite: Number(r.cache_write),
-    reasoning: Number(r.reasoning),
-  }))
+  const models = modelSpend(db, now)
   if (models.length === 0) {
     rctx.out(`${GLYPH.none} no models ingested yet — nothing to price`)
     return
   }
-  const gaps = new PricingGaps()
-  const gapBuckets = new Map<string, string>()
-  const gapEvents = new Map<string, number>()
+  const gaps: { provider: string; model: string; events: number; buckets: string[] }[] = []
   let pricedEvents = 0
   let undatedModels = 0
   for (const m of models) {
-    const entry = priceTable.lookup(m.provider, m.name, m.lastSeen)
+    const entry = priceTable.lookup(m.provider, m.model, m.lastSeen)
     if (entry?.effectiveFrom === 0) undatedModels++
-    const missing = unpricedBuckets(entry, m)
-    const key = `${m.provider}|${m.name}`
-    if (missing.length === 0) {
+    const buckets = unpricedBuckets(entry, m)
+    if (buckets.length === 0) {
       pricedEvents += m.events
       continue
     }
-    gaps.record(m.provider, m.name, m.lastSeen)
-    gapBuckets.set(key, missing.join(','))
-    gapEvents.set(key, (gapEvents.get(key) ?? 0) + m.events)
+    gaps.push({ provider: m.provider, model: m.model, events: m.events, buckets })
   }
-  const gapModels = gaps.list()
-  if (gapModels.length > 0) {
+  gaps.sort((a, b) => b.events - a.events || a.model.localeCompare(b.model))
+  if (gaps.length > 0) {
     rctx.out(
-      `${GLYPH.warn} ${formatCount(gapModels.length)} of ${formatCount(models.length)} ingested models unpriced → ` +
+      `${GLYPH.warn} ${formatCount(gaps.length)} of ${formatCount(models.length)} ingested models unpriced → ` +
         'cost = "n/a", never $0 ($0 reads as a free local model, §8) — `agl pricing update` or `agl pricing override`',
     )
     rctx.out(
       table(
         ['provider', 'model', 'events', 'missing price for', 'cost'],
-        gapModels
-          .map((g) => [g.provider, g.model, formatCount(gapEvents.get(`${g.provider}|${g.model}`) ?? 0), gapBuckets.get(`${g.provider}|${g.model}`) ?? '', 'n/a'])
-          .sort((a, b) => Number(String(b[2]).replace(/,/g, '')) - Number(String(a[2]).replace(/,/g, ''))),
+        gaps.map((g) => [g.provider, g.model, formatCount(g.events), g.buckets.join(','), 'n/a']),
         ['left', 'left', 'right', 'left', 'right'],
       ),
     )

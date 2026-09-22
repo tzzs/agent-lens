@@ -522,7 +522,15 @@ describe('Coverage', () => {
     await renderCoverage(db, out, probes)
     const text = out.text()
     expect(text).toContain('Coverage')
-    expect(text).toContain('of 4 session dirs under ~/.claude/projects exist but contain no session files (upstream retention, §4.4 row 4)')
+    // §14: the clause is the shared one, and it names the population this sweep counts — every
+    // dir in the live store, not just the ones this database has rows for.
+    expect(text).toContain(
+      'of 4 session dirs under ~/.claude/projects still exist but hold no session files (upstream retention, every dir in the live store whether ingested or not, §4.4 row 4)',
+    )
+    // The narrower question, printed beside it with its own label, from `coverageReport`.
+    expect(text).toContain(
+      'source dir still exists but holds no session files (upstream retention, dirs this store already has rows for, §4.4 row 4)',
+    )
     expect(text).toContain('→ history is incomplete')
     if (modeBitsApply) expect(text).toContain('of those dirs exist but are not readable (locked?)')
     expect(text).toContain('4 sessions named in ~/.claude/history.jsonl')

@@ -8,7 +8,7 @@
  */
 import { query } from '@agentlens/query'
 import type { ServerCtx } from './types.ts'
-import { costView, missingPriceModels } from './cost.ts'
+import { costView, missingPriceModels, unpricedModelKey } from './cost.ts'
 import { METRICS, numOr } from './metrics.ts'
 import { parseFilter } from './request-spec.ts'
 
@@ -38,7 +38,9 @@ export function models(ctx: ServerCtx, sp: URLSearchParams): ModelsResponse {
   const filter = parseFilter(sp, ctx.db)
   const res = query(ctx.db, { metrics: [...METRICS], dims: ['provider', 'model'], filter }, ctx.cubeDeps)
   const gaps = missingPriceModels(ctx)
-  const gapKeys = new Set(gaps.map((g) => `${g.provider}::${g.model}`))
+  // One key builder for both sides of the lookup: they used to differ (`::` here, `\u0000`
+  // below), so every row read `priced: true` no matter what the §8 gap set said.
+  const gapKeys = new Set(gaps.map((g) => unpricedModelKey(g.provider, g.model)))
   return {
     filter,
     rows: res.rows.map((r) => ({
@@ -48,7 +50,7 @@ export function models(ctx: ServerCtx, sp: URLSearchParams): ModelsResponse {
       sessions: Number(r.sessions ?? 0),
       tokensTotal: Number(r.tokens_total ?? 0),
       costApiEquiv: numOr(r.cost_api_equiv),
-      priced: ctx.priceResolver ? !gapKeys.has(`${String(r.provider ?? '')}\u0000${String(r.model ?? '')}`) : null,
+      priced: ctx.priceResolver ? !gapKeys.has(unpricedModelKey(String(r.provider ?? ''), String(r.model ?? ''))) : null,
     })),
     totals: res.totals,
     truncated: res.truncated,
