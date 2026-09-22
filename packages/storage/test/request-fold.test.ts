@@ -33,6 +33,8 @@ import {
   requestFoldState,
   repairRequestFoldAfterPrune,
   setAgentAggregations,
+  storedAggregationMode,
+  foldStatement,
 } from '../src/index.ts'
 import { query, resetFoldPasses, foldPasses } from '@agentlens/query'
 
@@ -112,6 +114,34 @@ const group = (db: DatabaseSync, reqKey: string): Record<string, unknown> =>
 const n = (v: unknown): number => Number(v)
 
 describe('materialised stage 1 (§19)', () => {
+  /**
+   * The write path's cost is this statement's plan, and it degraded silently once: an
+   * `agent_id = ? AND (request_id IN (…) OR id IN (…))` shape reads correctly and answers with
+   * a scan of the agent's whole history per batch, which cost +50-100 % on a cold ingest.
+   * Pinned here because no row and no number changes when it happens.
+   */
+  it('the incremental fold is driven by an index, not by a scan of the agent', () => {
+    const db = store(fixture())
+    const detail = (agent: string, keys: string[]): string => {
+      const { sql, params } = foldStatement({ agent, mode: storedAggregationMode(db, agent), keys }, '')
+      return (db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...(params as never[])) as { detail: string }[])
+        .map((r) => r.detail)
+        .join(' | ')
+    }
+    for (const [agent, keys] of [
+      ['claude-code', ['req-a', 'plain-1']], // request-keyed: two member arms, unioned
+      ['codex', ['cx1-b0', 'cx2-b0']], // per-record: the key list IS a primary-key list
+    ] as [string, string[]][]) {
+      const plan = detail(agent, keys)
+      // The failure this pins is a member or representative lookup that reads the table
+      // instead of an index — `SCAN events` is that shape, and it costs a per-agent history
+      // sweep on every batch of a scan.
+      expect(plan, `${agent}: ${plan}`).not.toMatch(/SCAN (main\.)?events/)
+      expect(plan, `${agent}: ${plan}`).toContain('SEARCH rep USING INDEX sqlite_autoindex_events_1')
+      expect(plan, `${agent}: ${plan}`).toMatch(/SEARCH (main\.)?e(vents)? USING (COVERING )?INDEX/)
+    }
+  })
+
   it('folds one row per request per agent and accounts for every event once', () => {
     const db = store(fixture())
     const rows = select(db, 'SELECT agent_key, req_key, member_count, tokens_input FROM requests ORDER BY agent_key, req_key')

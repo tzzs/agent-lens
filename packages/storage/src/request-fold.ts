@@ -138,36 +138,67 @@ export interface FoldScope {
 /**
  * The ONE statement shape that folds events into request rows.
  *
- * The key predicate is written so the planner keeps both access paths it has:
- * `idx_events_request` for a request-keyed group, the primary key for an event-keyed one. The
- * OUTER `req_key IN (…)` is what makes a narrowing exact — an event whose id happens to sit in
- * the chunk while it keys on some other request must not contribute a half-seen group to a row
- * nobody asked about.
+ * The OUTER `agent_key = ? AND req_key IN (…)` is what makes a narrowing exact: an event whose
+ * id happens to sit in the chunk while it keys on some other request must not contribute a
+ * half-seen group to a row nobody asked about, and a key string shared by two agents must not
+ * let one agent's batch overwrite the other's row.
  */
-function foldStatement(scope: FoldScope, conflictSql: string): { sql: string; params: unknown[] } {
+/**
+ * Exported for the plan assertion in `test/request-fold.test.ts`: the shape of this statement
+ * is the write path's whole cost, and it degraded silently once (an `OR` of two indexed
+ * lists that the planner answered with a per-agent scan).
+ */
+export function foldStatement(scope: FoldScope, conflictSql: string): { sql: string; params: unknown[] } {
   const mode = scope.mode
+  const agentKey = scope.agent ?? ''
   const tokenMaxes = TOKEN_BUCKETS.map(
     (c) => `MAX(COALESCE(e.${REQUEST_FOLD_TOKEN_SOURCE[c]}, 0)) AS ${c}`,
   ).join(', ')
   const params: unknown[] = []
-  const predicates: string[] = []
-  if (scope.agent === null) predicates.push('e.agent_id IS NULL')
-  else {
-    predicates.push('e.agent_id = ?')
-    params.push(scope.agent)
-  }
-  if (scope.keys) {
+  /**
+   * How the members of the requested groups are found.
+   *
+   * `WHERE agent_id = ? AND (request_id IN (…) OR id IN (…))` reads as the obvious shape and
+   * is a store-wide scan: `EXPLAIN QUERY PLAN` picks `idx_events_agent (agent_id=?)` and
+   * refuses to union the two OR branches, so every batch re-reads the agent's whole history —
+   * measured at +50-100 % on a cold ingest before it was replaced. The UNION of two
+   * single-column selects IS index-driven on both arms (`idx_events_request`, then the
+   * primary key), and it is joined back to `events` on `id`.
+   */
+  let memberSource: string
+  if (!scope.keys) {
+    // Backfill/rebuild: one partition at a time, so `idx_events_agent` drives it.
+    memberSource =
+      scope.agent === null ? 'main.events e WHERE e.agent_id IS NULL' : 'main.events e WHERE e.agent_id = ?'
+    if (scope.agent !== null) params.push(scope.agent)
+  } else {
     const ph = scope.keys.map(() => '?').join(', ')
+    const arms: string[] = []
     if (mode === 'request_max') {
-      predicates.push(`(e.request_id IN (${ph}) OR e.id IN (${ph}))`)
-      params.push(...scope.keys, ...scope.keys)
+      // A group can be keyed by a request id OR by an event id (the §3.1 fallback), so both
+      // arms are needed; each binds its own copy of the key list.
+      if (scope.agent === null) arms.push(`SELECT id FROM main.events WHERE agent_id IS NULL AND request_id IN (${ph})`)
+      else {
+        params.push(scope.agent)
+        arms.push(`SELECT id FROM main.events WHERE agent_id = ? AND request_id IN (${ph})`)
+      }
+      params.push(...scope.keys)
+      arms.push(`SELECT id FROM main.events WHERE id IN (${ph})`)
+      params.push(...scope.keys)
     } else {
-      predicates.push(`e.id IN (${ph})`)
+      // Every key IS an event id here, so the primary key alone covers the whole batch.
+      arms.push(`SELECT id FROM main.events WHERE id IN (${ph})`)
       params.push(...scope.keys)
     }
+    memberSource = `main.events e
+        JOIN (${arms.join('\n        UNION\n        ')}) m ON m.id = e.id`
   }
-  const outer = scope.keys ? `WHERE r.req_key IN (${scope.keys.map(() => '?').join(', ')})` : ''
-  if (scope.keys) params.push(...scope.keys)
+  const outer: string[] = ['r.agent_key = ?']
+  params.push(agentKey)
+  if (scope.keys) {
+    outer.push(`r.req_key IN (${scope.keys.map(() => '?').join(', ')})`)
+    params.push(...scope.keys)
+  }
   const valCols = [...REQUEST_FOLD_VALUE_COLUMNS, 'member_count', 'ts_count', 'min_ts', 'max_ts']
   const repCols = REQUEST_FOLD_DIM_COLUMNS.map((c) => `rep.${c}`)
   return {
@@ -184,12 +215,11 @@ function foldStatement(scope: FoldScope, conflictSql: string): { sql: string; pa
         COUNT(e.timestamp) AS ts_count,
         MIN(e.timestamp) AS min_ts,
         MAX(e.timestamp) AS max_ts
-        FROM main.events e
-        WHERE ${predicates.join(' AND ')}
+        FROM ${memberSource}
         GROUP BY agent_key, req_key
       ) r
       JOIN main.events rep ON rep.id = r.rep_id
-      ${outer}
+      WHERE ${outer.join(' AND ')}
       ${conflictSql}`,
     params,
   }

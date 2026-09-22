@@ -48,7 +48,13 @@ const { loadPricing, loadBillingModes } = await import(`${REPO}apps/cli/src/pric
 
 const clock = (s) => s.replace(/"(generatedAt|sinceTs|now|emittedAt|builtAt)":\d+/g, '"$1":CLOCK')
 const ms = (t0) => Number(process.hrtime.bigint() - t0) / 1e6
-const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]
+/**
+ * MIN, not mean: this host runs several agents at once, and an interfered sample measures the
+ * scheduler. The best-of-N is the number the code itself is responsible for. The spread is
+ * printed next to it so nobody reads a noisy machine's ratio as a result.
+ */
+const best = (xs) => Math.min(...xs)
+const worst = (xs) => Math.max(...xs)
 
 const db = openDatabase(dbPath)
 const applied = migrate(db)
@@ -112,7 +118,7 @@ for (let i = 0; i < runs; i++) {
       const key = `${name}|${persisted ? 'table' : 'fold'}`
       push(timings, key, took)
       push(payloads, key, out)
-      if (i === 0) process.stdout.write(`  folds served=${JSON.stringify(q.foldPasses())}\n`)
+      if (i === 0) process.stdout.write(`  ${key.padEnd(36)} folds=${JSON.stringify(q.foldPasses())}\n`)
     }
   }
 }
@@ -123,8 +129,8 @@ for (const [name] of CASES) {
   const same = payloads.get(`${name}|table`).every((x) => x === payloads.get(`${name}|fold`)[0]) &&
     payloads.get(`${name}|fold`).every((x) => x === payloads.get(`${name}|table`)[0])
   console.log(
-    `${name.padEnd(30)} fold ${median(b).toFixed(0).padStart(6)} ms -> table ${median(a).toFixed(0).padStart(6)} ms` +
-      `  x${(median(b) / median(a)).toFixed(2)}  identical-bytes=${same} (${payloads.get(`${name}|table`)[0].length} B)`,
+    `${name.padEnd(30)} fold ${best(b).toFixed(0).padStart(6)} ms (worst ${worst(b).toFixed(0)}) -> table ${best(a).toFixed(0).padStart(6)} ms (worst ${worst(a).toFixed(0)})` +
+      `  x${(best(b) / best(a)).toFixed(2)}  identical-bytes=${same} (${payloads.get(`${name}|table`)[0].length} B)`,
   )
 }
 
@@ -142,7 +148,7 @@ for (const withFold of [false, true, false, true]) {
   for (let i = 0; i < events.length; i += 500) insertEvents(target, events.slice(i, i + 500))
   const took = ms(t0)
   if (withFold && !requestFoldIsConsistent(target)) throw new Error('table drifted from events during a cold ingest')
-  console.log(`  ${withFold ? 'with requests maintained' : 'fold table absent  '} ${took.toFixed(0).padStart(6)} ms${withFold ? `  rows=${requestFoldRowCount(target)}` : ''}`)
+  console.log(`  ${withFold ? 'with requests maintained' : 'fold table absent      '} ${took.toFixed(0).padStart(6)} ms${withFold ? `  rows=${requestFoldRowCount(target)}` : ''}`)
   target.close()
 }
 db.close()
