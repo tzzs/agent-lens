@@ -32,7 +32,7 @@ const en = {
   colCostInfo: "Each day's tokens × that day's list price. {na} when the model has no price — never $0.",
   colPrice: 'Price',
   colPriceInfo:
-    'Whether the price table covers this model at its last-seen date. “{chip}” means no price table is loaded at all.',
+    'Whether the price table covers this model at its last-seen date. “{chip}” means no price table is loaded at all. A second mark names a price that is not the vendor list price: “{via}” is the §8 fallback source, “{pinned}” is one the user overrode.',
   noModel: '(no model)',
   noModelTitle: 'Events recorded without a model, such as tool calls and lifecycle events',
   empty: 'No model activity in this window',
@@ -60,6 +60,12 @@ const en = {
 
   /* the price chips */
   chipPriced: 'Priced',
+  // §8 provenance marks: a row whose price is not the vendor list price says so.
+  chipViaOpenRouter: 'via OpenRouter',
+  chipViaOpenRouterTitle:
+    'litellm has no price for this model, so §8 fills the gap from OpenRouter — the rate of one routed reseller, not the vendor list price.',
+  chipPinned: 'pinned',
+  chipPinnedTitle: 'This price came from `agl pricing override`, not from a fetched snapshot (§8).',
   chipUnpriced: 'Unpriced',
   chipUnpricedTitle: "No price at this model's last-seen date, so its cost shows {na}, never $0.",
   chipUnconfigured: 'Not configured',
@@ -83,7 +89,7 @@ const zh = matches(en)({
   colCost: '估算费用',
   colCostInfo: '每天的 tokens × 当天的牌价。模型没有定价时显示为{na}，绝不会是 $0。',
   colPrice: '定价',
-  colPriceInfo: '价格表在其最后出现日期上是否覆盖该模型。“{chip}”表示根本没有加载任何价格表。',
+  colPriceInfo: '价格表在其最后出现日期上是否覆盖该模型。“{chip}”表示根本没有加载任何价格表。第二个标记说明这条价格不是厂商列表价：“{via}”是 §8 的兜底源，“{pinned}”是用户自己覆写的。',
   noModel: '（无模型）',
   noModelTitle: '没有记录模型的事件，例如工具调用与生命周期事件',
   empty: '这个时间窗内没有任何模型活动',
@@ -104,6 +110,10 @@ const zh = matches(en)({
   lastSeen: '最后出现',
 
   chipPriced: '已定价',
+  chipViaOpenRouter: '来自 OpenRouter',
+  chipViaOpenRouterTitle: 'litellm 没有这个模型的价格，因此 §8 用 OpenRouter 补缺口——那是某条转售路由的报价，不是厂商列表价。',
+  chipPinned: '已钉价',
+  chipPinnedTitle: '这条价格来自 `agl pricing override`，不是抓取的快照（§8）。',
   chipUnpriced: '未定价',
   chipUnpricedTitle: '该模型在其最后出现日期上没有价格，因此它的费用显示为{na}，绝不会是 $0。',
   chipUnconfigured: '未配置定价',

@@ -392,7 +392,7 @@ usage (tokens, 分层)  →  PricingTable.lookup(model, occurred_at)  →  CostB
 
 - `models` 表存 `(provider, model, tier)` + 分价：input / output / cacheRead / cacheWrite / reasoning，**价格带生效日期区间**（模型会改价，历史成本必须可复现）。
 - 价格数据来源：**不手工维护**。上游取 `litellm` 的 `model_prices_and_context_window.json`，构建时生成快照进包，运行时可 `agentlens pricing update` 刷新，用户可用 `pricing override` 覆写。
-- **兜底源：OpenRouter `GET /api/v1/models`**（免鉴权，实测 444 个模型）。`agl pricing update --source openrouter` 把它写成同目录的第二个快照文件 `price-snapshot-openrouter.json`，`loadMergedPricing` 只用它补主快照**没有价**的模型（`PricingTable.withGapFill` 按模型名判定，所以它既不会改写 litellm 的数字，也不会让「只按模型名匹配」那条分支变成「多 provider → 无价」）。它**永远排在 litellm 之下**：OR 顶层 `pricing` 是某条转售路由的报价（同一模型 `/endpoints` 里有 3 档价），而本节的"等价 API 价值"要的是厂商列表价——实测两边都有价的 20 个模型里 4 个不一致，最大 2 倍。必须过滤的行：`:batch`(67) 与 `:free`(21，0 价) 会被 `normalizeModelName` 折到基名上，`~*-latest`(18) 是滚动别名；不收进来就会让半价或 $0 赢得查询，正是本节禁止的那种错。
+- **兜底源：OpenRouter `GET /api/v1/models`**（免鉴权，实测 444 个模型）。`agl pricing update --source openrouter` 把它写成同目录的第二个快照文件 `price-snapshot-openrouter.json`，`loadMergedPricing` 只用它补主快照**没有价**的模型（`PricingTable.withGapFill` 按模型名判定，所以它既不会改写 litellm 的数字，也不会让「只按模型名匹配」那条分支变成「多 provider → 无价」）。它**永远排在 litellm 之下**：OR 顶层 `pricing` 是某条转售路由的报价（同一模型 `/endpoints` 里有 3 档价），而本节的"等价 API 价值"要的是厂商列表价——实测两边都有价的 20 个模型里 4 个不一致，最大 2 倍。必须过滤的行：`:batch`(67) 与 `:free`(21，0 价) 会被 `normalizeModelName` 折到基名上，`~*-latest`(18) 是滚动别名；不收进来就会让半价或 $0 赢得查询，正是本节禁止的那种错。**Models 页要说出每一行的钱是谁给的**：`/api/models` 的 `priceSource` 与缺口判定出自同一次解析（`modelPrices` → `gappedModels`/`isGapped`，surface 不得自己重写 `.buckets.length`），UI 把不是厂商列表价的行标成 `via OpenRouter` 或 `pinned` —— 同一列里混着两种权威性的数字而不加标记，就等于让转售路由价冒充列表价。
 - **三种计费口径**（v1 完全没讨论，但这是真实场景的主要成本构成）：
 
 | 模式 | 成本计算 | 说明 |

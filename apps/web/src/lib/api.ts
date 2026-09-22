@@ -495,6 +495,8 @@ export interface AgentsResponse {
  * Models
  * ------------------------------------------------------------------ */
 
+export type PriceSource = 'litellm' | 'openrouter' | 'override' | 'manual'
+
 export interface ModelRow {
   provider: string
   model: string
@@ -503,6 +505,8 @@ export interface ModelRow {
   tokensTotal: number
   costApiEquiv: number | null
   priced: boolean | null
+  /** Which price source stands behind `costApiEquiv` (§8); null when pricing is off. Mirror of `ModelRow` server-side. */
+  priceSource: PriceSource | null
 }
 export interface ModelsResponse {
   filter: Filter

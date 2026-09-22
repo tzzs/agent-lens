@@ -35,6 +35,20 @@
   // "Priced" in the table, whatever its own flag says; the page would contradict itself.
   const unpricedKeys = $derived(new Set((d?.unpriced ?? []).map((u) => modelKey(u.provider, u.model))))
   const gapNames = $derived((d?.unpriced ?? []).slice(0, ALERT_NAMES).map((u) => u.model).join(', '))
+
+  /**
+   * §8: not every price in the table is the same kind of number. `litellm` is the vendor list
+   * price this column means, so it carries no mark; the others are a reseller route price or
+   * the user's own pinned figure, and letting a row silently carry one would make the $ column
+   * read more authoritative than it is. Words come from the catalog; only the source names are
+   * data.
+   */
+  const provenanceFor = (source: ModelRow['priceSource']) =>
+    source === 'openrouter'
+      ? { label: t('models.chipViaOpenRouter'), title: t('models.chipViaOpenRouterTitle') }
+      : source === 'override' || source === 'manual'
+        ? { label: t('models.chipPinned'), title: t('models.chipPinnedTitle') }
+        : undefined
   type Price = 'priced' | 'unpriced' | 'unconfigured' | 'no-model'
   function priceOf(m: ModelRow): Price {
     if (!m.model) return 'no-model'
@@ -63,7 +77,9 @@
       key: 'price',
       label: $t('models.colPrice'),
       width: '17%',
-      info: $t('models.colPriceInfo', { values: { chip: $t('models.chipUnconfigured') } }),
+      info: $t('models.colPriceInfo', {
+        values: { chip: $t('models.chipUnconfigured'), via: $t('models.chipViaOpenRouter'), pinned: $t('models.chipPinned') },
+      }),
     },
   ])
 </script>
@@ -105,6 +121,7 @@
         <DataTable {columns} rows={d.rows} key={(m: ModelRow) => modelKey(m.provider, m.model)} caption={$t('models.title')} empty={$t('models.empty')}>
           {#snippet row(m: ModelRow)}
             {@const price = priceOf(m)}
+            {@const prov = price === 'priced' ? provenanceFor(m.priceSource) : undefined}
             {#if m.model}
               <td class="nums font-medium text-ink" title={m.model}>{m.model}</td>
             {:else}
@@ -117,7 +134,10 @@
             <td class="text-right"><CostFigure value={m.costApiEquiv} basis="est" showLabel={false} /></td>
             <td>
               {#if price === 'priced'}
-                <Chip tone="green" dot>{$t('models.chipPriced')}</Chip>
+                <span class="inline-flex flex-wrap items-center gap-1.5">
+                  <Chip tone="green" dot>{$t('models.chipPriced')}</Chip>
+                  {#if prov}<Chip dashed title={prov.title}>{prov.label}</Chip>{/if}
+                </span>
               {:else if price === 'unpriced'}
                 <Chip tone="orange" dot title={$t('models.chipUnpricedTitle', { values: { na } })}>{$t('models.chipUnpriced')}</Chip>
               {:else if price === 'unconfigured'}
