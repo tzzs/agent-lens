@@ -114,6 +114,16 @@ export class ScanState {
    * records*, so the fallback parent is the nearest preceding `Agent`/`Task` call in
    * the same session; NULL is legal (§4.4 row 8). `confirmSidechainParent` overrides
    * this whenever the spawn's own result proves the link.
+   *
+   * The candidates are per source because this whole ledger is (`stateFor(ctx.source.id)`),
+   * and that is deliberate. A side chain's transcript is a SEPARATE file from its parent's
+   * (`<session>/subagents/agent-<agentId>.jsonl`), so a session-keyed in-process ledger would
+   * make the answer depend on which of the two files the scan reached first, and a watch tick
+   * that saw only one of them would then disagree with a full scan. §4.2 forbids that, so the
+   * cross-file half of this rule lives one layer up, in
+   * `packages/storage/src/subagent-parent-links.ts`, where the candidate pool is the rows that
+   * are already in the store. Do NOT "fix" the NULLs that leaves here with a module-level map:
+   * these in-file candidates are exactly what makes the rule correct for the one file it sees.
    */
   linkSidechain(
     sessionId: string,

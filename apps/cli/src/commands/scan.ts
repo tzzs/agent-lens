@@ -8,6 +8,7 @@ import { scanSource, type EventSink, type SavedSourceState, type SourceCommit } 
 import {
   insertEvents,
   recordParseFailure,
+  resolveSubagentParents,
   setAgentAggregations,
   updateSourceProgress,
   upsertProject,
@@ -39,6 +40,17 @@ export interface ScanOutcome {
    * tests) never touch a database; `runScan` always fills it.
    */
   projectsRepaired?: number
+  /**
+   * Side-chain rows whose parent this scan resolved across sources (§4.4 row 8,
+   * `subagent-parent-links.ts`). Optional because synthetic outcomes (rendering tests)
+   * never touch a database; `runScan` always fills it.
+   */
+  subagentsLinked?: number
+  /** Of those, how many the spawn's own id proved versus the nearest-preceding-call guess (§5.2). */
+  subagentsProven?: number
+  subagentsGuessed?: number
+  /** Chains left untouched because re-storing the row would have moved an unrelated column. */
+  subagentLinksRefused?: number
 }
 
 export interface SourceRefusal {
@@ -188,6 +200,16 @@ export async function runScan(
   // still in the store (persisted cwds, decodable `sources.path`). Idempotent, and a
   // no-op once every row has a root.
   outcome.projectsRepaired = repairProjectRoots(db, { homedir: ctx.homedir }).repaired.length
+  // §4.4 row 8 one layer up from the adapter: a side chain's transcript is its own file, so the
+  // spawn that started it lives in another source and the adapter's per-source ledger cannot see
+  // it. The candidate pool here is the rows already in the store, which is also why the answer
+  // cannot depend on which file the scan reached first (§4.2).
+  const links = resolveSubagentParents(db)
+  const relinked = links.rows.filter((r) => r.changes)
+  outcome.subagentsLinked = links.rewritten
+  outcome.subagentsProven = relinked.filter((r) => r.evidence === 'foreign-key').length
+  outcome.subagentsGuessed = relinked.filter((r) => r.evidence === 'heuristic').length
+  outcome.subagentLinksRefused = links.refused.length
   return outcome
 }
 
@@ -211,6 +233,20 @@ export async function cmdScan(db: DatabaseSync, flags: FlagView, ctx: Ctx): Prom
   ctx.out(`${outcome.sourcesScanned} sources scanned · ${outcome.events} events ingested · ${outcome.failures} parse failures`)
   if (outcome.projectsRepaired) {
     ctx.out(`+ ${outcome.projectsRepaired} existing project ${outcome.projectsRepaired === 1 ? 'row' : 'rows'} attributed to a directory (§4.1)`)
+  }
+  if (outcome.subagentsLinked) {
+    // The two evidence kinds are named because they are not equally trustworthy, and a chain
+    // placed under the wrong spawn is worse than one left open (§4.4 row 8).
+    ctx.out(
+      `+ ${outcome.subagentsLinked} side-chain ${outcome.subagentsLinked === 1 ? 'row' : 'rows'} linked to its spawn (§4.4 row 8: ` +
+        `${outcome.subagentsProven ?? 0} by the spawn's own id, ${outcome.subagentsGuessed ?? 0} by the nearest preceding call)`,
+    )
+  }
+  if (outcome.subagentLinksRefused) {
+    ctx.out(
+      `! ${outcome.subagentLinksRefused} chain${outcome.subagentLinksRefused === 1 ? '' : 's'} left as-is: rewriting the stored row would have ` +
+        'moved a column this pass does not own (§5.2)',
+    )
   }
   for (const line of refusalLines(outcome, ctx)) ctx.out(line)
   return 0
