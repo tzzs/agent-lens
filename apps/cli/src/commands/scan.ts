@@ -6,6 +6,7 @@ import { basename, dirname, join } from 'node:path'
 import { deriveProjectId, projectRootForCwd, type AgentAdapter, type SourceSpec } from '@agentlens/event-model'
 import { scanSource, type EventSink, type SavedSourceState, type SourceCommit } from '@agentlens/collector'
 import {
+  deriveSessionProjects,
   deriveSessionTitles,
   insertEvents,
   recordParseFailure,
@@ -54,6 +55,8 @@ export interface ScanOutcome {
   subagentLinksRefused?: number
   /** Sessions whose title was derived from the store's own title records (§10). */
   sessionsTitled?: number
+  /** Sessions lifted out of the unattributed bucket by the project their own events name (§4.1). */
+  sessionsAttributed?: number
 }
 
 export interface SourceRefusal {
@@ -216,6 +219,10 @@ export async function runScan(
   // §10: the session list is the product's first screen, and the title records are already in
   // the store (`custom-title` / `ai-title` rows) — this only projects them onto the session.
   outcome.sessionsTitled = deriveSessionTitles(db).updated
+  // §4.1 one layer up on the same screen: a session whose first record carried no cwd was latched
+  // into the unattributed bucket by the seed, and the rows behind it could never correct it. The
+  // evidence is in the event rows already; this reads the session's own project back from them.
+  outcome.sessionsAttributed = deriveSessionProjects(db).upgraded
   return outcome
 }
 
@@ -250,6 +257,12 @@ export async function cmdScan(db: DatabaseSync, flags: FlagView, ctx: Ctx): Prom
   }
   if (outcome.sessionsTitled) {
     ctx.out(`+ ${outcome.sessionsTitled} session ${outcome.sessionsTitled === 1 ? 'row' : 'rows'} titled from the title records its own logs carry (§10)`)
+  }
+  if (outcome.sessionsAttributed) {
+    ctx.out(
+      `+ ${outcome.sessionsAttributed} session ${outcome.sessionsAttributed === 1 ? 'row' : 'rows'} lifted out of "unattributed" by the cwd ` +
+        'its own later records carry — the first line of the transcript had none (§4.1)',
+    )
   }
   if (outcome.subagentLinksRefused) {
     ctx.out(

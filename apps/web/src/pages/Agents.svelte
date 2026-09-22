@@ -8,7 +8,7 @@
   import { loader } from '../lib/pagestate.svelte.js'
   import { range, filterParams } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
-  import { formatCompact, formatInt, formatMs } from '../lib/format.ts'
+  import { ACTIVE_METRIC_INFO, formatCompact, formatInt, formatMs } from '../lib/format.ts'
   import { SERIES, eventKind } from '../lib/eventKinds.ts'
   import Surface from '../components/ui/Surface.svelte'
   import PageHeader from '../components/ui/PageHeader.svelte'
@@ -46,8 +46,6 @@
     local: { label: 'Local', note: 'nothing bills per token: actual cash is $0, while est. cost prices the same tokens as an API call (§8)' },
   }
   const billing = (mode: string) => BILLING[mode] ?? { label: mode, note: 'est. cost is the API equivalent' }
-
-  const DURATION_INFO = 'Summed time of recorded events (model calls, tool runs), each request counted once — not wall-clock time.'
 
   const num = (v: number | null | undefined) => Number(v ?? 0)
   /** Exact below a million; compact above so a 4-up stat strip never overflows. The title keeps the exact figure. */
@@ -122,9 +120,9 @@
                 </div>
               </dl>
               <p class="mt-3 flex items-center gap-1.5 text-xs text-ink-3">
-                Duration
+                Active
                 <span class="nums text-ink-2" title={duration > 0 ? undefined : 'No event durations recorded'}>{duration > 0 ? formatMs(duration) : '—'}</span>
-                <InfoTip text={DURATION_INFO} />
+                <InfoTip text={ACTIVE_METRIC_INFO} />
               </p>
             </div>
 

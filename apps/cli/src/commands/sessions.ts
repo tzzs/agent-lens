@@ -82,7 +82,7 @@ export function cmdSessions(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath:
     if (shown.length >= limit) break
   }
   ctx.out(table(
-    ['Session', 'Agent', 'Host', 'Project', 'Time (UTC)', 'Events', 'Tokens', 'Duration', 'Cost'],
+    ['Session', 'Agent', 'Host', 'Project', 'Time (UTC)', 'Events', 'Tokens', 'Active', 'Cost'],
     shown,
     ['left', 'left', 'left', 'left', 'left', 'right', 'right', 'right', 'right'],
   ))

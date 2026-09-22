@@ -19,7 +19,15 @@ import {
   type WatchTarget,
   type Watcher,
 } from '@agentlens/collector'
-import { insertEvents, recordParseFailure, updateSourceProgress, type SourceProgress } from '@agentlens/storage'
+import {
+  carriesTitleEvidence,
+  deriveSessionProjects,
+  deriveSessionTitles,
+  insertEvents,
+  recordParseFailure,
+  updateSourceProgress,
+  type SourceProgress,
+} from '@agentlens/storage'
 import type { DatabaseSync } from 'node:sqlite'
 import type { FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
@@ -47,15 +55,49 @@ function positionOf(s: SavedSourceState): SavedSourcePosition {
   return { inode: s.inode, size: s.size, mtimeMs: s.mtimeMs, lastOffset: s.lastOffset }
 }
 
+/**
+ * The two session-level projections (§4.1 attribution, §10 titles) had no writer in the watch
+ * loop: `runScan` runs them at its end, and `watch` calls `runScan` once for the opening summary
+ * and never again — so a title record or a cwd arriving on the next appended line stayed
+ * unprojected for the life of the process, which is the whole life of the dashboard.
+ *
+ * They are flagged rather than simply called per source because both read the whole store, not
+ * this batch: a tick that touched ten files must project once, and the title pass is a full scan
+ * of `events` (measured 1.16s over 400k rows) that only a landed title record can justify.
+ */
+interface PendingProjections {
+  titles: boolean
+  projects: boolean
+}
+
+/** Run whatever this batch earned, then clear for the next one. */
+function drainProjections(db: DatabaseSync, pending: PendingProjections): { titled: number; attributed: number } {
+  const { titles, projects } = pending
+  pending.titles = false
+  pending.projects = false
+  return {
+    titled: titles ? deriveSessionTitles(db).updated : 0,
+    attributed: projects ? deriveSessionProjects(db).upgraded : 0,
+  }
+}
+
 function makeSink(
   db: DatabaseSync,
   source: SourceSpec,
   agentId: string,
   contentEnabled: boolean,
+  pending: PendingProjections,
   onCommit: (p: SourceCommit) => void,
 ): EventSink {
   return {
     writeEvents: (events) => {
+      // Flagged off the batch the sink actually holds, before any of it can throw: an attributed
+      // row landing is what makes a latched session repairable, and a title row is the only thing
+      // that can make the full-store title scan worth running.
+      if (events.length > 0) {
+        pending.projects = true
+        if (!pending.titles) pending.titles = events.some(carriesTitleEvidence)
+      }
       insertEvents(db, events, { contentEnabled })
     },
     writeParseFailure: (f) => {
@@ -88,7 +130,7 @@ function makeSink(
   }
 }
 
-function makeTarget(db: DatabaseSync, ctx: Ctx, adapter: AgentAdapter, source: SourceSpec, contentEnabled: boolean): WatchTarget {
+function makeTarget(db: DatabaseSync, ctx: Ctx, adapter: AgentAdapter, source: SourceSpec, contentEnabled: boolean, pending: PendingProjections): WatchTarget {
   const projects = makeProjectResolver(ctx.homedir)
   const target: WatchTarget = {
     id: source.id,
@@ -99,7 +141,7 @@ function makeTarget(db: DatabaseSync, ctx: Ctx, adapter: AgentAdapter, source: S
     scan: async () => {
       const state = savedState(db, source.id)
       const result = await scanSource(adapter, source, {
-        sink: makeSink(db, source, adapter.id, contentEnabled, (p) => {
+        sink: makeSink(db, source, adapter.id, contentEnabled, pending, (p) => {
           // §4.2: only a committed batch advances the in-memory resume position.
           target.saved = { inode: p.inode, size: p.size, mtimeMs: p.mtimeMs, lastOffset: p.lastOffset }
         }),
@@ -123,6 +165,7 @@ async function buildTargets(
   flags: FlagView,
   ctx: Ctx,
   adapters: AgentAdapter[],
+  pending: PendingProjections,
 ): Promise<WatchTarget[]> {
   const only = flags.list('agent')
   const contentEnabled = contentWanted(flags)
@@ -143,7 +186,7 @@ async function buildTargets(
     for await (const source of adapter.discover(makeHostCtx(ctx, dataRoot))) {
       if (known.has(source.id)) continue
       known.add(source.id)
-      targets.push(makeTarget(db, ctx, adapter, source, contentEnabled))
+      targets.push(makeTarget(db, ctx, adapter, source, contentEnabled, pending))
     }
     const first = targets.find((t) => t.agentId === adapter.id)
     if (first) {
@@ -151,7 +194,7 @@ async function buildTargets(
         for await (const source of adapter.discover(makeHostCtx(ctx, dataRoot))) {
           if (known.has(source.id)) continue
           known.add(source.id)
-          yield makeTarget(db, ctx, adapter, source, contentEnabled)
+          yield makeTarget(db, ctx, adapter, source, contentEnabled, pending)
         }
       }
     }
@@ -213,14 +256,23 @@ export async function runWatch(
     return { done: Promise.resolve(0), watcher: noop, targetCount: 0 }
   }
 
-  const targets = await buildTargets(db, flags, ctx, adapters)
+  const pending: PendingProjections = { titles: false, projects: false }
+  const targets = await buildTargets(db, flags, ctx, adapters, pending)
   const intervalMs = flags.num('interval') ?? DEFAULT_WATCH_INTERVAL_MS
   const watcher = createWatcher({
     targets,
     intervalMs,
     discoverIntervalMs: DEFAULT_DISCOVER_INTERVAL_MS,
     useFsWatch: true,
-    onBatch: (b) => renderBatch(b, ctx),
+    onBatch: (b) => {
+      renderBatch(b, ctx)
+      const { titled, attributed } = drainProjections(db, pending)
+      if (titled > 0 || attributed > 0) {
+        ctx.out(
+          `~ ${formatTime(b.atMs)} sessions projected · ${formatCount(titled)} titled · ${formatCount(attributed)} attributed`,
+        )
+      }
+    },
     onLoopError: (err) => ctx.err(`! watch: ${err.message}`),
   })
   ctx.out(`watching ${targets.length} source(s) every ${Math.round(intervalMs / 1000)}s — Ctrl-C to stop`)

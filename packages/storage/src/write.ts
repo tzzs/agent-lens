@@ -1,7 +1,7 @@
 import { deflateSync } from 'node:zlib'
 import { Buffer } from 'node:buffer'
 import type { DatabaseSync } from 'node:sqlite'
-import { assertAggregationMode, type AgentEvent, type AggregationPolicy, type ModelRef, type ParseFailure } from '@agentlens/event-model'
+import { assertAggregationMode, UNATTRIBUTED_PROJECT_ID, type AgentEvent, type AggregationPolicy, type ModelRef, type ParseFailure } from '@agentlens/event-model'
 
 /** §3.2/§6 — the content layer is off unless a scan opts in (`--content`). */
 const DEFAULT_MAX_PAYLOAD_BYTES = 32 * 1024
@@ -51,6 +51,18 @@ export interface PruneResult {
 /** node:sqlite refuses `undefined` binds; everything optional must pass through NULL. */
 function nn<T>(v: T | null | undefined): T | null {
   return v ?? null
+}
+
+/**
+ * §4.1: `UNATTRIBUTED_PROJECT_ID` records that THIS line carried no cwd — it is not a claim
+ * about the session, so it must not win the seed race against a line that did name one. The
+ * first record of a qoder / claude-code transcript is a bookkeeping line (`workspace-directories`,
+ * `runtime-config`, `active-leaf`) with no cwd, and a plain `??=` let that one row hold the
+ * session in the unknown bucket against the tens of thousands of attributed rows behind it.
+ */
+function seedProject(current: string | null, next: string | null): string | null {
+  if (current === null || current === UNATTRIBUTED_PROJECT_ID) return next ?? current
+  return current
 }
 
 /**
@@ -115,7 +127,7 @@ export function insertEvents(
         if (s.first === null || (ev.timestamp !== undefined && ev.timestamp < s.first)) s.first = ev.timestamp ?? null
         if (s.last === null || (ev.timestamp !== undefined && ev.timestamp > s.last)) s.last = ev.timestamp ?? null
         s.hostId ??= nn(ev.hostId)
-        s.projectId ??= nn(ev.projectId)
+        s.projectId = seedProject(s.projectId, nn(ev.projectId))
         s.sourceId ??= nn(ev.sourceId)
       }
     }
@@ -137,6 +149,12 @@ export function insertEvents(
     // away from the truth they claim to summarize. The single owner of these columns is
     // the min/max recompute below, which runs after the event rows land. The INSERT arm
     // still seeds fresh rows from this batch, which that recompute then confirms.
+    //
+    // `project_id` keeps the COALESCE because it is not this statement's fact to settle: a row
+    // already in the store holds whatever an earlier batch derived, and the single owner of that
+    // column is `deriveSessionProjects`, which re-reads the session's own event rows after the
+    // scan. Widening it here would only see this batch, which is exactly the partial view that
+    // mislabels a session whose cwd evidence arrives later.
     const upsertSession = db.prepare(`
       INSERT INTO sessions (id, agent_id, host_id, project_id, source_id, first_timestamp, last_timestamp)
       VALUES (?, ?, ?, ?, ?, ?, ?)

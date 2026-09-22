@@ -3,7 +3,7 @@
   import { loader } from '../lib/pagestate.svelte.js'
   import { range, filterParams } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
-  import { formatCompact, formatInt, formatMs, relativeTime, projectLabel, shortId } from '../lib/format.ts'
+  import { ACTIVE_METRIC_INFO, formatCompact, formatInt, formatMs, relativeTime, projectLabel, shortId, spanMs } from '../lib/format.ts'
   import { SERIES } from '../lib/eventKinds.ts'
   import Surface from '../components/ui/Surface.svelte'
   import PageHeader from '../components/ui/PageHeader.svelte'
@@ -48,7 +48,7 @@
     { key: 'project', label: 'Project', width: '14%' },
     { key: 'events', label: 'Events', align: 'right' as const, width: '8%' },
     { key: 'tokens', label: 'Tokens', align: 'right' as const, width: '8%' },
-    { key: 'duration', label: 'Duration', align: 'right' as const, width: '8%' },
+    { key: 'duration', label: 'Active', align: 'right' as const, width: '8%', info: ACTIVE_METRIC_INFO },
     { key: 'cost', label: 'Est. cost', align: 'right' as const, width: '12%', info: 'Tokens × list price. n/a when the model has no price — never $0.' },
     { key: 'last', label: 'Last seen', align: 'right' as const, width: '9%' },
   ]
@@ -87,6 +87,7 @@
       empty={d.rows.length ? 'No sessions match these filters' : 'No sessions in this window'}
     >
       {#snippet row(r: SessionRow)}
+        {@const span = spanMs(r.firstTimestamp, r.lastTimestamp)}
         <td>
           <a href="#/sessions/{encodeURIComponent(r.sessionId)}" class="block truncate font-medium text-ink hover:text-accent" title={r.title ?? r.sessionId}>
             {r.title || `Untitled ${r.agentId} session`}
@@ -103,7 +104,10 @@
         <td class="text-ink-2" title={r.project}><span class={projectLabel(r.project) !== r.project ? 'nums' : ''}>{projectLabel(r.project)}</span></td>
         <td class="nums text-right">{formatInt(r.events)}</td>
         <td class="nums text-right">{formatCompact(r.tokensTotal)}</td>
-        <td class="nums text-right text-ink-2" title={r.durationMs > 0 ? '' : 'No event durations recorded'}>{r.durationMs > 0 ? formatMs(r.durationMs) : '—'}</td>
+        <td class="nums text-right text-ink-2" title={r.durationMs > 0 ? ACTIVE_METRIC_INFO : 'No event in this session reported a duration of its own'}>
+          {r.durationMs > 0 ? formatMs(r.durationMs) : '—'}
+          {#if span !== null}<div class="text-[11px] text-ink-3" title="Wall clock, first event to last">{formatMs(span)}</div>{/if}
+        </td>
         <td class="text-right"><CostFigure value={r.costApiEquiv} basis="est" showLabel={false} /></td>
         <td class="nums text-right text-ink-3" title={r.lastTimestamp ? new Date(r.lastTimestamp).toISOString() : ''}>{relativeTime(r.lastTimestamp, now)}</td>
       {/snippet}

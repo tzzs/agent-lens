@@ -14,6 +14,7 @@ describe('migrations', () => {
       '004_sqlite_table_in_sources.sql',
       '005_machine.sql',
       '006_measured_read_paths.sql',
+      '007_session_title_index.sql',
     ])
     expect(migrate(db)).toEqual([])
     const applied = db.prepare('SELECT id FROM schema_migrations').all()
@@ -24,6 +25,7 @@ describe('migrations', () => {
       '004_sqlite_table_in_sources.sql',
       '005_machine.sql',
       '006_measured_read_paths.sql',
+      '007_session_title_index.sql',
     ])
     db.close()
   })
@@ -144,10 +146,13 @@ describe('migrations', () => {
       status TEXT CHECK (status IN ('active','gone','error','rotated')), last_error TEXT,
       scan_started_at INTEGER, scan_finished_at INTEGER, rows_ingested INTEGER
     )`)
-    // A real pre-004 deployment has the tables 001 created; 006 indexes `events`, so the
-    // stand-in needs one (the test only inspects `sources`).
+    // A real pre-004 deployment has the tables 001 created; 006 and 007 index `events`, so the
+    // stand-in needs one (the test only inspects `sources`). The columns those two indexes name
+    // are the ones this table has to carry: `project_id` + `metadata` for 006, and
+    // `session_id` + `timestamp` + `raw_seq` + `subtype` for 007.
     db.exec(`CREATE TABLE events (
       id TEXT PRIMARY KEY, agent_id TEXT, project_id TEXT, request_id TEXT, timestamp INTEGER,
+      session_id TEXT, raw_seq INTEGER, subtype TEXT,
       input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER,
       cache_write_tokens INTEGER, reasoning_tokens INTEGER, duration_ms INTEGER, metadata TEXT
     )`)
@@ -156,7 +161,7 @@ describe('migrations', () => {
       "INSERT INTO sources (id, agent_id, path, kind, last_offset, status) VALUES ('s1','a1','/x/opencode.db','sqlite',512,'active')",
     ).run()
 
-    expect(migrate(db)).toEqual(['004_sqlite_table_in_sources.sql', '005_machine.sql', '006_measured_read_paths.sql'])
+    expect(migrate(db)).toEqual(['004_sqlite_table_in_sources.sql', '005_machine.sql', '006_measured_read_paths.sql', '007_session_title_index.sql'])
     const cols = (db.prepare('PRAGMA table_info(sources)').all() as { name: string }[]).map((c) => c.name)
     expect(cols).toContain('sqlite_table')
     const row = db.prepare("SELECT sqlite_table, last_offset FROM sources WHERE id = 's1'").get() as
@@ -196,6 +201,33 @@ describe('migrations', () => {
         .map((r) => r.detail)
         .join('\n'),
     ).toContain('idx_events_cwd')
+    db.close()
+  })
+
+  /**
+   * 007 exists because `watch` now runs the title projection on any batch that lands a title
+   * record, and that pass had no access path: it read all 398,794 events to find the 5,356 that
+   * name a session (1.44 s cold, 164 ms warm) where the store's own tick budget is seconds. With
+   * the partial index the same statement is 8 ms. Same rule as 006: pin the plan, not the name.
+   */
+  it('007 gives the title projection an access path the planner actually takes', () => {
+    const db = openDatabase(':memory:')
+    migrate(db)
+    const names = (
+      db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_events_%'").all() as { name: string }[]
+    ).map((r) => r.name)
+    expect(names).toContain('idx_events_session_title')
+    expect(
+      (
+        db
+          .prepare(
+            "EXPLAIN QUERY PLAN SELECT session_id, subtype, json_extract(metadata,'$.value.title') FROM events WHERE type = 'unknown' AND subtype IN ('custom-title', 'ai-title') AND session_id IS NOT NULL",
+          )
+          .all() as { detail: string }[]
+      )
+        .map((r) => r.detail)
+        .join('\n'),
+    ).toContain('idx_events_session_title')
     db.close()
   })
 })

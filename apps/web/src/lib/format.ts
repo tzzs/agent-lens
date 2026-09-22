@@ -42,6 +42,26 @@ export function formatMs(ms: number | null | undefined): string {
   return `${h}h ${m % 60}m`
 }
 
+/**
+ * What the session-level `duration` metric actually is, in the words every surface that shows it
+ * uses. It sums the durations agents reported for their own calls, so it is machine time: a
+ * session left open overnight reads as seconds, and one whose calls never reported a duration
+ * reads as nothing. Labelling that "Duration" invites the other reading, which is why the session
+ * surfaces call it "Active" and put the wall clock beside it.
+ */
+export const ACTIVE_METRIC_INFO =
+  'Summed time of recorded events (model calls, tool runs), each request counted once — not wall-clock time.'
+
+/**
+ * A session's wall clock: first event to last. `null` when either end is unknown or they are the
+ * same instant, because a span of zero says nothing the event count does not already.
+ */
+export function spanMs(first: number | null | undefined, last: number | null | undefined): number | null {
+  if (first === null || first === undefined || last === null || last === undefined) return null
+  if (!Number.isFinite(first) || !Number.isFinite(last) || last <= first) return null
+  return last - first
+}
+
 export function formatDateTime(ts: number | null | undefined): string {
   if (ts === null || ts === undefined || !Number.isFinite(ts)) return '—'
   return new Date(ts).toISOString().replace('T', ' ').slice(0, 19) + 'Z'
