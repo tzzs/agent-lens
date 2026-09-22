@@ -108,8 +108,37 @@ export const CLAUDE_CODE_SUBAGENT_LINK: SubagentLinkVocabulary = {
   linkedParentKey: 'linked_parent',
 }
 
+/**
+ * Produced by `adapters/zcode/src/normalize.ts` (`subagentStart` from the `session` source and
+ * the `subagent.end` close from the `cli/agents/…/metadata.json` source).
+ *
+ * ZCode is the reason `proofNames` exists. Its spawn is an `Agent` tool call recorded in the
+ * `part` table, but the thing that proves which call opened which child session is a separate
+ * document the engine writes under `cli/agents/`, and that document names the call by its raw
+ * id (`parentToolUseId`) — never by a SQLite rowid. So the adapter cannot restate the spawn's
+ * event id, which is what `deriveEventId` would need, and a proof that arrived as a timestamp
+ * guess would be strictly worse than the foreign key it is standing in for.
+ *
+ * The chain key is the child session's own id, which both sides know: it is `native_session_id`
+ * on the child session's `subagent.start` and `childSessionId` in the closing document. Measured
+ * on a live store, that join is a 28/28 bijection with the `Agent` calls (`docs/research/zcode.md`
+ * §八·5), so this agent should resolve by proof, not by heuristic.
+ */
+export const ZCODE_SUBAGENT_LINK: SubagentLinkVocabulary = {
+  agentId: 'zcode',
+  chainKey: 'native_session_id',
+  spawnToolUseKey: 'call_id',
+  parentSourceKey: 'parent_source',
+  foreignKeyValue: 'foreign-key',
+  linkedParentKey: 'linked_parent',
+  proofNames: 'tool-use-id',
+}
+
 /** Agents whose stored rows this linker understands. Adding one is a vocabulary declaration. */
-export const SUBAGENT_LINK_VOCABULARIES: readonly SubagentLinkVocabulary[] = [CLAUDE_CODE_SUBAGENT_LINK]
+export const SUBAGENT_LINK_VOCABULARIES: readonly SubagentLinkVocabulary[] = [
+  CLAUDE_CODE_SUBAGENT_LINK,
+  ZCODE_SUBAGENT_LINK,
+]
 
 /** How a resolved parent is justified: a proof beats a guess, and only a guess says `heuristic`. */
 export type SubagentParentEvidence = 'foreign-key' | 'heuristic'
