@@ -21,8 +21,10 @@
 
   const trendVals = (key: string) => (d ? d.trend.map((r) => Number(r[key] ?? 0)) : [])
   const trendLabels = $derived(d ? d.trend.map((r) => String(r[gran] ?? r.day ?? r.time ?? '').slice(0, 10)) : [])
-  // null cost buckets (unpriced) plot as 0 but the card keeps the n/a honesty
-  const costSeries = $derived(d ? d.trend.map((r) => (r.cost_api_equiv == null ? 0 : Number(r.cost_api_equiv))) : [])
+  // An unpriced bucket stays unknown: `null` reaches the chart as a gap rather than a $0
+  // point, because a day plotted at zero reads as "nothing was spent" when the truth is
+  // "we could not price it" (§8). The card's headline already says n/a; the series must not contradict it.
+  const costSeries = $derived<(number | null)[]>(d ? d.trend.map((r) => (r.cost_api_equiv == null ? null : Number(r.cost_api_equiv))) : [])
 
   const agentSlices = $derived(d ? d.agents.map((r) => ({ label: String(r.agent), value: Number(r.tokens_total ?? 0) })) : [])
   const projectSlices = $derived(
@@ -109,7 +111,7 @@
     </Surface>
 
     <Surface title="Est. cost trend" subtitle="API-equivalent $ per {gran} — an estimate, not cash">
-      <Sparkline values={costSeries} labels={trendLabels} color="var(--cat-3)" format={(n) => '$' + n.toFixed(2)} label="Estimated cost per {gran}" />
+      <Sparkline values={costSeries} labels={trendLabels} color="var(--cat-3)" format={(n) => '$' + n.toFixed(2)} unknown="no price" label="Estimated cost per {gran}" />
     </Surface>
     <Surface title="Event trend" subtitle="Metric events per {gran}">
       <Sparkline values={trendVals('events')} labels={trendLabels} color="var(--cat-4)" format={formatCompact} label="Events per {gran}" />

@@ -100,3 +100,32 @@ describe('CostFigure "reported" basis copy (§18 row 1, §14)', () => {
     }
   })
 })
+
+/**
+ * §8's other half: an unpriced bucket in the Overview cost trend was coerced to 0 to
+ * satisfy the chart's `number[]`, which plots "we could not price this day" at exactly
+ * the height of "this day cost nothing". Same component-level reasoning as above: no
+ * svelte plugin in the root vitest config, so the rule is pinned where it is written.
+ */
+describe('the cost trend keeps unknown unknown (§8)', () => {
+  const OVERVIEW = fileURLToPath(new URL('../../web/src/pages/Overview.svelte', import.meta.url))
+  const SPARKLINE = fileURLToPath(new URL('../../web/src/components/charts/Sparkline.svelte', import.meta.url))
+
+  it('maps a null cost to null, not to 0', () => {
+    const line = readFileSync(OVERVIEW, 'utf8')
+      .split('\n')
+      .find((l) => l.includes('const costSeries'))
+    expect(line, 'Overview.svelte must keep a single-line costSeries').toBeDefined()
+    expect(line).toContain('null : Number(r.cost_api_equiv)')
+    expect(line).not.toContain('? 0 :')
+  })
+
+  it('takes nulls in its series type so a gap is expressible', () => {
+    const src = readFileSync(SPARKLINE, 'utf8')
+    expect(src).toContain('values?: (number | null)[]')
+    // The peak must be computed over known buckets only, or one big priced day is fine
+    // while an all-unknown window reads as a flat zero line.
+    expect(src).toContain('const priced = $derived(values.filter((v): v is number => v !== null))')
+    expect(src).toContain('Math.max(0, ...priced)')
+  })
+})
