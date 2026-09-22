@@ -8,6 +8,7 @@
 > **v2.1（2026-09-21）：已按 `docs/research/claude-code.md` 的实测修订。** 实测样本 92 个 JSONL / 68,314 条记录，推翻了 v2 关于 usage 剥离的假设，并新增三条会导致数字根本性错误的规则（`requestId` 去重、`entrypoint` 身份拆分、worktree 项目归组）。
 > **v2.2：ccusage 对账通过（口径四字段 0.0% 偏差），同时据此收缩了 §1 的差异化主张** —— ccusage 已覆盖 18 个 Agent CLI 并有 per-project 报表，重心因此移到 Session / Capability / 规范化实体三件事。被修订处均标注「实测」。
 > **v2.3（2026-09-21）：实测第二轮见 §18。** Codex / Qoder / OpenCode / WorkBuddy 的测量证伪了 §3.1 的「去重是全局不变量」、§4.1 的「一文件一 session」与 §8 的「日志里没有成本字段」三条，并发现只读打开 WAL 模式的第三方库会产生写入副作用。M2 的 Schema 第二轮修订因此提前，落地清单在 §18 末尾。
+> **v2.4（2026-09-23）：§8 增加 OpenRouter 兜底价格源。** 只做缺口补价、永远排在 litellm 之下，附本机实测数字。
 
 ---
 
@@ -391,6 +392,7 @@ usage (tokens, 分层)  →  PricingTable.lookup(model, occurred_at)  →  CostB
 
 - `models` 表存 `(provider, model, tier)` + 分价：input / output / cacheRead / cacheWrite / reasoning，**价格带生效日期区间**（模型会改价，历史成本必须可复现）。
 - 价格数据来源：**不手工维护**。上游取 `litellm` 的 `model_prices_and_context_window.json`，构建时生成快照进包，运行时可 `agentlens pricing update` 刷新，用户可用 `pricing override` 覆写。
+- **兜底源：OpenRouter `GET /api/v1/models`**（免鉴权，实测 444 个模型）。`agl pricing update --source openrouter` 把它写成同目录的第二个快照文件 `price-snapshot-openrouter.json`，`loadMergedPricing` 只用它补主快照**没有价**的模型（`PricingTable.withGapFill` 按模型名判定，所以它既不会改写 litellm 的数字，也不会让「只按模型名匹配」那条分支变成「多 provider → 无价」）。它**永远排在 litellm 之下**：OR 顶层 `pricing` 是某条转售路由的报价（同一模型 `/endpoints` 里有 3 档价），而本节的"等价 API 价值"要的是厂商列表价——实测两边都有价的 20 个模型里 4 个不一致，最大 2 倍。必须过滤的行：`:batch`(67) 与 `:free`(21，0 价) 会被 `normalizeModelName` 折到基名上，`~*-latest`(18) 是滚动别名；不收进来就会让半价或 $0 赢得查询，正是本节禁止的那种错。
 - **三种计费口径**（v1 完全没讨论，但这是真实场景的主要成本构成）：
 
 | 模式 | 成本计算 | 说明 |
@@ -403,6 +405,8 @@ UI 必须同时呈现"实际花费"和"等价 API 价值"，并让用户在设�
 
 - 缺价模型 → `cost = NULL` + `pricing_gap` 记录，`doctor` 报告；**绝不当成 $0**（$0 会被误读为"本地模型"）。
 - 实测依据：Claude Code 日志**不含任何成本字段**（20,043 条带 usage 的记录里 `costUSD` 出现 0 次），所以成本 100% 依赖本地价格表；且本机 4 个月内出现 7 个模型标识（`claude-sonnet-5` 9,236 / `claude-opus-4-8` 2,390 / `claude-sonnet-4-6` 2,160 / `claude-opus-5` 1,979 / `claude-opus-4-7` 1,688 / `claude-opus-4-6` 1,614 / `claude-haiku-4-5` 882，另有 `deepseek-flash` 2 与占位的 `<synthetic>`）。**模型名会持续新增**，价格表未覆盖是常态而非异常，`doctor` 的 pricing gap 一栏必须显眼。
+- 兜底源实测（v2.4，2026-09-23）：拿本机真实 store 里 token 量最大的 6 个模型标识 + 真实 token 量造库、打真实 OpenRouter 接口——litellm 无价的 `GLM-5.3-Flash`（1.63 亿 token，占本机缺口的大头）从 `n/a` → `$26.83`，litellm 已定价的 4 行数字**一字未变**，`codex-auto-review` 仍是 `n/a`（两边都没价，兜底不编造）。OR 快照共补上 274 个 (provider, model)。
+- 兜底源**已知不覆盖**的两件事（不是 OpenRouter 的缺陷，是我们的 `Usage` 表达不了）：Anthropic 的 1 小时缓存写按 1.6 倍单独计价（OR 有 `input_cache_write_1h`，我们只有一个 cacheWrite 桶；`reconcile-ccusage` 里对账残留的 $47.94 正是这一项），以及长上下文档位（OR 的 `overrides[].min_prompt_tokens>=200k`，`PriceEntry.tier` 目前只是字段、`computeCost` 不看它）。
 
 ---
 
