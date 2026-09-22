@@ -35,8 +35,28 @@ export { agents, type AgentsResponse } from './agents.ts'
 export { models, type ModelsResponse } from './models.ts'
 export { doctor } from './doctor.ts'
 export type { DoctorReport, DoctorAgentRow } from './doctor-types.ts'
-export { coverageReport, type CoverageReport } from './coverage.ts'
-export { costView, missingPriceModels, type CostView } from './cost.ts'
+export {
+  coverageBanner,
+  coverageReport,
+  INGESTED_RETENTION,
+  projectRowsPhrase,
+  retentionPhrase,
+  UPSTREAM_RETENTION,
+  type CoverageReport,
+  type RetentionScope,
+} from './coverage.ts'
+export {
+  actualUsdFor,
+  costView,
+  missingPriceModels,
+  modelSpend,
+  unpricedBuckets,
+  unpricedModelKey,
+  unpricedModels,
+  type CostView,
+  type ModelSpend,
+  type UnpricedModel,
+} from './cost.ts'
 export { banners, hostSplitBanner, hostSplitsByAgent, type HostSplitBanner } from './banners.ts'
 export { DEFAULT_POLL_MS, SSE_KEEPALIVE_MS, pollChangeSource } from './changes.ts'
 export { contentLayerPresent, loadPayloads, payloadCount } from './content.ts'

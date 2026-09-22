@@ -33,6 +33,68 @@ export interface EmptyDir {
   lastEventAt: number | null
 }
 
+/**
+ * §11's Coverage block answers TWO questions, and both surfaces now say so in the same words.
+ *
+ * The filesystem survey `agl doctor` runs asks "what does upstream still have?", including dirs
+ * this tool never ingested a row from; the `sources` table behind the dashboard banner asks
+ * "what did we ingest, and what of it has since gone?". Two counts of two different
+ * populations, previously phrased almost identically, are exactly the §14 failure the audit
+ * recorded — one number, one source, and where a second source is genuinely needed, a second
+ * LABEL. So the clause below is the only place this fact is worded, and every caller names its
+ * population through a `RetentionScope`.
+ */
+export interface RetentionScope {
+  readonly id: 'ingested' | 'upstream'
+  /** What is being counted, in the same words everywhere. */
+  readonly noun: string
+  /** Which population the count covers; printed beside it. */
+  readonly population: string
+}
+
+/** Dirs this tool holds a `sources` row for, whose file is gone while the dir remains. */
+export const INGESTED_RETENTION: RetentionScope = {
+  id: 'ingested',
+  noun: 'source dir',
+  population: 'upstream retention, dirs this store already has rows for',
+}
+
+/**
+ * A project root with no session rows is a DIFFERENT fact from retention — it may simply never
+ * have been scanned — so it gets its own sentence here rather than borrowing the retention one.
+ */
+export function projectRowsPhrase(count: number): string {
+  return `${count} attributed project root${count === 1 ? '' : 's'} hold no session rows here — never ingested from them, or retention took it since (§7)`
+}
+
+/** First-level dirs of a live agent store — including ones nothing was ever ingested from. */
+export const UPSTREAM_RETENTION: RetentionScope = {
+  id: 'upstream',
+  noun: 'session dir',
+  population: 'upstream retention, every dir in the live store whether ingested or not',
+}
+
+/** The single wording of the single fact; `total`/`under` only place the count, never rename it. */
+export function retentionPhrase(scope: RetentionScope, count: number, total?: number, under?: string | null): string {
+  const plural = (n: number) => `${scope.noun}${n === 1 ? '' : 's'}`
+  const head = total === undefined ? `${count} ${plural(count)}` : `${count} of ${total} ${plural(total)}`
+  const one = count === 1
+  return `${head}${under ? ` under ${under}` : ''} still exist${one ? 's' : ''} but hold${one ? 's' : ''} no session files (${scope.population}, §4.4 row 4)`
+}
+
+/**
+ * The dashboard banner. It used to add two different populations into one number and call the
+ * sum "source dirs"; each now says what it counts, so the terminal's broader filesystem sweep
+ * and this narrower table read can be told apart on screen.
+ */
+export function coverageBanner(retainedSourceDirs: number, projectRootsWithoutRows: number): string | null {
+  const clauses = [
+    retainedSourceDirs > 0 ? retentionPhrase(INGESTED_RETENTION, retainedSourceDirs) : null,
+    projectRootsWithoutRows > 0 ? projectRowsPhrase(projectRootsWithoutRows) : null,
+  ].filter((c): c is string => c !== null)
+  return clauses.length === 0 ? null : `${clauses.join(' · ')} — history is incomplete`
+}
+
 export interface CoverageReport {
   generatedAt: number
   incomplete: boolean
@@ -111,7 +173,6 @@ export function coverageReport(ctx: ServerCtx): CoverageReport {
 
   const missingDirs = [...byDir.values()].sort((a, b) => b.missingSources - a.missingSources || a.dir.localeCompare(b.dir))
   const incomplete = missingDirs.length > 0 || projectDirsWithoutSessions.length > 0 || unreachable.length > 0
-  const bannerCount = missingDirs.length + projectDirsWithoutSessions.length
   return {
     generatedAt: ctx.now(),
     incomplete,
@@ -120,11 +181,8 @@ export function coverageReport(ctx: ServerCtx): CoverageReport {
     emptyDirs: missingDirs.slice(0, 200),
     projectDirsWithoutSessions: projectDirsWithoutSessions.slice(0, 200),
     eventlessSessions,
-    banner:
-      bannerCount > 0
-        ? `${bannerCount} source dir${bannerCount === 1 ? '' : 's'} still exist${bannerCount === 1 ? 's' : ''} but hold no session files left (upstream retention) — history is incomplete`
-        : null,
+    banner: coverageBanner(missingDirs.length, projectDirsWithoutSessions.length),
     limits:
-      'only dirs already ingested at least once are visible here; dirs never scanned cannot be distinguished from dirs with nothing in them — run `agl doctor` for the adapter-level sweep',
+      'only dirs already ingested at least once are visible here; dirs never scanned cannot be distinguished from dirs with nothing in them — `agl doctor` sweeps the live store instead, and says which population it counted',
   }
 }
