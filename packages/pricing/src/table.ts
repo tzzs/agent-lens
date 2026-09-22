@@ -5,13 +5,31 @@ import type { PriceEntry } from './price-types.ts'
  * Keys agents put in logs are messier than litellm ids: bracket forms
  * (`claude-opus-4-8[1m]`) and tier suffixes (`gpt-5:low`). Strip them for
  * matching; the raw `entry.model` is kept for display.
+ *
+ * Brackets come off in a scan rather than with `/\[[^\]]*\]/g`, which restarts its
+ * inner run at every `[` and so costs quadratic time on a name that is mostly unclosed
+ * brackets. The shape of that input stopped being hypothetical: model ids now also
+ * arrive from a fetched price list, which this table does not get to trust the way it
+ * trusts a local log (CodeQL flagged it where main had already been carrying it).
  */
 export function normalizeModelName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/\[[^\]]*\]/g, '')
-    .replace(/[:@].*$/, '')
-    .trim()
+  let stripped = ''
+  let i = 0
+  while (i < name.length) {
+    const ch = name[i]!
+    if (ch === '[') {
+      const close = name.indexOf(']', i + 1)
+      if (close === -1) {
+        stripped += name.slice(i) // an unclosed `[` is not a tier marker; keep it verbatim
+        break
+      }
+      i = close + 1
+      continue
+    }
+    stripped += ch
+    i++
+  }
+  return stripped.toLowerCase().replace(/[:@].*$/, '').trim()
 }
 
 /**

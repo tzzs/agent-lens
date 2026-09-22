@@ -75,6 +75,30 @@ describe('PricingTable metadata', () => {
   })
 })
 
+describe('normalizeModelName', () => {
+  /**
+   * Pinned against the behaviour of the `/\[[^\]]*\]/g` pass this replaced, including the
+   * cases a reader would guess wrong: an unclosed `[` is NOT a tier marker, a lone `]` is
+   * not either, and the bracket pass runs before the `:`/`@` cut.
+   */
+  const CASES: [string, string][] = [
+    ['Claude-Opus-4-8[1m]', 'claude-opus-4-8'],
+    ['gpt-5:low', 'gpt-5'],
+    ['a[b[c]d', 'ad'],
+    ['a]b[c]d', 'a]bd'],
+    ['deepseek[', 'deepseek['],
+    ['[a]', ''],
+    ['[a]b[c', 'b[c'],
+    ['x@y[1m]', 'x'],
+    ['  spaced [tier] name ', 'spaced  name'],
+  ]
+  for (const [input, want] of CASES) {
+    it(`${JSON.stringify(input)} -> ${JSON.stringify(want)}`, () => {
+      expect(normalizeModelName(input)).toBe(want)
+    })
+  }
+})
+
 describe('PricingTable.withGapFill (§8: openrouter is a fallback, not an override)', () => {
   const primary = PricingTable.fromSnapshot(
     {
