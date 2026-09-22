@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import type { AgentEvent } from '@agentlens/event-model'
 import { validateEvent } from '@agentlens/event-model'
 import { zcodeAdapter } from '../src/index.ts'
-import { buildHost, FIXTURE_MESSAGES, type BuiltHost } from '../fixtures/build-host.ts'
+import { buildHost, COMPACTING_SESSION, FIXTURE_MESSAGES, FIXTURE_SESSIONS, type BuiltHost } from '../fixtures/build-host.ts'
 import { SOURCE_TABLES, hostCtx, scanAll, scanSource } from './helpers.ts'
 
 async function withHost(fn: (host: BuiltHost) => Promise<void>): Promise<void> {
@@ -101,8 +101,10 @@ describe('zcode adapter · the §七 mapping census', () => {
   /**
    * Every figure is the §七 row count of the fixture. The two cycle sessions exist to prove
    * the root walk terminates, and they do have `parent_id`, so they are counted:
-   *  - `session` 5 rows → 5 `session.start`, 3 `subagent.start` (child + both cycle rows,
-   *    each having a parent), 1 `session.end` (the one `time_archived` row);
+   *  - `session` 6 rows → 6 `session.start`, 3 `subagent.start` (child + both cycle rows,
+   *    each having a parent), 1 `session.end` (the one `time_archived` row), 1
+   *    `context.compact` (the one `time_compacting` row — §17 item 5's "does this agent even
+   *    have compaction", answered as an event so the capability dimensions can see it);
    *  - `message` 10 rows → 1 `message.user` (the only `real_user` prompt), 3
    *    `message.assistant`, 1 `error`, 6 `unknown` (four injected kinds + an unseen kind + a
    *    row with no `semantics` at all);
@@ -120,19 +122,41 @@ describe('zcode adapter · the §七 mapping census', () => {
       for (const e of events) byType.set(e.type, (byType.get(e.type) ?? 0) + 1)
       expect(Object.fromEntries([...byType.entries()].sort())).toEqual({
         error: 1,
+        'context.compact': 1,
         'generation.end': 6,
         'generation.start': 1,
         'message.assistant': 6,
         'message.user': 2,
         'mcp.invoke': 2,
         'session.end': 1,
-        'session.start': 5,
+        'session.start': 6,
         'skill.invoke': 1,
         'subagent.start': 4,
         'tool.end': 8,
         'tool.start': 5,
         unknown: 12,
       })
+    })
+  })
+
+  it('states compaction as an event, not as a field buried in one row', async () => {
+    await withHost(async (host) => {
+      const { byTable } = await scanAll(host.dbPath)
+      const sessions = byTable.get('session') ?? []
+      const compacts = sessions.filter((e) => e.type === 'context.compact')
+      // One seeded row, one event; the other five sessions state no compaction at all, and a
+      // NULL column must never become a fabricated marker.
+      expect(compacts).toHaveLength(1)
+      const [compact] = compacts
+      expect(compact?.metadata).toMatchObject({ source: 'session.time_compacting' })
+      expect(compact?.usage).toBeNull()
+      expect(compact?.requestId).toBeNull()
+      const seeded = FIXTURE_SESSIONS.find((s) => s.timeCompacting !== null && s.timeCompacting !== undefined)
+      // The instant is the store's own, copied verbatim — not a scan-clock guess (§5.2).
+      expect(compact?.timestamp).toBe(seeded?.timeCompacting ?? null)
+      expect(seeded?.id).toBe(COMPACTING_SESSION)
+      // The fact is no longer duplicated inside `session.start`'s metadata.
+      expect(sessions.find((e) => e.type === 'session.start')?.metadata).not.toHaveProperty('compacting_at')
     })
   })
 

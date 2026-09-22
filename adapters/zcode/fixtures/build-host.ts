@@ -342,6 +342,7 @@ export interface BuiltHost {
 export const ROOT_SESSION = 'sess_fixture_root_0000000001'
 export const CHILD_SESSION = 'sess_fixture_child_0000000002'
 export const ARCHIVED_SESSION = 'sess_fixture_archived_0003'
+export const COMPACTING_SESSION = 'sess_fixture_compacting_006'
 export const CYCLE_A_SESSION = 'sess_fixture_cycle_a_0004'
 export const CYCLE_B_SESSION = 'sess_fixture_cycle_b_0005'
 
@@ -411,6 +412,21 @@ export const FIXTURE_SESSIONS: SessionSeed[] = [
   // foreign key in ZCode's schema). Without the walk's cycle guard `parse` spins forever.
   { id: CYCLE_A_SESSION, parentId: CYCLE_B_SESSION, directory: '/work/zroot', version: '0.16.5', title: 'cycle a', taskType: 'interactive' },
   { id: CYCLE_B_SESSION, parentId: CYCLE_A_SESSION, directory: '/work/zroot', version: '0.16.5', title: 'cycle b', taskType: 'interactive' },
+  // ZCode expresses compaction the way OpenCode does: a session timestamp, not a transcript
+  // record (`time_compacting` is NULL on 38/38 local rows, so this branch has no live evidence
+  // and only a seeded one). §17 item 5 asks per agent whether a compact event exists at all.
+  {
+    id: COMPACTING_SESSION,
+    projectId: 'proj_work-zroot',
+    parentId: null,
+    directory: '/work/zroot',
+    version: '0.16.5',
+    title: 'synthetic compacted session title',
+    titleSource: 'first_input',
+    taskType: 'interactive',
+    permission: '{"mode":"plan"}',
+    timeCompacting: T0 + 12_000,
+  },
 ]
 
 /** `message.data.semantics` is what the mapper dispatches on; `role` is deliberately misleading. */

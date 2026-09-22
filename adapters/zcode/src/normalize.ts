@@ -370,7 +370,6 @@ function fromSession(s: Scope): AgentEvent[] {
         native_project_id: str(s.row.__session_project_id) ?? str(s.row.project_id),
         directory_present: (str(s.row.__session_directory) ?? str(s.row.directory)) !== null,
         has_title: str(s.row.title) !== null && str(s.row.title) !== '',
-        compacting_at: ms(s.row.time_compacting),
         rollup: sessionRollup(s.row),
       },
       subagentThread: s.subagentThread,
@@ -389,6 +388,23 @@ function fromSession(s: Scope): AgentEvent[] {
         capability: { type: 'subagent', name: 'subagent', provider: 'session.parent_id' },
         metadata: { parent_session_id: s.parentSessionId, native_session_id: native },
         subagentThread: true,
+      }),
+    )
+  }
+
+  const compactAt = ms(s.row.time_compacting)
+  if (compactAt !== null) {
+    // §17 item 5: ZCode states compaction the same way OpenCode does — a session timestamp, so
+    // this is a derived marker with no token delta, enough to explain a cost jump downstream.
+    // It is an event rather than a metadata field because the capability dimensions and `doctor`
+    // count `context.compact`; a field hidden inside one row's metadata reads as "no compaction".
+    out.push(
+      event(s, {
+        type: 'context.compact',
+        discriminator: 'context-compact',
+        timestamp: compactAt,
+        metadata: { source: 'session.time_compacting' },
+        subagentThread: s.subagentThread,
       }),
     )
   }

@@ -19,9 +19,10 @@ import { parse } from './parse.ts'
 import { AGENT_ID, HOST_ID } from './record.ts'
 
 /** Bump when the mapping rules change: a mismatch forces a full rescan (§5.3). */
-// §5.3: identity derivation changed (tier-3 session bucket, §5.2 timestamp provenance),
-// so stored rows must be replayed and repaired rather than left at the old ids.
-export const PARSER_VERSION = 2
+// v3: `session.time_compacting` became a `context.compact` event instead of a field hidden in
+// one row's metadata, so a store that compacts must be replayed for the dimension to appear.
+// (v2 was the ingest-wide identity/provenance bump, §4.1/§5.2.)
+export const PARSER_VERSION = 3
 
 /**
  * §18 row 2 — the fold ZCode's rows are honest about.

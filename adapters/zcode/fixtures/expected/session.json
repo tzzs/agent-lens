@@ -1,5 +1,34 @@
 [
   {
+    "id": "0e47e1b8ce12418d2f1f8db9b2ece687034950dc60343cdfb058777398d9da21",
+    "type": "context.compact",
+    "subtype": null,
+    "sessionId": "33459f70c2b9afc89930d30176d252bfa907cc1913a72a8a90a8098d930ce9e7",
+    "threadId": "sess_fixture_compacting_006",
+    "projectId": "project:zroot",
+    "hostId": "zcode",
+    "timestamp": 1760000012000,
+    "rawSeq": 6,
+    "rawOffset": 6,
+    "requestId": null,
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "model": null,
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "session",
+      "rowid": 6,
+      "source": "session.time_compacting"
+    }
+  },
+  {
     "id": "12ef4b1ff3c781980360638ccf49a8223c45ffaa7f4a18f8fed1fb02ec87502f",
     "type": "subagent.start",
     "subtype": null,
@@ -70,6 +99,50 @@
     }
   },
   {
+    "id": "2ee5fc065d025523dcf451f5af0011489e2e6b8aa19bafd745be33723d69603e",
+    "type": "session.start",
+    "subtype": null,
+    "sessionId": "33459f70c2b9afc89930d30176d252bfa907cc1913a72a8a90a8098d930ce9e7",
+    "threadId": "sess_fixture_compacting_006",
+    "projectId": "project:zroot",
+    "hostId": "zcode",
+    "timestamp": 1760000000000,
+    "rawSeq": 6,
+    "rawOffset": 6,
+    "requestId": null,
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "model": null,
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "session",
+      "rowid": 6,
+      "native_session_id": "sess_fixture_compacting_006",
+      "parent_session_id": null,
+      "title_source": "first_input",
+      "version": "0.16.5",
+      "mode": "plan",
+      "task_type": "interactive",
+      "native_project_id": "proj_work-zroot",
+      "directory_present": true,
+      "has_title": true,
+      "rollup": {
+        "cost": null,
+        "tokens": null,
+        "summary_additions": null,
+        "summary_deletions": null,
+        "summary_files": null
+      }
+    }
+  },
+  {
     "id": "41a366095550c7bc6e11403779fe24372aea273cf86a0a1b52235eac79796a2d",
     "type": "session.start",
     "subtype": null,
@@ -104,7 +177,6 @@
       "native_project_id": "proj_work-zroot",
       "directory_present": true,
       "has_title": true,
-      "compacting_at": null,
       "rollup": {
         "cost": null,
         "tokens": null,
@@ -179,7 +251,6 @@
       "native_project_id": "proj_work-zroot",
       "directory_present": true,
       "has_title": true,
-      "compacting_at": null,
       "rollup": {
         "cost": null,
         "tokens": null,
@@ -224,7 +295,6 @@
       "native_project_id": "proj_work-zbeta",
       "directory_present": true,
       "has_title": true,
-      "compacting_at": null,
       "rollup": {
         "cost": null,
         "tokens": null,
@@ -269,7 +339,6 @@
       "native_project_id": "proj_work-zroot",
       "directory_present": true,
       "has_title": true,
-      "compacting_at": null,
       "rollup": {
         "cost": null,
         "tokens": null,
@@ -350,7 +419,6 @@
       "native_project_id": "proj_work-zroot",
       "directory_present": true,
       "has_title": true,
-      "compacting_at": null,
       "rollup": {
         "cost": null,
         "tokens": null,
