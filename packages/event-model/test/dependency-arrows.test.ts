@@ -6,6 +6,11 @@ import { describe, expect, it } from 'vitest'
 // nobody checks drifts the first time an adapter reaches for a neighbour's helper,
 // so the import graph itself is asserted here. Only src/ counts: a test may seed the
 // database directly, which is not a product dependency.
+//
+// This file cannot catch the OTHER §14 failure mode, because there is no illegal import
+// in it: `apps/cli` and `packages/server` are both allowed to import a shared helper, so
+// nothing here stops each of them from writing its own copy of a rule instead. That axis
+// — one rule, one owner, surfaces must call it — is `rule-homes.test.ts` next door.
 const ROOT = new URL('../../..', import.meta.url).pathname
 
 // Discovered from the filesystem, not a hand-written list: an eighth adapter has to

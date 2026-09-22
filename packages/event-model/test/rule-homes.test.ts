@@ -14,6 +14,12 @@
  * syntactic and slightly over-eager, because the cost of a false alarm (move a line, or add the
  * rule to its owner and call it) is far below the cost of two surfaces disagreeing about a figure
  * the user is being asked to trust.
+ *
+ * All four rules the whole-plan audit found split across the surfaces are here — the host split,
+ * the coverage clause, the unpriced-model set and the billing-mode fold — plus the three this
+ * file was written for (the pricing merge, the timeline order, the project label). No rule is
+ * exempt, and a rule whose home has to be a surface file names that file, which a separate check
+ * then proves really does hold it.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -41,8 +47,20 @@ interface Rule {
   what: string
   /** Package + export that owns the answer. */
   home: string
+  /**
+   * Set when the owner is one of the two surfaces instead of a shared package: the ONE file
+   * allowed to state the rule. Without this, a rule the surfaces cannot push downward (it
+   * needs the `sources` table, or a price entry) has no home the guard can name, and "no
+   * surface may state it" would flag the only copy that exists.
+   */
+  statedIn?: string
   /** Writing this in a surface means the owner was bypassed. */
   forbidden: { re: RegExp; why: string }[]
+  /**
+   * Files that present this fact to a user must name the owner. A surface that stops calling
+   * it has not been deleted — it has gone quiet, or grown its own copy next release.
+   */
+  calls?: { file: string; symbol: string }[]
 }
 
 const RULES: Rule[] = [
@@ -70,7 +88,52 @@ const RULES: Rule[] = [
       { re: /raw_seq IS NULL/, why: 're-sorting per surface is exactly the drift §19 records for Web vs CLI session order' },
     ],
   },
+  {
+    what: 'the clause coverage uses for a dir that outlived its session files (§11)',
+    home: '@agentlens/server → coverage.ts retentionPhrase / coverageBanner',
+    statedIn: 'packages/server/src/coverage.ts',
+    forbidden: [
+      {
+        re: /holds? no session files/,
+        why: 'this clause IS the label; the filesystem sweep and the `sources` table answer two different questions and used to phrase them almost identically (§14)',
+      },
+      { re: /retentionPhrase\(\s*scope/, why: 'a second builder is a second label for the same fact' },
+    ],
+    calls: [
+      { file: 'apps/cli/src/index.ts', symbol: 'coverageReport' },
+      { file: 'apps/cli/src/commands/doctor.ts', symbol: 'retentionPhrase' },
+    ],
+  },
+  {
+    what: 'which models are unpriced, and which of their buckets lack a price (§8, §11)',
+    home: '@agentlens/server → cost.ts modelSpend / unpricedBuckets / missingPriceModels',
+    statedIn: 'packages/server/src/cost.ts',
+    forbidden: [
+      { re: /isMissingPrice/, why: 'the per-bucket test is the rule; the server used to ask only "is the entry null", so a gap the cube rendered as n/a went unreported' },
+      { re: /PRICE_MISSING/, why: 'the same rule in its sentinel form' },
+      { re: /FROM models m LEFT JOIN events/, why: 'one model-spend read; the two copies differed in how they filled `last_seen`, which is the price lookup date' },
+    ],
+    calls: [
+      { file: 'apps/cli/src/commands/doctor.ts', symbol: 'modelSpend' },
+      { file: 'apps/cli/src/commands/doctor.ts', symbol: 'unpricedBuckets' },
+      { file: 'packages/server/src/models.ts', symbol: 'missingPriceModels' },
+    ],
+  },
+  {
+    what: "the §8 fold from an API-equivalent amount to actual cash for a declared mode",
+    home: "@agentlens/pricing → computeCost, projected per agent by @agentlens/server → actualUsdFor",
+    statedIn: 'packages/server/src/cost.ts',
+    forbidden: [
+      {
+        re: /=== 'api' \?/,
+        why: "the mode table is pricing's; this file holds the only surface-side projection of it (a per-agent aggregate has no single PriceEntry to hand computeCost), and packages/server/test/cost.test.ts asserts the two agree for every mode",
+      },
+    ],
+    calls: [{ file: 'packages/server/src/cost.ts', symbol: 'actualUsdFor(' }],
+  },
 ]
+
+const ALL_FILES = SURFACES.flatMap((s) => s.files)
 
 describe('§14: one owner per shared rule, surfaces may not re-implement it', () => {
   for (const rule of RULES) {
@@ -78,6 +141,7 @@ describe('§14: one owner per shared rule, surfaces may not re-implement it', ()
       const hits: string[] = []
       for (const surface of SURFACES) {
         for (const file of surface.files) {
+          if (file.file === rule.statedIn) continue // the surface that legitimately owns it
           for (const { re, why } of rule.forbidden) {
             if (re.test(file.text)) hits.push(`${file.file} matches ${re} — ${why}`)
           }
@@ -86,6 +150,26 @@ describe('§14: one owner per shared rule, surfaces may not re-implement it', ()
       expect(hits, `${rule.home} owns this rule`).toEqual([])
     })
   }
+
+  it('a rule whose home is a surface file is really stated there', () => {
+    // Without this, `statedIn` would be an exemption with the owner's name on it: pointing at a
+    // file that no longer holds the rule silences the check instead of describing the design.
+    for (const rule of RULES.filter((r) => r.statedIn)) {
+      const owner = ALL_FILES.find((f) => f.file === rule.statedIn)
+      expect(owner, `${rule.statedIn} is gone, so ${rule.what} has no home`).toBeDefined()
+      expect(rule.forbidden.some(({ re }) => re.test(owner!.text)), `${rule.statedIn} no longer states ${rule.what}`).toBe(true)
+    }
+  })
+
+  it('every surface that presents one of these facts calls its owner', () => {
+    for (const rule of RULES) {
+      for (const c of rule.calls ?? []) {
+        const file = ALL_FILES.find((f) => f.file === c.file)
+        expect(file, `${c.file} disappeared: ${rule.what} lost the surface that presented it`).toBeDefined()
+        expect(file!.text, `${c.file} must reach ${rule.home}`).toContain(c.symbol)
+      }
+    }
+  })
 
   it('the surfaces are still enumerated from disk, so a new one is covered automatically', () => {
     // A guard that quietly stops matching files is worse than no guard: it reads as green.
@@ -102,6 +186,10 @@ describe('§14: one owner per shared rule, surfaces may not re-implement it', ()
       { pkg: 'packages/pricing', names: ['loadMergedPricing'] },
       { pkg: 'packages/storage', names: ['hostSplitFor', 'pickHostWarning', 'pickHostSplit', 'loadSessionEvents', 'SESSION_EVENT_SQL'] },
       { pkg: 'packages/event-model', names: ['projectLabel'] },
+      {
+        pkg: 'packages/server',
+        names: ['coverageReport', 'retentionPhrase', 'modelSpend', 'unpricedBuckets', 'missingPriceModels', 'actualUsdFor'],
+      },
     ]
     for (const { pkg, names } of owners) {
       const srcDir = join(ROOT, pkg, 'src')
@@ -111,7 +199,9 @@ describe('§14: one owner per shared rule, surfaces may not re-implement it', ()
       const barrel = readFileSync(join(srcDir, 'index.ts'), 'utf8')
       for (const name of names) {
         expect(body, `${pkg} defines ${name}`).toMatch(new RegExp(`export (?:function|const|class) ${name}\\b`))
-        expect(barrel, `${pkg}/src/index.ts re-exports the file that owns ${name}`).toContain('export * from')
+        // Either a star barrel or the name in the package's own re-export list; a comment that
+        // happens to mention it cannot pass the `body` check above, so the pair is the promise.
+        expect(barrel, `${pkg}/src/index.ts publishes ${name}`).toMatch(new RegExp(`export \\* from|\\b${name}\\b`))
       }
     }
   })
