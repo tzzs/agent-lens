@@ -17,7 +17,15 @@ export function dumpTable(db: DatabaseSync, table: string): Row[] {
   return rows.map((r) => ({ ...r }) as Row)
 }
 
-/** Metric-layer rehydration; the content layer is joined separately by the collector. */
+/**
+ * Metric-layer rehydration; the content layer is joined separately by the collector.
+ *
+ * `model` comes from the joined `models` columns rather than `model_rowid`, because that is the
+ * only shape a caller can render: §12 found every exported row had an empty provider/model for
+ * exactly this reason, and the same gap then showed up in both session timelines. A caller that
+ * selects from `events` alone gets `null` and is saying "I did not join", not "this event had no
+ * model" — `SESSION_EVENT_SQL` is the join that asks the question properly.
+ */
 export function rowToEvent(row: Row): AgentEvent {
   const usage =
     row.input_tokens === null &&
@@ -48,6 +56,14 @@ export function rowToEvent(row: Row): AgentEvent {
     ingestedAt: row.ingested_at === null ? undefined : Number(row.ingested_at),
     type: row.type as EventType,
     subtype: (row.subtype as string | null) ?? null,
+    model:
+      row.model_name === null || row.model_name === undefined
+        ? null
+        : {
+            provider: String(row.model_provider ?? ''),
+            name: String(row.model_name),
+            tier: (row.model_tier as string | null) ?? null,
+          },
     usage,
     usageSource: row.usage_source as UsageSource,
     costReported: (row.cost_reported as number | null) ?? null,
@@ -78,9 +94,20 @@ export function rowToEvent(row: Row): AgentEvent {
  * from several sources still read like the log; raw_seq (per-source, NULLs
  * last) breaks ties inside equal timestamps, id keeps it deterministic.
  */
+/**
+ * The canonical session-timeline select: the canonical order plus the `models` join that
+ * `rowToEvent` needs to fill `model`. Exported because anything rendering a timeline must ask the
+ * same question the same way — both `agl session <id>` and the Web timeline go through
+ * `loadSessionEvents`, and a caller that hand-rolls `SELECT * FROM events` silently loses the
+ * model (§12 hit that with `agl export`, §14 with the timelines).
+ */
+export const SESSION_EVENT_SQL = `
+  SELECT e.*, m.provider AS model_provider, m.name AS model_name, m.tier AS model_tier
+  FROM events e LEFT JOIN models m ON m.rowid = e.model_rowid
+  WHERE e.session_id = ?
+  ORDER BY e.timestamp, e.raw_seq IS NULL, e.raw_seq, e.id`
+
 export function loadSessionEvents(db: DatabaseSync, sessionId: string): AgentEvent[] {
-  const rows = db
-    .prepare('SELECT * FROM events WHERE session_id = ? ORDER BY timestamp, raw_seq IS NULL, raw_seq, id')
-    .all(sessionId) as Row[]
+  const rows = db.prepare(SESSION_EVENT_SQL).all(sessionId) as Row[]
   return rows.map((r) => rowToEvent(r))
 }

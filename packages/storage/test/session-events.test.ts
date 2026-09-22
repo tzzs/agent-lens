@@ -9,7 +9,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { openDatabase } from '../src/db.ts'
 import { migrate } from '../src/migrate.ts'
 import { insertEvents } from '../src/write.ts'
-import { loadSessionEvents } from '../src/query-shape.ts'
+import { loadSessionEvents, rowToEvent, type Row } from '../src/query-shape.ts'
 import { cleanup, makeEvent, tempDir } from './helpers.ts'
 
 const SESSION = 'sess-multi-source'
@@ -47,5 +47,51 @@ describe('loadSessionEvents (canonical order)', () => {
     const events = loadSessionEvents(db, SESSION)
     expect(events.every((e, i) => i === 0 || e.timestamp >= events[i - 1]!.timestamp)).toBe(true)
     expect(loadSessionEvents(db, 'missing-session')).toEqual([])
+  })
+})
+
+/**
+ * The model is on the row only as `model_rowid`, so a timeline that does not join `models`
+ * renders every generation with no model. `agl export` had exactly that bug (§12) and both
+ * session views inherited it from this loader (§14) — the ordering tests above passed the whole
+ * time because nothing looked at the column. Pinned here, and the second case pins why the join
+ * is part of the loader rather than a caller's choice.
+ */
+describe('loadSessionEvents carries the model (§3.1, §14)', () => {
+  const dir = tempDir()
+  let db: DatabaseSync
+  beforeAll(() => {
+    db = openDatabase(join(dir, 'test.db'))
+    migrate(db)
+    insertEvents(
+      db,
+      [
+        makeEvent({ id: 'priced', sessionId: 'sess-model', sourceId: 'src-M', rawSeq: 1, timestamp: T, model: { provider: 'anthropic', name: 'claude-sonnet-5', tier: 'premium' } }),
+        makeEvent({ id: 'nameless', sessionId: 'sess-model', sourceId: 'src-M', rawSeq: 2, timestamp: T + 1, model: { provider: 'unknown', name: 'brand-new-model' } }),
+        makeEvent({ id: 'nogeneration', sessionId: 'sess-model', sourceId: 'src-M', rawSeq: 3, timestamp: T + 2 }),
+      ],
+      { contentEnabled: false },
+    )
+  })
+  afterAll(() => {
+    db.close()
+    cleanup(dir)
+  })
+
+  it('returns provider, name and tier for rows that have a model', () => {
+    const [priced, nameless] = loadSessionEvents(db, 'sess-model')
+    expect(priced?.model).toEqual({ provider: 'anthropic', name: 'claude-sonnet-5', tier: 'premium' })
+    // An unrecognised tier must not be invented: null reads as "the store does not say", '' would not.
+    expect(nameless?.model).toEqual({ provider: 'unknown', name: 'brand-new-model', tier: null })
+  })
+
+  it('leaves the model null for an event that never had one', () => {
+    expect(loadSessionEvents(db, 'sess-model')[2]?.model).toBeNull()
+  })
+
+  it('shows that a bare events select is what loses the model, not the mapping', () => {
+    const bare = db.prepare('SELECT * FROM events WHERE session_id = ? ORDER BY raw_seq').all('sess-model') as Row[]
+    expect(rowToEvent(bare[0]!).model).toBeNull()
+    expect(bare[0]!.model_rowid).not.toBeNull()
   })
 })

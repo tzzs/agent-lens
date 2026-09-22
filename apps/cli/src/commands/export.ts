@@ -43,20 +43,6 @@ function eventRow(e: AgentEvent): unknown[] {
   ]
 }
 
-/** `rowToEvent` reads the metric columns only; the joined model columns land here. */
-function eventFromRow(row: Record<string, unknown>): AgentEvent {
-  const e = rowToEvent(row)
-  if (row.model_name === null || row.model_name === undefined) return e
-  return {
-    ...e,
-    model: {
-      provider: String(row.model_provider ?? ''),
-      name: String(row.model_name),
-      tier: (row.model_tier as string | null) ?? null,
-    },
-  }
-}
-
 /* ---------------------------------------------- OTLP/HTTP ingest (§12, third branch) */
 
 /** OTLP/HTTP tolerates large bodies, but a smaller request bounds what a rejection loses. */
@@ -237,7 +223,7 @@ export async function cmdExport(db: DatabaseSync, flags: FlagView, ctx: Ctx): Pr
   const sql = `SELECT e.*, m.provider AS model_provider, m.name AS model_name, m.tier AS model_tier
     FROM events e LEFT JOIN models m ON m.rowid = e.model_rowid
     ${whereSql} ${order}${cap}`
-  const events = rowsOf(db, sql, ...params, ...capRows).map(eventFromRow)
+  const events = rowsOf(db, sql, ...params, ...capRows).map(rowToEvent)
   const tally: ExportTally = {
     ofTotal: limit === undefined ? '' : ` of ${formatCount(countMatching(db, whereSql, params))}`,
     limitNote: limit === undefined ? '' : `, --limit ${formatCount(limit)}`,
