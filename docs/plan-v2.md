@@ -707,7 +707,7 @@ Replay · 告警（"agentx 今日成本 +240%"）· 效率分析（按 skill/pha
 
 ### 落地发现（2026-09-21，2026-09-22 回填）
 
-只记已核实的事实与所在文件；两条待办（WAL 读取通道、`agl projects` 标签）已于 2026-09-22 闭环并据此改写，其余各条**仍未修复**。
+只记已核实的事实与所在文件；每条自带状态，没闭环的在该条里明写"仍开/仍欠"。**那句"其余各条仍未修复"已经过期**：写下它之后，WAL 读取通道、`agl projects` 标签、会话时间线排序、摄入时间 provenance、三条 CLI↔server 重复规则、NULL 头条下限、跨源 subagent 父链、会话标题投影、立方体量级（本节"持久 stage 1"那条）都已各自闭环并在原条里改写；今天仍开的集中在三处 —— ZCode 的 per-session 宿主切分（缺的是一台装了独立 `zcode` 命令行的机器，不是再多一轮分析）、"看一眼像素"的截图取证、以及全历史路由剩下那几秒里属于 stage 2 与多次扫描的部分。
 
 - **OpenCode 读通（原"当前贡献 0 事件"已闭环）**：其库 `~/.local/share/opencode/opencode.db`（44 MB、WAL）现在经快照副本摄入 —— `packages/collector/src/sqlite-snapshot.ts` 把库 + 其 `-wal`（从不含 `-shm`，SQLite 自建）复制进 `<--db 所在目录>/snapshots`（`apps/cli/src/commands/scan.ts:snapshotsDirFor`），折成回滚模式单文件后由 `ParseCtx.storePath` 交给 `adapters/opencode/src/parse.ts`；`safety.ts:assessReadOnly` 的"拒绝任何 WAL attach"规则原样保留，只是它拒的是对方的文件、读的是我们的副本。**复制不是打开。** 本节 2026-09-21 记下的方向（"以 `copyFile` 复制成单文件快照、复制进 AgentLens 数据目录后再读"）已于 c4a2cd3 / 77541fc / eff1183 落地，同一条里"截至本次快照 `grep copyFile packages/collector/src` 无命中"的备案作废。本机实测（2026-09-22 复测）：对活库一次摄入 **3,391 事件、0 解析失败**（该库全量本身只有 531 条 message、2,242 条 part、5,401 条 event 行），跑前后库与两个 sidecar 的 size/mtime/inode 逐字节相同，快照目录里恰好一份 44,060,672 字节回滚模式副本 —— 3 个 `sources` 共用，且没有 `-shm` 副本。
 - **`-shm` 写入证据**：无 OpenCode 进程存活时，跑一条 `agl` 能力命令的瞬间，`~/.local/share/opencode/opencode.db-shm` 的 mtime 就跳到那一分钟；`verifyNoSidecars`（`adapters/opencode/src/safety.ts:119`）**2026-09-22 之前**只检测新建的 sidecar；c50e91a 之后它同时对既有 `-shm` 的 size/mtime 变化报 `(rewritten)`（`safety.ts:125`，zcode 同构 `:117-124`），"检不出对既有 `-shm` 的修改"这半句已过期，保留的仍是"因此绝不直开 WAL 库"这一动因。此即上一条仍然拒绝任何 WAL 直开、并且副本只抄 `-wal` 不抄 `-shm` 的动因。
