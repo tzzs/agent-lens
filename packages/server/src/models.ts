@@ -34,11 +34,16 @@ export interface ModelsResponse {
   note: string
 }
 
+/** Both sides of the gap lookup key through here so they cannot disagree; NUL separates fields that can hold any printable text. */
+function gapKey(provider: string, model: string): string {
+  return `${provider}\u0000${model}`
+}
+
 export function models(ctx: ServerCtx, sp: URLSearchParams): ModelsResponse {
   const filter = parseFilter(sp, ctx.db)
   const res = query(ctx.db, { metrics: [...METRICS], dims: ['provider', 'model'], filter }, ctx.cubeDeps)
   const gaps = missingPriceModels(ctx)
-  const gapKeys = new Set(gaps.map((g) => `${g.provider}::${g.model}`))
+  const gapKeys = new Set(gaps.map((g) => gapKey(g.provider, g.model)))
   return {
     filter,
     rows: res.rows.map((r) => ({
@@ -48,7 +53,7 @@ export function models(ctx: ServerCtx, sp: URLSearchParams): ModelsResponse {
       sessions: Number(r.sessions ?? 0),
       tokensTotal: Number(r.tokens_total ?? 0),
       costApiEquiv: numOr(r.cost_api_equiv),
-      priced: ctx.priceResolver ? !gapKeys.has(`${String(r.provider ?? '')}\u0000${String(r.model ?? '')}`) : null,
+      priced: ctx.priceResolver ? !gapKeys.has(gapKey(String(r.provider ?? ''), String(r.model ?? ''))) : null,
     })),
     totals: res.totals,
     truncated: res.truncated,
