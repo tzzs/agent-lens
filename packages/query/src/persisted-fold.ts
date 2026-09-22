@@ -89,8 +89,10 @@ export function persistedFold(db: DatabaseSync, req: PersistedFoldRequest): Pers
   // stage-2 scans read less than this table's full 367k-row relation with three predicates on
   // each. Measured on the maintained store: `GET /api/projects?since=30d` 2.0 s -> 2.2 s and
   // `GET /api/overview?since=30d` 2.6 s -> 3.1 s when the shortcut was forced there, versus
-  // 5.8 s -> 5.2 s with no window. So a window declines when a scope would reuse one fold, and
-  // takes the shortcut when nothing would — a CLI command has no fold cache, and without it
+  // 6.2 s -> 4.7 s with no window (`docs/research/probe-request-fold.mjs`, best of five
+  // interleaved runs, whose three declined routes are the noise control: identical code in both
+  // arms still differs by up to 12%). So a window declines when a scope would reuse one fold,
+  // and takes the shortcut when nothing would — a CLI command has no fold cache, and without it
   // each statement folds the whole window again (six folds per `agl usage`).
   if ((sinceTs !== undefined || untilTs !== undefined) && req.scope) return null
 
