@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { projectLabel, shortId, looksLikeHash, formatMs } from '../src/lib/format.ts'
+import { projectLabel, shortId, looksLikeHash, formatMs, formatUsd } from '../src/lib/format.ts'
 import { halfOverHalf, topN } from '../src/lib/series.ts'
 import { barGeometry, buildForest, parentIds, sessionSpan, visibleRows, type ForestNode } from '../src/lib/timeline.ts'
 import { eventKind } from '../src/lib/eventKinds.ts'
@@ -20,6 +20,13 @@ describe('format helpers', () => {
     expect(projectLabel(null)).toBe('(no project)')
     expect(shortId('abc')).toBe('abc')
     expect(shortId(null)).toBe('—')
+  })
+  it('never renders a real cost as $0 or an unknown one as a number', () => {
+    expect(formatUsd(null)).toBe('n/a')
+    expect(formatUsd(0)).toBe('$0.00')
+    expect(formatUsd(0.00002)).toBe('<$0.0001')
+    expect(formatUsd(0.0082)).toBe('$0.0082')
+    expect(formatUsd(629.861)).toBe('$629.86')
   })
   it('formats durations with a real unit, never "Kms"', () => {
     expect(formatMs(201_170_000)).toBe('55h 52m')

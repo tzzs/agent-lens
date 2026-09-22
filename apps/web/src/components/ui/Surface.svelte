@@ -25,7 +25,8 @@
   } = $props()
 </script>
 
-<section class="min-w-0 rounded-card bg-surface shadow-card {cls}">
+<!-- unpadded surfaces hold edge-to-edge content (tables, lists): clip it to the rounded corners -->
+<section class="min-w-0 rounded-card bg-surface shadow-card {padded ? '' : 'overflow-hidden'} {cls}">
   {#if title || subtitle || actions}
     <header class="flex items-start justify-between gap-3 px-4 pt-3.5 {padded ? 'pb-0' : 'pb-3 border-b border-line-soft'}">
       <div class="min-w-0">

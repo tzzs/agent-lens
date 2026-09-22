@@ -151,27 +151,6 @@
   --radius-control: 8px;
 }
 
-/* LEGACY ALIASES — old ink/mist/signal names mapped onto the new tokens so pages
- * render before they are migrated. Removed once every page uses the new names. */
-@theme inline {
-  --color-ink-950: var(--page);
-  --color-ink-900: var(--surface);
-  --color-ink-850: var(--hover);
-  --color-ink-800: var(--hover-2);
-  --color-ink-700: var(--line-strong);
-  --color-ink-600: var(--line-strong);
-  --color-mist-100: var(--ink);
-  --color-mist-200: var(--ink);
-  --color-mist-300: var(--ink-2);
-  --color-mist-400: var(--ink-2);
-  --color-mist-500: var(--ink-3);
-  --color-signal: var(--accent);
-  --color-signal-dim: var(--accent-ink);
-  --color-warn: var(--orange);
-  --color-danger: var(--red);
-  --color-ok: var(--green);
-}
-
 html {
   background: var(--page);
 }

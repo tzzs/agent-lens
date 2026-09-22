@@ -18,12 +18,15 @@ export function formatCompact(n: number | null | undefined): string {
   return compactFmt.format(n)
 }
 
-/** USD. null/undefined => "n/a" (NOT $0). Values under a cent keep more decimals. */
+/**
+ * USD. null/undefined => "n/a" (NOT $0). Values under a dollar keep four decimals,
+ * and a real but sub-$0.0001 cost reads "<$0.0001" — "$0.0000" would look free.
+ */
 export function formatUsd(n: number | null | undefined): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return 'n/a'
   const abs = Math.abs(n)
-  const digits = abs > 0 && abs < 1 ? 4 : abs < 100 ? 2 : 2
-  return `$${n.toFixed(digits)}`
+  if (abs > 0 && abs < 0.00005) return n < 0 ? '>-$0.0001' : '<$0.0001'
+  return `$${n.toFixed(abs > 0 && abs < 1 ? 4 : 2)}`
 }
 
 /** Duration in ms -> human "1h 2m", "3.4s", "240ms". */
