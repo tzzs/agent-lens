@@ -2,6 +2,16 @@ import { deflateSync } from 'node:zlib'
 import { Buffer } from 'node:buffer'
 import type { DatabaseSync } from 'node:sqlite'
 import { assertAggregationMode, UNATTRIBUTED_PROJECT_ID, type AgentEvent, type AggregationPolicy, type ModelRef, type ParseFailure } from '@agentlens/event-model'
+import {
+  aggregationModeLookup,
+  emptyTouchedGroups,
+  maintainRequestFold,
+  markGroup,
+  rebuildRequestFoldIfPolicyMoved,
+  requestFoldKeysForCutoff,
+  requestGroupKey,
+  repairRequestFoldAfterPrune,
+} from './request-fold.ts'
 
 /** §3.2/§6 — the content layer is off unless a scan opts in (`--content`). */
 const DEFAULT_MAX_PAYLOAD_BYTES = 32 * 1024
@@ -170,18 +180,43 @@ export function insertEvents(
     // A repaired row leaves its old session behind, and that session's tally has to be
     // recomputed too — so read the pre-existing ids before the rows are touched.
     const recountSessions = new Set(sessionIdentities.keys())
+    /**
+     * §19's materialised stage 1 needs the same pre-state for the same reason: a row that was
+     * already here can move GROUPS under a §5.3 repair (`request_id` is a derived column), and
+     * the group it leaves behind has to be re-read from `events`, not merged into. Keyed by
+     * `agent_key`, which is what `requests` partitions on.
+     */
+    const preexisting = new Map<string, { agentKey: string; reqKey: string }>()
     {
+      const modes = aggregationModeLookup(db)
       const ids = events.map((ev) => ev.id)
       const chunkSize = 500
       const readSessions = (chunk: string[]) =>
         db
-          .prepare(`SELECT session_id FROM events WHERE id IN (${chunk.map(() => '?').join(',')})`)
-          .all(...chunk) as { session_id: string | null }[]
+          .prepare(
+            `SELECT id, session_id, agent_id, request_id FROM events WHERE id IN (${chunk.map(() => '?').join(',')})`,
+          )
+          .all(...chunk) as {
+          id: string
+          session_id: string | null
+          agent_id: string | null
+          request_id: string | null
+        }[]
       for (let i = 0; i < ids.length; i += chunkSize) {
         const chunk = ids.slice(i, i + chunkSize)!
-        for (const r of readSessions(chunk)) if (r.session_id !== null) recountSessions.add(r.session_id)
+        for (const r of readSessions(chunk)) {
+          if (r.session_id !== null) recountSessions.add(r.session_id)
+          // The group this row belongs to AS STORED: `request_id` is itself a repaired
+          // column, so the key it used before this batch can differ from the one it uses after.
+          preexisting.set(r.id, {
+            agentKey: r.agent_id ?? '',
+            reqKey: requestGroupKey(modes(r.agent_id), { id: r.id, requestId: r.request_id }),
+          })
+        }
       }
     }
+    const touched = emptyTouchedGroups()
+    const mergeModes = aggregationModeLookup(db)
 
     const insertEvent = db.prepare(`
       -- §5.3: a parser_version bump replays the whole source from offset 0, and the replayed
@@ -251,7 +286,19 @@ export function insertEvents(
         payload ? payload.kind : null,
         ev.metadata === undefined || ev.metadata === null ? null : JSON.stringify(ev.metadata),
       )
-      inserted += Number(res.changes)
+      const written = Number(res.changes)
+      inserted += written
+      // §19's materialised stage 1: any row this batch actually wrote makes its group's
+      // answer have to be re-derived, and so does the group a repaired row just LEFT (the old
+      // key, read from the pre-state above) — an added member raises a MAX, a moved one can
+      // lower it or empty the group it came from. A replay of unchanged rows reaches neither
+      // branch: the repair guard's `changes()` is 0, so this table sees exactly the no-op
+      // §4.2 promises.
+      if (written > 0) {
+        markGroup(touched, ev.agentId ?? '', requestGroupKey(mergeModes(ev.agentId), ev))
+        const was = preexisting.get(ev.id)
+        if (was) markGroup(touched, was.agentKey, was.reqKey)
+      }
       if (payload) {
         insertPayload.run(
           payload.eventId,
@@ -279,6 +326,10 @@ export function insertEvents(
       WHERE id = ?
     `)
     for (const id of recountSessions) recomputeSession.run(id)
+
+    // Stage 1 last, after every event row and session tally has landed: it re-reads `events`
+    // (for the recompute branch) and merges into `requests`, so it must see this batch.
+    maintainRequestFold(db, touched)
 
     if (opts?.progress) updateSourceProgressTx(db, opts.progress)
     return { inserted }
@@ -451,6 +502,10 @@ export function prune(db: DatabaseSync, opts?: { olderThanDays?: number }): Prun
     let eventsDeleted = 0
     if (opts?.olderThanDays !== undefined) {
       const eventCutoff = now - opts.olderThanDays * dayMs
+      // §19's stage-1 rows are a function of the events behind them, so they are collected
+      // while those events still exist and re-folded after the delete: a group that loses its
+      // tallest row loses the tall row, and a group that loses every row loses its row.
+      const foldGroups = requestFoldKeysForCutoff(db, eventCutoff)
       // `payloads.event_id` has no ON DELETE action, so an event can only go once the
       // payloads referencing it have. Their own TTL is independent — a first `--content`
       // scan writes young payloads for old events, and deleting the events first is a
@@ -464,6 +519,7 @@ export function prune(db: DatabaseSync, opts?: { olderThanDays?: number }): Prun
         db.prepare('DELETE FROM events WHERE timestamp < ?').run(eventCutoff).changes,
       )
       db.prepare('DELETE FROM payloads WHERE event_id NOT IN (SELECT id FROM events)').run()
+      repairRequestFoldAfterPrune(db, foldGroups)
     }
     return { payloadsDeleted, eventsDeleted }
   })
@@ -498,6 +554,11 @@ export function setAgentAggregations(db: DatabaseSync, policies: Record<string, 
     for (const [agentId, policy] of Object.entries(policies)) {
       stmt.run(agentId, policy.mode, policy.subagentsIncluded ? 1 : 0)
     }
+    // §18 row 2 + §19: the stored grouping is part of the data, so moving a policy re-folds
+    // the materialised stage 1 rather than leaving rows grouped under a rule their agent no
+    // longer declares. `agl scan` persists policies before its first row, so this fires on a
+    // genuine change and not on every run.
+    rebuildRequestFoldIfPolicyMoved(db)
   })
 }
 

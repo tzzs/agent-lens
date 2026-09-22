@@ -15,6 +15,7 @@ describe('migrations', () => {
       '005_machine.sql',
       '006_measured_read_paths.sql',
       '007_session_title_index.sql',
+      '008_persisted_request_fold.sql',
     ])
     expect(migrate(db)).toEqual([])
     const applied = db.prepare('SELECT id FROM schema_migrations').all()
@@ -26,6 +27,7 @@ describe('migrations', () => {
       '005_machine.sql',
       '006_measured_read_paths.sql',
       '007_session_title_index.sql',
+      '008_persisted_request_fold.sql',
     ])
     db.close()
   })
@@ -102,6 +104,8 @@ describe('migrations', () => {
       'parse_errors',
       'payloads',
       'projects',
+      'requests',
+      'requests_state',
       'schema_migrations',
       'sessions',
       'sources',
@@ -138,7 +142,9 @@ describe('migrations', () => {
     for (const id of ['001_init.sql', '002_measurement_round_two.sql', '003_aggregation_policy_per_agent.sql']) {
       db.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, 0)').run(id)
     }
-    db.exec('CREATE TABLE agents (id TEXT PRIMARY KEY)')
+    // Pre-004 as it really was: 001's `agents` plus 003's persisted §18 fold columns, which is
+    // what `requests` reads its grouping from.
+    db.exec('CREATE TABLE agents (id TEXT PRIMARY KEY, aggregation_mode TEXT, subagents_included INTEGER)')
     db.exec(`CREATE TABLE sources (
       id TEXT PRIMARY KEY, agent_id TEXT REFERENCES agents(id), path TEXT,
       kind TEXT CHECK (kind IN ('jsonl','sqlite','ndir')), inode INTEGER, size INTEGER, mtime_ms INTEGER,
@@ -146,22 +152,33 @@ describe('migrations', () => {
       status TEXT CHECK (status IN ('active','gone','error','rotated')), last_error TEXT,
       scan_started_at INTEGER, scan_finished_at INTEGER, rows_ingested INTEGER
     )`)
-    // A real pre-004 deployment has the tables 001 created; 006 and 007 index `events`, so the
-    // stand-in needs one (the test only inspects `sources`). The columns those two indexes name
-    // are the ones this table has to carry: `project_id` + `metadata` for 006, and
-    // `session_id` + `timestamp` + `raw_seq` + `subtype` for 007.
+    // A real pre-004 deployment has 001's `events` plus 002's §18 columns. 006 and 007 index it
+    // (`project_id`+`metadata`, then `session_id`+`timestamp`+`raw_seq`+`subtype`) and 008 folds
+    // it into `requests`, so the stand-in has to be the whole real shape: a table narrowed to any
+    // one migration's needs would only prove the others tolerate a schema nobody deploys.
     db.exec(`CREATE TABLE events (
-      id TEXT PRIMARY KEY, agent_id TEXT, project_id TEXT, request_id TEXT, timestamp INTEGER,
-      session_id TEXT, raw_seq INTEGER, subtype TEXT,
+      id TEXT PRIMARY KEY, schema_version INTEGER, agent_id TEXT, host_id TEXT,
+      source_id TEXT, session_id TEXT, project_id TEXT, parent_event_id TEXT, request_id TEXT,
+      timestamp INTEGER, ingested_at INTEGER, type TEXT, subtype TEXT, model_rowid INTEGER,
       input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER,
-      cache_write_tokens INTEGER, reasoning_tokens INTEGER, duration_ms INTEGER, metadata TEXT
+      cache_write_tokens INTEGER, reasoning_tokens INTEGER, usage_source TEXT,
+      capability_type TEXT, capability_name TEXT, capability_provider TEXT,
+      duration_ms INTEGER, status TEXT, error_fingerprint TEXT, raw_seq INTEGER,
+      raw_offset INTEGER, content_ref TEXT, metadata TEXT,
+      thread_id TEXT, cost_reported REAL, cost_source TEXT, credits REAL
     )`)
     db.prepare("INSERT INTO agents (id) VALUES ('a1')").run()
     db.prepare(
       "INSERT INTO sources (id, agent_id, path, kind, last_offset, status) VALUES ('s1','a1','/x/opencode.db','sqlite',512,'active')",
     ).run()
 
-    expect(migrate(db)).toEqual(['004_sqlite_table_in_sources.sql', '005_machine.sql', '006_measured_read_paths.sql', '007_session_title_index.sql'])
+    expect(migrate(db)).toEqual([
+      '004_sqlite_table_in_sources.sql',
+      '005_machine.sql',
+      '006_measured_read_paths.sql',
+      '007_session_title_index.sql',
+      '008_persisted_request_fold.sql',
+    ])
     const cols = (db.prepare('PRAGMA table_info(sources)').all() as { name: string }[]).map((c) => c.name)
     expect(cols).toContain('sqlite_table')
     const row = db.prepare("SELECT sqlite_table, last_offset FROM sources WHERE id = 's1'").get() as

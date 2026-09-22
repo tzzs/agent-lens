@@ -2,6 +2,7 @@ import { copyFileSync, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
+import { backfillRequestFold } from './request-fold.ts'
 
 const MIGRATIONS_DIR = fileURLToPath(new URL('./migrations/', import.meta.url))
 
@@ -39,6 +40,11 @@ export function migrate(db: DatabaseSync): string[] {
       throw err
     }
   }
+  // §6: an upgrade must not ask anybody to re-scan. Migration 007 only creates the table; the
+  // fold that fills it is built here, from the one statement the write path also uses, so the
+  // schema file and the data it seeds can never disagree about what stage 1 means. Called on
+  // every migrate(): with the sentinel row already present it is one indexed read.
+  backfillRequestFold(db)
   return pending
 }
 
