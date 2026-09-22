@@ -38,8 +38,6 @@ export function models(ctx: ServerCtx, sp: URLSearchParams): ModelsResponse {
   const filter = parseFilter(sp, ctx.db)
   const res = query(ctx.db, { metrics: [...METRICS], dims: ['provider', 'model'], filter }, ctx.cubeDeps)
   const gaps = missingPriceModels(ctx)
-  // One key builder for both sides of the lookup: they used to differ (`::` here, `\u0000`
-  // below), so every row read `priced: true` no matter what the §8 gap set said.
   const gapKeys = new Set(gaps.map((g) => unpricedModelKey(g.provider, g.model)))
   return {
     filter,

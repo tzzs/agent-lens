@@ -13,7 +13,7 @@ import { describeQuery, query, type QueryFilter, type Row } from '@agentlens/que
 import { loadSessionEvents } from '@agentlens/storage'
 import type { ServerCtx } from './types.ts'
 import { ApiError } from './errors.ts'
-import { contentLayerPresent, loadPayloads, payloadCountBySession, type PayloadView } from './content.ts'
+import { contentLayerPresent, loadPayloads, payloadCountByEvent, payloadCountBySession, chunk, type PayloadView } from './content.ts'
 import { parseFilter, strParam } from './request-spec.ts'
 import { projectLabelMap, rowsOf } from './resolve.ts'
 
@@ -61,6 +61,11 @@ export interface TimelineNode {
   errorFingerprint: string | null
   metadata: Record<string, unknown> | null
   payloads: PayloadView[]
+  /**
+   * How many payload rows this node has, whether or not their text is in this response.
+   * With `payloads=0` it is the only signal that a row is worth opening.
+   */
+  payloadCount: number
 }
 
 export interface SessionDetailResponse {
@@ -81,6 +86,13 @@ export interface SessionDetailResponse {
   totals: Record<string, number | null>
   nodes: TimelineNode[]
   explain: string
+  /**
+   * Only set on a paged request. Absent means `nodes` is the whole timeline, which is what
+   * it always was, so an unwindowed response keeps its exact historical shape.
+   */
+  nodesOffset?: number
+  nodesLimit?: number | null
+  nodesTotal?: number
 }
 
 export function listSessions(ctx: ServerCtx, sp: URLSearchParams): SessionListResponse {
@@ -146,17 +158,62 @@ export function resolveSessionId(db: ServerCtx['db'], wanted: string): string {
   throw ApiError.conflict(`session prefix ${JSON.stringify(wanted)} is ambiguous`, { wanted, matches: pref.map((p) => String(p.id)) })
 }
 
-export function sessionDetail(ctx: ServerCtx, wanted: string): SessionDetailResponse {
+export interface SessionDetailOptions {
+  /**
+   * Include the content layer's text in each node. Default true, which is the historical
+   * shape. False matters because a 41k-event session serialises to ~48 MB of inflated
+   * payload text that the waterfall renders for exactly zero rows until one is clicked.
+   * Nodes keep a `payloads: []` and a `payloadCount` so a reader can still see that text
+   * exists and fetch it per node — an omitted field would read as "no content".
+   */
+  includePayloads?: boolean
+  /** First node to return, in timeline order. */
+  offset?: number
+  /** How many nodes to return; absent means "to the end". */
+  limit?: number
+}
+
+/** The window actually applied, echoed so a partial page cannot be mistaken for the session. */
+interface NodesWindow {
+  nodesOffset: number
+  nodesLimit: number | null
+  nodesTotal: number
+}
+
+/** Querystring knobs of `GET /api/sessions/:id`. Absent params mean "exactly as before". */
+export function sessionDetailOptions(sp: URLSearchParams): SessionDetailOptions {
+  const rawPayloads = strParam(sp, 'payloads')
+  const rawOffset = strParam(sp, 'offset')
+  const rawLimit = strParam(sp, 'limit')
+  const int = (v: string | undefined, label: string, max: number | null): number | undefined => {
+    if (v === undefined) return undefined
+    const n = Number(v)
+    if (!Number.isInteger(n) || n < 0 || (max !== null && n > max)) {
+      throw ApiError.badRequest(`invalid ${label} ${JSON.stringify(v)}`, { min: 0, ...(max === null ? {} : { max }) })
+    }
+    return n
+  }
+  return {
+    includePayloads: rawPayloads === undefined ? true : !['0', 'false', 'no'].includes(rawPayloads.toLowerCase()),
+    offset: int(rawOffset, 'offset', null) ?? 0,
+    limit: int(rawLimit, 'limit', 5000),
+  }
+}
+
+export function sessionDetail(ctx: ServerCtx, wanted: string, opts: SessionDetailOptions = {}): SessionDetailResponse {
+  const includePayloads = opts.includePayloads !== false
+  const offset = opts.offset ?? 0
+  const limit = opts.limit ?? null
   const sessionId = resolveSessionId(ctx.db, wanted)
   const spec = { metrics: ['events', 'sessions', 'tokens_total', 'tokens_input', 'tokens_output', 'duration', 'cost_api_equiv'] as const, filter: { session: [sessionId] } }
   const agg = query(ctx.db, { metrics: [...spec.metrics], filter: spec.filter }, ctx.cubeDeps)
   // Single shared loader: identical order to `agl session <id>` (§14).
   const events = loadSessionEvents(ctx.db, sessionId)
-  const payloads = loadPayloads(
-    ctx.db,
-    events.map((e) => e.id),
-  )
-  const contentAvailable = payloads.size > 0
+  // Counts always: they are what tells a paged, text-free reader which nodes have content
+  // worth opening. Text only when asked for — that text is the 48 MB, and the inflate behind it.
+  const counts = payloadCountByEvent(ctx.db, events.map((e) => e.id))
+  const payloads = includePayloads ? loadPayloads(ctx.db, events.map((e) => e.id)) : new Map<string, PayloadView[]>()
+  const contentAvailable = counts.size > 0
   const labels = projectLabelMap(ctx.db)
   const meta = rowsOf(
     ctx.db,
@@ -164,7 +221,8 @@ export function sessionDetail(ctx: ServerCtx, wanted: string): SessionDetailResp
     sessionId,
   )[0] as Row | undefined
 
-  const nodes: TimelineNode[] = events.map((e) => ({
+  const windowed = limit === null && offset === 0 ? events : events.slice(offset, limit === null ? undefined : offset + limit)
+  const nodes: TimelineNode[] = windowed.map((e) => ({
     id: e.id,
     type: e.type,
     subtype: e.subtype ?? null,
@@ -190,9 +248,11 @@ export function sessionDetail(ctx: ServerCtx, wanted: string): SessionDetailResp
     status: e.status,
     errorFingerprint: e.errorFingerprint ?? null,
     metadata: e.metadata ?? null,
-    payloads: contentAvailable ? (payloads.get(e.id) ?? []) : [],
+    payloads: includePayloads ? (contentAvailable ? (payloads.get(e.id) ?? []) : []) : [],
+    payloadCount: counts.get(e.id) ?? 0,
   }))
 
+  const window: NodesWindow = { nodesOffset: offset, nodesLimit: limit, nodesTotal: events.length }
   return {
     session: {
       id: sessionId,
@@ -206,14 +266,54 @@ export function sessionDetail(ctx: ServerCtx, wanted: string): SessionDetailResp
       title: meta?.title === null || meta?.title === undefined ? null : String(meta.title),
       firstTimestamp: meta?.first_timestamp === null || meta?.first_timestamp === undefined ? null : Number(meta.first_timestamp),
       lastTimestamp: meta?.last_timestamp === null || meta?.last_timestamp === undefined ? null : Number(meta.last_timestamp),
-      eventCount: meta?.event_count === null || meta?.event_count === undefined ? nodes.length : Number(meta.event_count),
+      eventCount: meta?.event_count === null || meta?.event_count === undefined ? events.length : Number(meta.event_count),
     },
     contentAvailable,
+    /** Present so the degraded mode is explainable in the UI, not just visible. */
     contentNote: contentAvailable
-      ? 'content layer present for this session'
+      ? includePayloads
+        ? 'content layer present for this session'
+        : 'content layer present; payload text withheld by `payloads=0`, fetch it per node from /api/sessions/:id/nodes/:nodeId/payloads'
       : 'content layer off or expired (payload TTL) — metrics-only timeline; re-scan with --content to capture message/tool text',
     totals: agg.totals,
     nodes,
     explain: describeQuery({ metrics: [...spec.metrics], filter: spec.filter }),
+    // Only a request that asked for less than everything says so: the default response stays
+    // byte-for-byte what it always was.
+    ...(offset !== 0 || limit !== null ? { ...window } : {}),
   }
+}
+
+/**
+ * Payload text for individual timeline nodes — what the inspector calls when a row is
+ * opened, so the waterfall never has to carry 48 MB of text it renders for one row.
+ * Ids are checked against the session, so this cannot be used to read another session's
+ * private logs by guessing an event id.
+ */
+export function nodePayloads(
+  ctx: ServerCtx,
+  wanted: string,
+  nodeIds: string[],
+): { sessionId: string; payloads: Record<string, PayloadView[]> } {
+  const sessionId = resolveSessionId(ctx.db, wanted)
+  if (nodeIds.length === 0) return { sessionId, payloads: {} }
+  const owned = new Set(
+    chunk(nodeIds, 400).flatMap((group) =>
+      rowsOf(
+        ctx.db,
+        `SELECT id FROM events WHERE session_id = ? AND id IN (${group.map(() => '?').join(', ')})`,
+        sessionId,
+        ...group,
+      ).map((r) => String(r.id)),
+    ),
+  )
+  const mine = nodeIds.filter((id) => owned.has(id))
+  const foreign = nodeIds.filter((id) => !owned.has(id))
+  if (mine.length === 0) {
+    throw ApiError.notFound(`no node of this session matches ${JSON.stringify(nodeIds.join(','))}`, { sessionId, unknown: foreign })
+  }
+  const loaded = loadPayloads(ctx.db, mine)
+  // Every node the caller owns appears, even with an empty array: that is how a reader tells
+  // "this row logged no content" from "you did not ask for a row of this session".
+  return { sessionId, payloads: Object.fromEntries(mine.map((id) => [id, loaded.get(id) ?? []])) }
 }

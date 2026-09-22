@@ -365,6 +365,12 @@ export interface TimelineNode {
   errorFingerprint: string | null
   metadata: Record<string, unknown> | null
   payloads: PayloadView[]
+  /**
+   * How many payload rows this node has. The timeline is fetched with `payloads=0`, so on
+   * first load this is the only sign a row has content worth opening — and the count comes
+   * without the text, which for a 40k-event session was a 48 MB response body.
+   */
+  payloadCount: number
 }
 export interface SessionDetailResponse {
   session: {
@@ -586,7 +592,16 @@ export const api = {
   overview: (params?: FilterParams) => getJSON<OverviewResponse>('/api/overview', params),
   query: (params: FilterParams) => getJSON<QueryResponse>('/api/query', params),
   sessions: (params?: FilterParams) => getJSON<SessionListResponse>('/api/sessions', params),
-  session: (id: string) => getJSON<SessionDetailResponse>(`/api/sessions/${encodeURIComponent(id)}`),
+  session: (id: string, params?: FilterParams) =>
+    getJSON<SessionDetailResponse>(`/api/sessions/${encodeURIComponent(id)}`, params),
+  /**
+   * Payload text for one node, fetched when the inspector opens it. `?node=` repeats, so a
+   * caller that wants several can batch them.
+   */
+  nodePayloads: (id: string, nodeId: string) =>
+    getJSON<{ sessionId: string; payloads: Record<string, PayloadView[]> }>(
+      `/api/sessions/${encodeURIComponent(id)}/nodes/${encodeURIComponent(nodeId)}/payloads`,
+    ),
   capabilities: (params?: FilterParams) => getJSON<CapabilityResponse>('/api/capabilities', params),
   projects: (params?: FilterParams) => getJSON<ProjectsResponse>('/api/projects', params),
   agents: (params?: FilterParams) => getJSON<AgentsResponse>('/api/agents', params),

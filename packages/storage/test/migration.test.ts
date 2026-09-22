@@ -13,6 +13,7 @@ describe('migrations', () => {
       '003_aggregation_policy_per_agent.sql',
       '004_sqlite_table_in_sources.sql',
       '005_machine.sql',
+      '006_measured_read_paths.sql',
     ])
     expect(migrate(db)).toEqual([])
     const applied = db.prepare('SELECT id FROM schema_migrations').all()
@@ -22,6 +23,7 @@ describe('migrations', () => {
       '003_aggregation_policy_per_agent.sql',
       '004_sqlite_table_in_sources.sql',
       '005_machine.sql',
+      '006_measured_read_paths.sql',
     ])
     db.close()
   })
@@ -142,18 +144,58 @@ describe('migrations', () => {
       status TEXT CHECK (status IN ('active','gone','error','rotated')), last_error TEXT,
       scan_started_at INTEGER, scan_finished_at INTEGER, rows_ingested INTEGER
     )`)
+    // A real pre-004 deployment has the tables 001 created; 006 indexes `events`, so the
+    // stand-in needs one (the test only inspects `sources`).
+    db.exec(`CREATE TABLE events (
+      id TEXT PRIMARY KEY, agent_id TEXT, project_id TEXT, request_id TEXT, timestamp INTEGER,
+      input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER,
+      cache_write_tokens INTEGER, reasoning_tokens INTEGER, duration_ms INTEGER, metadata TEXT
+    )`)
     db.prepare("INSERT INTO agents (id) VALUES ('a1')").run()
     db.prepare(
       "INSERT INTO sources (id, agent_id, path, kind, last_offset, status) VALUES ('s1','a1','/x/opencode.db','sqlite',512,'active')",
     ).run()
 
-    expect(migrate(db)).toEqual(['004_sqlite_table_in_sources.sql', '005_machine.sql'])
+    expect(migrate(db)).toEqual(['004_sqlite_table_in_sources.sql', '005_machine.sql', '006_measured_read_paths.sql'])
     const cols = (db.prepare('PRAGMA table_info(sources)').all() as { name: string }[]).map((c) => c.name)
     expect(cols).toContain('sqlite_table')
     const row = db.prepare("SELECT sqlite_table, last_offset FROM sources WHERE id = 's1'").get() as
       { sqlite_table: string | null; last_offset: number }
     expect(row.last_offset).toBe(512) // the stored row survives untouched
     expect(row.sqlite_table).toBeNull() // reads back as unknown, never a guess
+    db.close()
+  })
+
+  /**
+   * 006 exists because the Projects page scanned the whole store to group an expression.
+   * An index the optimiser ignores is dead weight, so the plan is pinned, not just the name.
+   *
+   * The candidate that did NOT ship is on record here too: a covering index for the stage-1
+   * fold (`events(timestamp, agent_id, request_id, id, <token cols>)`) measured 860 ms ->
+   * 122 ms when the cube still re-folded the window ~24 times per request on a cold store.
+   * With the fold running once per request and the tuned page cache, the same statement is
+   * 100 ms with or without it (137 vs 115 ms with a deliberately tiny cache) — 33 MB for
+   * noise. Re-measure before adding it back; the old number no longer describes this code.
+   */
+  it('006 gives the project cwd grouping an access path the planner actually takes', () => {
+    const db = openDatabase(':memory:')
+    migrate(db)
+    const names = (
+      db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_events_%'").all() as { name: string }[]
+    ).map((r) => r.name)
+    expect(names).toContain('idx_events_cwd')
+    expect(names, 'the fold-covering index measured as dead weight; see the note above').not.toContain('idx_events_fold')
+    expect(
+      (
+        db
+          .prepare(
+            "EXPLAIN QUERY PLAN SELECT project_id, json_extract(metadata,'$.cwd') c, COUNT(*) FROM events WHERE project_id IS NOT NULL GROUP BY project_id, c",
+          )
+          .all() as { detail: string }[]
+      )
+        .map((r) => r.detail)
+        .join('\n'),
+    ).toContain('idx_events_cwd')
     db.close()
   })
 })

@@ -4,7 +4,7 @@
   // *visible* rows only, then windowed by VirtualList, so a 13k-event session stays
   // instant. Detail opens in a side inspector. Degrades honestly to a metrics-only
   // timeline when the content layer is off, and surfaces 404 / 409 verbatim.
-  import { api, type TimelineNode } from '../lib/api.ts'
+  import { api, type PayloadView, type TimelineNode } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
   import { live } from '../lib/live.svelte.js'
   import { formatCompact, formatInt, formatMs, formatDateTime, projectLabel, shortId } from '../lib/format.ts'
@@ -23,7 +23,10 @@
 
   let { id }: { id: string } = $props()
 
-  const q = loader(() => api.session(id))
+  // `payloads=0`: the waterfall needs every node's metric facts (it builds the parent forest,
+  // the span axis and the kind counts from them) but needs text for the one node the
+  // inspector has open. Asking for the rest cost a 48 MB body and ~135k inflates per visit.
+  const q = loader(() => api.session(id, { payloads: 0 }))
   $effect(() => {
     void id
     void live.lastTick
@@ -61,6 +64,34 @@
   })
   const rows = $derived(d && forest ? visibleRows(forest, d.nodes, expanded, matcher) : [])
   const selected = $derived(selectedId && d ? (d.nodes.find((n) => n.id === selectedId) ?? null) : null)
+
+  // Payload text arrives per node, on open, and is kept across re-selections so scrolling
+  // back into a row does not refetch it.
+  let textById = $state<Record<string, PayloadView[]>>({})
+  let loadingId: string | null = $state(null)
+  /** Bumped per fetch so a slow response cannot paint a node the user has since left. */
+  let loadSeq = 0
+  async function loadPayloads(nodeId: string, attempt: number) {
+    try {
+      const r = await api.nodePayloads(id, nodeId)
+      // A re-selection mid-flight must not write a stale node's text under the new one.
+      if (attempt !== loadSeq) return
+      textById = { ...textById, [nodeId]: r.payloads[nodeId] ?? [] }
+    } catch {
+      if (attempt !== loadSeq) return
+      // A failed fetch leaves the row's metric facts intact; the inspector says it has no
+      // text rather than pretending the content layer is empty.
+      textById = { ...textById, [nodeId]: [] }
+    } finally {
+      if (attempt === loadSeq) loadingId = null
+    }
+  }
+  $effect(() => {
+    const n = selected
+    if (!n || !n.payloadCount || textById[n.id] || loadingId === n.id) return
+    loadingId = n.id
+    loadPayloads(n.id, ++loadSeq)
+  })
 
   function toggle(nodeId: string) {
     const next = new Set(expanded)
@@ -223,7 +254,13 @@
     {#if selected}
       <aside class="xl:sticky xl:top-20 xl:h-[min(78vh,760px)]">
         <Surface padded={false} class="h-full overflow-hidden">
-          <NodeInspector node={selected} contentAvailable={d.contentAvailable} onClose={() => (selectedId = null)} />
+          <NodeInspector
+            node={selected}
+            contentAvailable={d.contentAvailable}
+            payloads={textById[selected.id]}
+            loadingPayloads={loadingId === selected.id}
+            onClose={() => (selectedId = null)}
+          />
         </Surface>
       </aside>
     {/if}
