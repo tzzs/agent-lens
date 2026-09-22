@@ -70,6 +70,7 @@ const RULES: Rule[] = [
     forbidden: [
       { re: /pricing-overrides\.jsonl/, why: 'the override filename belongs to the merge, and a copy diverges from the file the other surface reads' },
       { re: /price-snapshot\.json/, why: 'same reason, for the snapshot path' },
+      { re: /price-snapshot-openrouter\.json/, why: 'same reason, for the §8 fallback snapshot: a surface that spells it reads a file the update command may not have written' },
       { re: /\.withOverride\(/, why: 'merging line-by-line here is how the CLI and served doctor came apart (433/6 vs 432/11)' },
     ],
   },
