@@ -8,7 +8,7 @@
   import { loader } from '../lib/pagestate.svelte.js'
   import { live } from '../lib/live.svelte.js'
   import { formatCompact, formatInt, formatMs, formatDateTime, projectLabel, shortId } from '../lib/format.ts'
-  import { EVENT_GROUPS, eventKind, type EventGroup } from '../lib/eventKinds.ts'
+  import { eventGroups, eventKind, type EventGroup } from '../lib/eventKinds.ts'
   import { buildForest, parentIds, sessionSpan, visibleRows } from '../lib/timeline.ts'
   import Surface from '../components/ui/Surface.svelte'
   import PageHeader from '../components/ui/PageHeader.svelte'
@@ -51,7 +51,7 @@
     return m
   })
   const groupOpts = $derived(
-    EVENT_GROUPS.filter((g) => groupCounts.has(g.key)).map((g) => ({ key: g.key, label: g.label, count: groupCounts.get(g.key) })),
+    eventGroups().filter((g) => groupCounts.has(g.key)).map((g) => ({ key: g.key, label: g.label, count: groupCounts.get(g.key) })),
   )
 
   const matcher = $derived.by(() => {

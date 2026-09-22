@@ -64,7 +64,8 @@ export const INGESTED_RETENTION: RetentionScope = {
  * have been scanned — so it gets its own sentence here rather than borrowing the retention one.
  */
 export function projectRowsPhrase(count: number): string {
-  return `${count} attributed project root${count === 1 ? '' : 's'} hold no session rows here — never ingested from them, or retention took it since (§7)`
+  const one = count === 1
+  return `${count} attributed project root${one ? '' : 's'} hold${one ? 's' : ''} no session rows here — never ingested from them, or retention took it since (§7)`
 }
 
 /** First-level dirs of a live agent store — including ones nothing was ever ingested from. */

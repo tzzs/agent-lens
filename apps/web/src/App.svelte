@@ -5,6 +5,8 @@
   import { range, filterParams } from './lib/filter.svelte.js'
   import { loader } from './lib/pagestate.svelte.js'
   import { initTheme } from './lib/theme.svelte.js'
+  import { code, initLang, t } from './lib/lang.js'
+  import { coverageText, hostSplitText } from './lib/banners.ts'
   import { api } from './lib/api.ts'
   import { formatCompact, relativeTime } from './lib/format.ts'
 
@@ -24,32 +26,33 @@
   import Settings from './pages/Settings.svelte'
 
   // Grouped per plan-v2 §10's nav: overview, the entities, the analysis axes, system.
-  const NAV: NavGroup[] = [
-    { label: '', items: [{ label: 'Overview', path: '/', icon: 'overview' }] },
+  // Derived, not const: the labels are the viewer's language.
+  const NAV = $derived<NavGroup[]>([
+    { label: '', items: [{ label: $t('shell.navOverview'), path: '/', icon: 'overview' }] },
     {
-      label: 'Explore',
+      label: $t('shell.navExplore'),
       items: [
-        { label: 'Sessions', path: '/sessions', icon: 'sessions' },
-        { label: 'Projects', path: '/projects', icon: 'projects' },
-        { label: 'Agents', path: '/agents', icon: 'agents' },
+        { label: $t('shell.navSessions'), path: '/sessions', icon: 'sessions' },
+        { label: $t('shell.navProjects'), path: '/projects', icon: 'projects' },
+        { label: $t('shell.navAgents'), path: '/agents', icon: 'agents' },
       ],
     },
     {
-      label: 'Analyze',
+      label: $t('shell.navAnalyze'),
       items: [
-        { label: 'Capabilities', path: '/capabilities', icon: 'capabilities' },
-        { label: 'Usage', path: '/usage', icon: 'usage' },
-        { label: 'Models', path: '/models', icon: 'models' },
+        { label: $t('shell.navCapabilities'), path: '/capabilities', icon: 'capabilities' },
+        { label: $t('shell.navUsage'), path: '/usage', icon: 'usage' },
+        { label: $t('shell.navModels'), path: '/models', icon: 'models' },
       ],
     },
     {
-      label: 'System',
+      label: $t('shell.navSystem'),
       items: [
-        { label: 'Doctor', path: '/doctor', icon: 'doctor' },
-        { label: 'Settings', path: '/settings', icon: 'settings' },
+        { label: $t('shell.navDoctor'), path: '/doctor', icon: 'doctor' },
+        { label: $t('shell.navSettings'), path: '/settings', icon: 'settings' },
       ],
     },
-  ]
+  ])
 
   // The overview feed also drives the two §14 header banners, so App owns it and
   // hands the same loader to the Overview page (one fetch, not two).
@@ -84,6 +87,7 @@
   onMount(() => {
     const stop = initRouter()
     const stopTheme = initTheme()
+    const stopLang = initLang()
 
     // SSE drives the live indicator + tells every page to refetch. Relative URL:
     // same-origin only, per the local-first rule.
@@ -117,6 +121,7 @@
     return () => {
       stop?.()
       stopTheme()
+      stopLang()
       es?.close()
     }
   })
@@ -137,9 +142,11 @@
   })
 
   const banners = $derived(ov.state.data?.banners ?? null)
+  const hostSplitLine = $derived(banners?.hostSplit ? hostSplitText(banners.hostSplit) : '')
+  const coverageLine = $derived(banners ? coverageText(banners.coverage) : '')
 </script>
 
-<a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-surface focus:px-3 focus:py-2 focus:shadow-overlay">Skip to content</a>
+<a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-surface focus:px-3 focus:py-2 focus:shadow-overlay">{$t('shell.skipToContent')}</a>
 
 <div class="flex min-h-screen bg-page">
   <SidebarNav groups={NAV} isActive={navActive} bind:open={navOpen} />
@@ -151,7 +158,7 @@
           type="button"
           class="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-2 hover:bg-hover-2 lg:hidden"
           onclick={() => (navOpen = true)}
-          aria-label="Open navigation"
+          aria-label={$t('shell.openNav')}
         >
           <Icon name="menu" size={18} />
         </button>
@@ -163,30 +170,35 @@
             ? 'bg-green-tint text-green'
             : 'bg-hover-2/70 text-ink-3'}"
           title={live.connected
-            ? `Streaming · ${formatCompact(live.events)} events · latest ${live.maxTimestamp ? relativeTime(live.maxTimestamp, Date.now()) : '—'}`
-            : 'Live stream not connected'}
+            ? $t('shell.liveTitle', { values: { events: formatCompact(live.events), ago: live.maxTimestamp ? relativeTime(live.maxTimestamp, Date.now()) : $t('common.dash') } })
+            : $t('shell.offlineTitle')}
         >
           <span class="relative flex h-1.5 w-1.5">
             {#if live.connected}<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-green opacity-60"></span>{/if}
             <span class="relative inline-flex h-1.5 w-1.5 rounded-full {live.connected ? 'bg-green' : 'bg-ink-3'}"></span>
           </span>
-          {live.connected ? 'Live' : 'Offline'}
+          {live.connected ? $t('shell.live') : $t('shell.offline')}
         </span>
       </div>
     </header>
 
     <main id="main" class="mx-auto w-full min-w-0 max-w-[1440px] flex-1 px-4 py-6 sm:px-6 lg:px-8">
-      {#if banners && (banners.hostSplit || banners.coverage.banner)}
+      {#if banners && (hostSplitLine || coverageLine)}
         <div class="mb-5 space-y-2">
           {#if banners.hostSplit}
-            <Alert tone="orange" title="Host split." id="host-split">{banners.hostSplit.message}</Alert>
+            <Alert tone="orange" title={$t('banner.hostSplitTitle')} id="host-split">{hostSplitLine}</Alert>
           {/if}
-          {#if banners.coverage.banner}
-            <Alert tone="red" title="Incomplete history." id="coverage">{banners.coverage.banner}</Alert>
+          {#if coverageLine}
+            <Alert tone="red" title={$t('banner.coverageTitle')} id="coverage">{coverageLine}</Alert>
           {/if}
         </div>
       {/if}
 
+      <!-- A language change remounts the page. The pure display helpers
+           (format.ts, eventKinds.ts, banners.ts) read the catalog's active locale
+           instead of subscribing to a store, so re-rendering is what turns an
+           already-drawn "55h 52m" into "55 时 52 分". -->
+      {#key $code}
       {#if page === ''}
         <Overview {ov} />
       {:else if page === 'agents'}
@@ -211,9 +223,10 @@
         <Settings />
       {:else}
         <div class="rounded-card bg-surface p-6 text-sm text-ink-2 shadow-card">
-          Unknown page <span class="nums text-ink">/{page}</span>. Pick one from the navigation.
+          {$t('shell.unknownPageStart')} <span class="nums text-ink">/{page}</span>{$t('shell.unknownPageEnd')}
         </div>
       {/if}
+      {/key}
     </main>
   </div>
 </div>

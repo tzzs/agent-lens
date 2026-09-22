@@ -3,7 +3,7 @@
   //  - null -> "n/a" (never "$0"; an unknown price must not read as free)
   //  - a partial total (some agents unpriced) -> "≥ $x" so the figure is a floor
   //  - an estimate is labelled "est." so a computed cost is never mistaken for cash
-  import { formatUsd } from '../lib/format.ts'
+  import { formatUsd, isUnpriced } from '../lib/format.ts'
 
   let {
     value,
@@ -26,7 +26,9 @@
     reported: "Cost the agent logged for itself (§18 row 1): only where an agent's own log carries the figure, so which agents report is a fact about the data, not a fixed list; every other cost here falls back to the computed estimate (est.).",
   }
   const text = $derived(formatUsd(value))
-  const na = $derived(text === 'n/a')
+  // Decided from the input, never from the rendered glyph: "n/a" is a word, and
+  // the word changes with the interface language.
+  const na = $derived(isUnpriced(value))
   const shown = $derived(!na && partial ? `≥ ${text}` : text)
   const title = $derived(
     na ? 'No price available for this model — shown as n/a, never $0 (§8).' : partial ? `${titles[basis]} At least this much: some agents have no price and are excluded.` : titles[basis],

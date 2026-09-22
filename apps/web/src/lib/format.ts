@@ -2,20 +2,41 @@
  * Pure display formatting. No DOM, no fetching — just number/date shaping so
  * every page renders the same way. The one product rule encoded here: a `null`
  * cost is "n/a", never "$0" (§8: an unknown price must not read as free).
+ *
+ * Locale-dependent, through `@agentlens/i18n`'s active locale rather than a
+ * parameter: these run inside plain functions that no store can reach, and the
+ * language switcher keeps that holder in step with the screen. Grouping and
+ * compact scales follow the locale (a Chinese reader gets 万/亿, which is the
+ * point of asking in Chinese); currency stays `$` because that is the unit the
+ * data is in, not a word this UI translates. Absolute timestamps stay ISO-UTC in
+ * every locale so a screenshot and a log line still agree.
  */
+import { activeLocale, msg } from '@agentlens/i18n'
 
-const compactFmt = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 2 })
-const intFmt = new Intl.NumberFormat('en')
+const forms = new Map<string, { int: Intl.NumberFormat; compact: Intl.NumberFormat }>()
+
+function localeForms() {
+  const locale = activeLocale()
+  let f = forms.get(locale)
+  if (!f) {
+    f = {
+      int: new Intl.NumberFormat(locale),
+      compact: new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 2 }),
+    }
+    forms.set(locale, f)
+  }
+  return f
+}
 
 export function formatInt(n: number | null | undefined): string {
-  if (n === null || n === undefined || !Number.isFinite(n)) return '—'
-  return intFmt.format(Math.round(n))
+  if (n === null || n === undefined || !Number.isFinite(n)) return msg('common.dash')
+  return localeForms().int.format(Math.round(n))
 }
 
 /** 1,234,567 -> "1.23M"; used for the big card numbers. */
 export function formatCompact(n: number | null | undefined): string {
-  if (n === null || n === undefined || !Number.isFinite(n)) return '—'
-  return compactFmt.format(n)
+  if (n === null || n === undefined || !Number.isFinite(n)) return msg('common.dash')
+  return localeForms().compact.format(n)
 }
 
 /**
@@ -23,58 +44,64 @@ export function formatCompact(n: number | null | undefined): string {
  * and a real but sub-$0.0001 cost reads "<$0.0001" — "$0.0000" would look free.
  */
 export function formatUsd(n: number | null | undefined): string {
-  if (n === null || n === undefined || !Number.isFinite(n)) return 'n/a'
+  if (n === null || n === undefined || !Number.isFinite(n)) return msg('common.na')
   const abs = Math.abs(n)
   if (abs > 0 && abs < 0.00005) return n < 0 ? '>-$0.0001' : '<$0.0001'
   return `$${n.toFixed(abs > 0 && abs < 1 ? 4 : 2)}`
 }
 
-/** Duration in ms -> human "1h 2m", "3.4s", "240ms". */
-export function formatMs(ms: number | null | undefined): string {
-  if (ms === null || ms === undefined || !Number.isFinite(ms)) return '—'
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  const s = ms / 1000
-  if (s < 60) return `${s.toFixed(s < 10 ? 1 : 0)}s`
-  const m = Math.floor(s / 60)
-  const rs = Math.round(s % 60)
-  if (m < 60) return `${m}m ${rs}s`
-  const h = Math.floor(m / 60)
-  return `${h}h ${m % 60}m`
+/** True when a cost figure has no price behind it — the "n/a" state, by input, not by glyph. */
+export function isUnpriced(n: number | null | undefined): boolean {
+  return n === null || n === undefined || !Number.isFinite(n)
 }
 
+/** Duration in ms -> human "1h 2m", "3.4s", "240ms". */
+export function formatMs(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined || !Number.isFinite(ms)) return msg('common.dash')
+  if (ms < 1000) return msg('fmt.unitMs', { n: String(Math.round(ms)) })
+  const s = ms / 1000
+  if (s < 60) return msg('fmt.unitS', { n: s.toFixed(s < 10 ? 1 : 0) })
+  const m = Math.floor(s / 60)
+  const rs = Math.round(s % 60)
+  if (m < 60) return msg('fmt.durMS', { m: String(m), s: String(rs) })
+  const h = Math.floor(m / 60)
+  return msg('fmt.durHM', { h: String(h), m: String(m % 60) })
+}
+
+/** Absolute stamps stay ISO-UTC in every locale: a screen and a log must agree. */
 export function formatDateTime(ts: number | null | undefined): string {
-  if (ts === null || ts === undefined || !Number.isFinite(ts)) return '—'
+  if (ts === null || ts === undefined || !Number.isFinite(ts)) return msg('common.dash')
   return new Date(ts).toISOString().replace('T', ' ').slice(0, 19) + 'Z'
 }
 
 export function formatDate(ts: number | null | undefined): string {
-  if (ts === null || ts === undefined || !Number.isFinite(ts)) return '—'
+  if (ts === null || ts === undefined || !Number.isFinite(ts)) return msg('common.dash')
   return new Date(ts).toISOString().slice(0, 10)
 }
 
 export function formatClock(ts: number | null | undefined): string {
-  if (ts === null || ts === undefined || !Number.isFinite(ts)) return '—'
+  if (ts === null || ts === undefined || !Number.isFinite(ts)) return msg('common.dash')
   return new Date(ts).toISOString().slice(11, 23)
 }
 
 /** "3m ago" style, relative to `now`. Falls back to the absolute date past a week. */
 export function relativeTime(ts: number | null | undefined, now: number): string {
-  if (ts === null || ts === undefined || !Number.isFinite(ts)) return '—'
+  if (ts === null || ts === undefined || !Number.isFinite(ts)) return msg('common.dash')
   const diff = now - ts
   if (diff < 0) return formatDate(ts)
   const s = Math.floor(diff / 1000)
-  if (s < 60) return `${s}s ago`
+  if (s < 60) return msg('fmt.agoS', { n: String(s) })
   const m = Math.floor(s / 60)
-  if (m < 60) return `${m}m ago`
+  if (m < 60) return msg('fmt.agoM', { n: String(m) })
   const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
+  if (h < 24) return msg('fmt.agoH', { n: String(h) })
   const d = Math.floor(h / 24)
-  if (d < 7) return `${d}d ago`
+  if (d < 7) return msg('fmt.agoD', { n: String(d) })
   return formatDate(ts)
 }
 
 export function pct(n: number | null | undefined, digits = 1): string {
-  if (n === null || n === undefined || !Number.isFinite(n)) return '—'
+  if (n === null || n === undefined || !Number.isFinite(n)) return msg('common.dash')
   return `${(n * 100).toFixed(digits)}%`
 }
 
@@ -83,10 +110,10 @@ export function pct(n: number | null | undefined, digits = 1): string {
  * plus the qualitative flags the copy needs (estimate vs reported vs partial).
  */
 export function costDisplay(n: number | null | undefined, partial = false): { text: string; title: string } {
+  if (isUnpriced(n)) return { text: msg('common.na'), title: msg('fmt.costNoPrice') }
   const text = formatUsd(n)
-  if (text === 'n/a') return { text, title: 'no price available — shown as n/a, never $0 (§8)' }
-  if (partial) return { text, title: 'at least this much: some agents have no price and are excluded (§8)' }
-  return { text, title: 'computed from tokens × price (estimate)' }
+  if (partial) return { text, title: msg('fmt.costPartial') }
+  return { text, title: msg('fmt.costEstimate') }
 }
 
 /**
@@ -95,7 +122,7 @@ export function costDisplay(n: number | null | undefined, partial = false): { te
  * value in a `title` so it stays inspectable and copyable.
  */
 export function shortId(id: string | null | undefined, n = 8): string {
-  if (!id) return '—'
+  if (!id) return msg('common.dash')
   return id.length > n + 1 ? id.slice(0, n) : id
 }
 
@@ -106,6 +133,6 @@ export function looksLikeHash(s: string | null | undefined): boolean {
 
 /** A display name for a project: its name, or a short id when only a digest is known. */
 export function projectLabel(name: string | null | undefined): string {
-  if (!name) return '(no project)'
+  if (!name) return msg('fmt.noProject')
   return looksLikeHash(name) ? shortId(name) : name
 }

@@ -251,6 +251,8 @@ export interface HostSplitBanner {
   dominantHost: string
   dominantShare: number
   hosts: HostShare[]
+  /** The dominant host is only the agent's own name repeated; the banner is worded differently. */
+  degenerate: boolean
   splitByDefault: true
   message: string
 }

@@ -11,6 +11,7 @@
   import Icon from './Icon.svelte'
   import Segmented from './Segmented.svelte'
   import { theme, setTheme } from '../../lib/theme.svelte.js'
+  import { pref as langPref, setLang, t, type LangPref } from '../../lib/lang.js'
 
   let {
     groups,
@@ -22,6 +23,10 @@
   $effect(() => {
     if (themeValue !== theme.pref) setTheme(themeValue as 'system' | 'light' | 'dark')
   })
+  let langValue = $state<LangPref>($langPref)
+  $effect(() => {
+    if (langValue !== $langPref) setLang(langValue)
+  })
 </script>
 
 <svelte:window onkeydown={(e) => { if (open && e.key === 'Escape') open = false }} />
@@ -30,7 +35,7 @@
   <button
     type="button"
     class="fixed inset-0 z-30 bg-black/30 backdrop-blur-[1px] lg:hidden"
-    aria-label="Close navigation"
+    aria-label={$t('shell.closeNav')}
     onclick={() => (open = false)}
   ></button>
 {/if}
@@ -38,7 +43,7 @@
 <aside
   class="fixed inset-y-0 left-0 z-40 flex w-60 shrink-0 flex-col border-r border-line bg-canvas transition-transform duration-200
     lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 {open ? 'translate-x-0 shadow-overlay' : '-translate-x-full'}"
-  aria-label="Primary"
+  aria-label={$t('shell.primaryNav')}
 >
   <div class="flex items-center gap-2.5 px-5 pb-4 pt-5">
     <div class="grid h-8 w-8 place-items-center rounded-[9px] bg-accent text-white shadow-btn">
@@ -48,9 +53,9 @@
     </div>
     <div class="min-w-0">
       <div class="text-sm font-semibold tracking-tight text-ink">AgentLens</div>
-      <div class="text-xs text-ink-3">Agent activity center</div>
+      <div class="text-xs text-ink-3">{$t('sidebar.tagline')}</div>
     </div>
-    <button type="button" class="ml-auto grid h-7 w-7 place-items-center rounded-md text-ink-3 hover:bg-hover-2 lg:hidden" onclick={() => (open = false)} aria-label="Close navigation">
+    <button type="button" class="ml-auto grid h-7 w-7 place-items-center rounded-md text-ink-3 hover:bg-hover-2 lg:hidden" onclick={() => (open = false)} aria-label={$t('shell.closeNav')}>
       <Icon name="x" size={15} />
     </button>
   </div>
@@ -81,19 +86,31 @@
   </nav>
 
   <div class="space-y-3 border-t border-line px-5 py-4">
-    <div class="flex items-center justify-between">
-      <span class="text-xs text-ink-3">Theme</span>
+    <div class="flex items-center justify-between gap-2">
+      <span class="text-xs text-ink-3">{$t('sidebar.theme')}</span>
       <Segmented
-        label="Color theme"
+        label={$t('sidebar.themeAria')}
         iconOnly
         bind:value={themeValue}
         options={[
-          { value: 'system', label: 'System', icon: 'monitor' },
-          { value: 'light', label: 'Light', icon: 'sun' },
-          { value: 'dark', label: 'Dark', icon: 'moon' },
+          { value: 'system', label: $t('sidebar.themeSystem'), icon: 'monitor' },
+          { value: 'light', label: $t('sidebar.themeLight'), icon: 'sun' },
+          { value: 'dark', label: $t('sidebar.themeDark'), icon: 'moon' },
         ]}
       />
     </div>
-    <p class="text-[11px] leading-snug text-ink-3">Loopback only · no telemetry · nothing leaves this machine</p>
+    <div class="flex items-center justify-between gap-2">
+      <span class="text-xs text-ink-3">{$t('sidebar.lang')}</span>
+      <Segmented
+        label={$t('sidebar.langAria')}
+        bind:value={langValue}
+        options={[
+          { value: 'system', label: $t('sidebar.langSystem') },
+          { value: 'en', label: $t('sidebar.langEnglish') },
+          { value: 'zh', label: $t('sidebar.langChinese') },
+        ]}
+      />
+    </div>
+    <p class="text-[11px] leading-snug text-ink-3">{$t('sidebar.localFirst')}</p>
   </div>
 </aside>
