@@ -8,7 +8,7 @@
  * injected — the only inputs the server genuinely cannot produce alone (§5.4).
  * This route scans all usage rows on purpose; hot dashboard routes do not.
  */
-import { parserVersionDrift, sourceRetention, subagentOrphans, timestampGuesses } from '@agentlens/storage'
+import { parserVersionDrift, requestFoldHealth, requestFoldSentence, sourceRetention, subagentOrphans, timestampGuesses } from '@agentlens/storage'
 import { query } from '@agentlens/query'
 import type { ServerCtx } from './types.ts'
 import { costView, missingPriceModels } from './cost.ts'
@@ -67,6 +67,10 @@ export async function doctor(ctx: ServerCtx, sp: URLSearchParams): Promise<Docto
   const modelsSeen = Number(rowsOf(ctx.db, 'SELECT COUNT(*) AS n FROM models')[0]?.n ?? 0)
   const missing = missingPriceModels(ctx)
   const catalog = await catalogSummary(ctx, filter)
+  // §11/§19: whether the materialised stage 1 still describes `events`, phrased by storage so
+  // this page and `agl doctor` print one sentence (§14).
+  const stageOneFold = requestFoldSentence(requestFoldHealth(ctx.db))
+
   const usageQuality = usageQualityBlock(ctx, adapters)
 
   return {
@@ -76,6 +80,7 @@ export async function doctor(ctx: ServerCtx, sp: URLSearchParams): Promise<Docto
     parsing: { events, parseErrors, parseErrorPct: pctOf(parseErrors, events + parseErrors), unknownTypes, parserDrift },
     usageQuality: { ...usageQuality, withoutRequestId },
     coverage: coverageReport(ctx),
+    stageOneFold,
     subagents,
     guessedTimestamps,
     retention: sourceRetention(ctx.db),

@@ -146,6 +146,12 @@ describe('agl doctor against a synthetic store', () => {
     expect(out).toContain('cube (SQL) and event-model folds agree on every agent')
   })
 
+  it('reports the materialised stage 1 as healthy on a maintained store (§19)', () => {
+    // The wording is storage's `requestFoldSentence`; this asserts the line is printed at all,
+    // which is the way a shared check quietly stops reaching the user.
+    expect(out).toMatch(/✓ stage 1 materialised: \d+ request rows over \d+ events/)
+  })
+
   it('keeps permissions as three distinct states', () => {
     expect(out).toContain('readable')
     expect(out).toContain('does not exist')

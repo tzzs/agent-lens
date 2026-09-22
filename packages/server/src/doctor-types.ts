@@ -8,6 +8,7 @@
  */
 import type { AggregationMode } from '@agentlens/event-model'
 import type { AgentUsageQuality, ParserVersionDrift, RetentionCounts } from '@agentlens/storage'
+import { requestFoldSentence } from '@agentlens/storage'
 import { costView } from './cost.ts'
 import { coverageReport } from './coverage.ts'
 
@@ -72,6 +73,8 @@ export interface DoctorReport {
     perAgent: DoctorUsageAgentRow[]
   }
   coverage: ReturnType<typeof coverageReport>
+  /** §11/§19: whether the materialised stage 1 still describes `events`. The text is storage's, so the terminal and this page say one sentence (§14). */
+  stageOneFold: ReturnType<typeof requestFoldSentence>
   /** §4.4 row 8: subagent events whose parent the time heuristic could not resolve. */
   subagents: DoctorSubagentLinkage[]
   /** §5.2: per-agent count of events whose time the source never stated. */

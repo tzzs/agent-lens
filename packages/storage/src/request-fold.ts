@@ -433,3 +433,62 @@ export function requestFoldRowCount(db: DatabaseSync): number {
   if (!hasRequestFoldTable(db)) return 0
   return count(db, 'SELECT COUNT(*) FROM main.requests')
 }
+
+export interface RequestFoldHealth {
+  /** The table exists AND carries its build sentinel: a half-created fold answers nothing. */
+  present: boolean
+  rows: number
+  /** Events the folded rows account for, i.e. `SUM(member_count)`. */
+  members: number
+  events: number
+  /** The grouping on disk is the one the stored §18 policies ask for. */
+  policyMatches: boolean
+}
+
+/**
+ * §11: the durable stage 1 has no foreign key tying it to `events`, so its health is a number
+ * to print rather than a constraint to rely on. Both are cheap whole-table aggregates — the
+ * same two counts the reader's certificate pays for — and neither re-folds anything.
+ *
+ * What this can and cannot say: drift means the cube declines its fast path and folds live, so
+ * a red here is a store that got slower, not one whose figures went wrong. That is worth a line
+ * in `doctor` precisely because the decline is silent everywhere else.
+ */
+export function requestFoldHealth(db: DatabaseSync): RequestFoldHealth {
+  const state = requestFoldState(db)
+  const present = hasRequestFoldTable(db) && state !== null
+  return {
+    present,
+    rows: present ? requestFoldRowCount(db) : 0,
+    members: present ? count(db, 'SELECT COALESCE(SUM(member_count), 0) FROM main.requests') : 0,
+    events: count(db, 'SELECT COUNT(*) FROM main.events'),
+    policyMatches: present && state.policyFingerprint === requestFoldFingerprint(db),
+  }
+}
+
+/** The one sentence both doctors say about §11's fold health. */
+export function requestFoldSentence(h: RequestFoldHealth): { ok: boolean; text: string } {
+  // Digits are grouped here so the terminal and the browser print one string, not two
+  // renderings of one fact (§14).
+  const n = (v: number) => v.toLocaleString('en-US')
+  if (!h.present) {
+    return { ok: false, text: 'no materialised stage 1 (migration 008) — every cube read folds events live' }
+  }
+  if (h.members !== h.events) {
+    return {
+      ok: false,
+      text:
+        `stage 1 accounts for ${n(h.members)} of ${n(h.events)} events — it drifted from ` +
+        '`events`, so reads fold live again until the next scan (§11)',
+    }
+  }
+  if (!h.policyMatches) {
+    return {
+      ok: false,
+      text:
+        `stage 1 holds ${n(h.rows)} request rows for ${n(h.events)} events, but under a different ` +
+        '§18 grouping than the stored policies — reads fold live until a re-scan',
+    }
+  }
+  return { ok: true, text: `stage 1 materialised: ${n(h.rows)} request rows over ${n(h.events)} events` }
+}

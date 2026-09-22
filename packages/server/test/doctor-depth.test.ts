@@ -9,7 +9,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AgentEvent } from '@agentlens/event-model'
-import { insertEvents, setAgentAggregations, updateSourceProgress } from '@agentlens/storage'
+import { insertEvents, requestFoldHealth, requestFoldSentence, setAgentAggregations, updateSourceProgress } from '@agentlens/storage'
 import { harness } from './helpers.ts'
 
 const HOME = '/home/tester'
@@ -138,6 +138,14 @@ describe('GET /api/doctor checks the web used to lack (§11)', () => {
     expect(body.parsing.parserDrift).toMatchObject({ checked: 1, drifted: 1, unmapped: 0, stale: [{ agentId: 'claude-code', parserVersion: 5, sources: 1 }] })
     expect(body.retention).toMatchObject({ gone: 1, rotated: 0 })
     expect(body.subagents).toEqual([{ agentId: 'claude-code', total: 1, orphan: 0, orphanPct: 0 }])
+  })
+
+  it('serves the stage-1 verdict in storage\'s own words, not a paraphrase (§14)', async () => {
+    h = harness({ homedir: HOME })
+    const { body } = await h.get('/api/doctor')
+    // Byte-identical to what `agl doctor` prints, because the route calls the same owner.
+    expect(body.stageOneFold).toEqual(requestFoldSentence(requestFoldHealth(h.seeded.db)))
+    expect(body.stageOneFold.ok).toBe(true)
   })
 
   it('says drift cannot be evaluated when no adapter is installed in this build', async () => {

@@ -64,6 +64,8 @@
     subagents?: { agentId: string; total: number; orphan: number; orphanPct: number }[]
     guessedTimestamps?: { agentId: string; events: number; guessed: number; guessedPct: number; fromIngestClock: number; fromFileMtime: number }[]
     retention?: { gone: number; rotated: number; active: number }
+    /** §11/§19: storage's own sentence about the materialised stage 1, printed verbatim (§14). */
+    stageOneFold?: { ok: boolean; text: string }
   }
   const depth = $derived(d as unknown as DoctorDepth | undefined)
   const perAgent = $derived(depth?.usageQuality.perAgent ?? [])
@@ -72,6 +74,7 @@
   const subagents = $derived(depth?.subagents ?? [])
   const guessedTimestamps = $derived(depth?.guessedTimestamps ?? [])
   const retention = $derived(depth?.retention ?? null)
+  const stageOne = $derived(depth?.stageOneFold ?? null)
   const share = (n: number, total: number): string => (total === 0 ? '0.0%' : `${((n / total) * 100).toFixed(1)}%`)
   /** The CLI's own wording for the fold rule, so both reports say the same thing (§14). */
   function foldSentence(a: PerAgentQuality): string {
@@ -421,6 +424,23 @@
             Their tokens and cost ARE counted; only the timeline's tree placement is unknown.
           </p>
         {/if}
+      {/if}
+    </Surface>
+
+    <Surface
+      title="Materialised stage 1"
+      info="§19: the per-request fold is stored in its own table so the cube stops folding every event on each read. No foreign key ties that table to `events`, so whether it still agrees is a fact worth printing."
+    >
+      {#if stageOne}
+        <p class="text-[13px] {stageOne.ok ? 'text-ink' : 'text-orange'}">{stageOne.text}</p>
+        {#if !stageOne.ok}
+          <p class="mt-2 text-xs text-ink-3">
+            The figures stay right either way: a table that drifted or was folded under another
+            policy is declined, and the read folds from <code>events</code> again — this costs speed, not correctness.
+          </p>
+        {/if}
+      {:else}
+        <p class="text-[13px] text-ink-3">This server build reported no stage-1 health.</p>
       {/if}
     </Surface>
 

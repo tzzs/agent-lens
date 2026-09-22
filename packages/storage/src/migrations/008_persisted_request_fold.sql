@@ -22,7 +22,7 @@
 -- FK action expresses "recompute me when any member moves". Deleting a member silently
 -- changes the group's MAX, which is why `prune` and §5.3's repair path DELETE and re-fold
 -- the affected keys rather than merging them (`packages/storage/src/request-fold.ts` owns
--- that), and why `doctor-checks.ts:requestFoldOrphans` reports the drift it cannot forbid.
+-- that), and why `requestFoldHealth` reports to both doctors the drift it cannot forbid.
 CREATE TABLE IF NOT EXISTS requests (
   agent_key      TEXT    NOT NULL,             -- COALESCE(agent_id, ''), the §18 per-agent fold partition
   req_key        TEXT    NOT NULL,             -- request_id under request_max, event id under the sum modes

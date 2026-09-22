@@ -17,7 +17,7 @@ import { stat } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { deriveSessionId, type AgentAdapter, type Detection, type HostContext, type SourceSpec } from '@agentlens/event-model'
-import { parserVersionDrift, sourceRetention, subagentOrphans, timestampGuesses } from '@agentlens/storage'
+import { parserVersionDrift, requestFoldHealth, requestFoldSentence, sourceRetention, subagentOrphans, timestampGuesses } from '@agentlens/storage'
 import {
   coverageReport,
   createContext,
@@ -501,6 +501,19 @@ export function renderRetention(db: DatabaseSync, rctx: Ctx): void {
 }
 
 /**
+ * §11 / §19: the materialised stage 1 has no foreign key tying it to `events`, so the only
+ * defence against it silently going stale is printing whether it did. A warning, never an
+ * error: when the counts disagree the cube declines the fast path and folds from `events`, so
+ * the figures a user reads stay right and only the speed is lost.
+ */
+export function renderStageOneFold(db: DatabaseSync, rctx: Ctx): void {
+  // Shared with `GET /api/doctor`: one read, one sentence on both exits (§14).
+  const verdict = requestFoldSentence(requestFoldHealth(db))
+  rctx.out(`${verdict.ok ? GLYPH.ok : GLYPH.warn} ${verdict.text}`)
+  if (!verdict.ok) rctx.out('  → every number still folds from `events`; this costs speed, not correctness')
+}
+
+/**
  * §8's unpriced set and §11's read of it come from `modelSpend` + `unpricedBuckets`, the same
  * two calls `/api/doctor` and `/api/models` make: one model could otherwise read "missing
  * price" on one surface and priced on the other (§14). Only the roll-ups below — priced event
@@ -622,6 +635,7 @@ export async function cmdDoctor(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbP
   renderSubagentLinkage(db, rctx)
   renderGuessedTimestamps(db, rctx)
   renderRetention(db, rctx)
+  renderStageOneFold(db, rctx)
 
   ctx.out('')
   const hosts = new Map<string, HostContext>(
