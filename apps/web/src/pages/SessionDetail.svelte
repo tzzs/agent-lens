@@ -7,7 +7,7 @@
   import { api, type PayloadView, type TimelineNode } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
   import { live } from '../lib/live.svelte.js'
-  import { formatCompact, formatInt, formatMs, formatDateTime, projectLabel, shortId } from '../lib/format.ts'
+  import { ACTIVE_METRIC_INFO, formatCompact, formatInt, formatMs, formatDateTime, projectLabel, shortId } from '../lib/format.ts'
   import { EVENT_GROUPS, eventKind, type EventGroup } from '../lib/eventKinds.ts'
   import { buildForest, parentIds, sessionSpan, visibleRows } from '../lib/timeline.ts'
   import Surface from '../components/ui/Surface.svelte'
@@ -171,16 +171,18 @@
 
   <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
     {#each [
-      ['Agent', `${d.session.agentId} · ${d.session.hostId}`],
-      ['Project', projectLabel(d.session.project)],
-      ['Started (UTC)', formatDateTime(d.session.firstTimestamp).slice(0, 16)],
-      ['Events', formatInt(d.session.eventCount)],
-      ['Tokens', formatCompact(Number(d.totals.tokens_total ?? 0))],
-      ['Duration', formatMs(Number(d.totals.duration ?? 0))],
-    ] as [k, v] (k)}
+      ['Agent', `${d.session.agentId} · ${d.session.hostId}`, null],
+      ['Project', projectLabel(d.session.project), d.session.project ?? ''],
+      ['Started (UTC)', formatDateTime(d.session.firstTimestamp).slice(0, 16), null],
+      ['Events', formatInt(d.session.eventCount), null],
+      ['Tokens', formatCompact(Number(d.totals.tokens_total ?? 0)), null],
+      // The metric is machine time; the wall clock it gets mistaken for is one hover away.
+      ['Active', formatMs(Number(d.totals.duration ?? 0)),
+        span === null ? ACTIVE_METRIC_INFO : `${ACTIVE_METRIC_INFO} Wall clock, first event to last: ${formatMs(span.end - span.start)}.`],
+    ] as [k, v, hint] (k)}
       <div class="min-w-0 rounded-[10px] bg-surface px-3 py-2 shadow-card">
         <div class="text-xs text-ink-3">{k}</div>
-        <div class="nums truncate text-[13px] text-ink" title={k === 'Project' ? (d.session.project ?? '') : v}>{v}</div>
+        <div class="nums truncate text-[13px] text-ink" title={hint ?? v}>{v}</div>
       </div>
     {/each}
   </div>
