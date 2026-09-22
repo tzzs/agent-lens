@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
-import { defaultDbPath, migrate, openDatabase } from '@agentlens/storage'
+import { defaultDbPath, hostSplitFor, hostSplitSentence, migrate, openDatabase, pickHostWarning } from '@agentlens/storage'
 import { CLI_FLAG_SCHEMA, parseArgs, UsageError, type FlagView } from './args.ts'
 import { getAdapters } from './adapters.ts'
 import { defaultCtx, redactHome, type Ctx } from './context.ts'
@@ -86,11 +86,8 @@ function cliVersion(): string {
  * upstream retention already deleted history has to say so, and §1.5's measured
  * 94.6%-desktop split is the single easiest way to misread a total.
  */
-const HOST_SKEW_FLOOR = 0.8
-const HOST_SKEW_MIN_EVENTS = 20
-
 function hostSkew(db: DatabaseSync): string | null {
-  const byAgent = new Map<string, { host: string; n: number }[]>()
+  const byAgent = new Map<string, { host: string; events: number }[]>()
   for (
     const r of rowsOf(
       db,
@@ -99,24 +96,13 @@ function hostSkew(db: DatabaseSync): string | null {
     )
   ) {
     const agent = String(r.agent_id)
-    byAgent.set(agent, [...(byAgent.get(agent) ?? []), { host: String(r.host), n: Number(r.n) }])
+    byAgent.set(agent, [...(byAgent.get(agent) ?? []), { host: String(r.host), events: Number(r.n) }])
   }
-  let best: { agent: string; host: string; share: number; other: string } | null = null
-  for (const [agent, hosts] of byAgent) {
-    if (hosts.length < 2) continue
-    const total = hosts.reduce((sum, h) => sum + h.n, 0)
-    if (total < HOST_SKEW_MIN_EVENTS) continue
-    const ranked = [...hosts].sort((a, b) => b.n - a.n)
-    const share = ranked[0]!.n / total
-    if (share < HOST_SKEW_FLOOR || ranked[0]!.host === agent) continue
-    if (best && best.share >= share) continue
-    best = { agent, host: ranked[0]!.host, share, other: ranked[1]!.host }
-  }
-  if (!best) return null
-  return (
-    `${GLYPH.warn} ${(best.share * 100).toFixed(1)}% of ${best.agent} events came from host ` +
-    `${best.host}, not ${best.other} — every figure above is split by host (§1.5)`
-  )
+  // §14: the same decision the browser makes, from the same shared rule — see
+  // `packages/storage/src/host-split.ts` for why the warning is stricter than the split note.
+  const split = pickHostWarning([...byAgent].map(([agent, hosts]) => hostSplitFor(agent, hosts)))
+  if (!split) return null
+  return `${GLYPH.warn} ${hostSplitSentence(split, 'events')} — every figure above is split by host (§1.5)`
 }
 
 /** The §14 warning lines, or nothing at all when coverage and hosts are clean. */

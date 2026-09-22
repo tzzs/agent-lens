@@ -6,6 +6,7 @@
  * partial history from reading as a complete one.
  */
 import { query, type QueryFilter } from '@agentlens/query'
+import { hostSplitFor, hostSplitNotice, pickHostSplit } from '@agentlens/storage'
 import type { ServerCtx } from './types.ts'
 import { coverageReport, type CoverageReport } from './coverage.ts'
 
@@ -55,29 +56,19 @@ export function hostSplitsByAgent(ctx: ServerCtx, filter?: QueryFilter): Map<str
 }
 
 export function hostSplitBanner(ctx: ServerCtx, filter?: QueryFilter): HostSplitBanner | null {
-  const splits = hostSplitsByAgent(ctx, filter)
-  let best: { agentId: string; hosts: HostShare[] } | null = null
-  let bestEvents = 0
-  for (const [agentId, hosts] of splits) {
-    const total = hosts.reduce((a, b) => a + b.events, 0)
-    if (hosts.length < 2 || total === 0) continue
-    const dominant = hosts[0]
-    if (!dominant || dominant.share <= 0.5) continue
-    if (total > bestEvents) {
-      bestEvents = total
-      best = { agentId, hosts }
-    }
-  }
+  // Same decision as the terminal's warning line, from the same rule (§14): a majority host
+  // makes this view "split by default", and the degenerate case where the dominant host carries
+  // the agent's own name is phrased as the minority it is instead of a tautology. The stricter
+  // alarm threshold lives in `host-split.ts` too, so neither surface can drift on its own.
+  const best = pickHostSplit([...hostSplitsByAgent(ctx, filter)].map(([agentId, hosts]) => hostSplitFor(agentId, hosts)))
   if (!best) return null
-  const dominant = best.hosts[0]!
-  const others = best.hosts.slice(1).map((h) => h.host).join(', ')
   return {
     agentId: best.agentId,
-    dominantHost: dominant.host,
-    dominantShare: dominant.share,
+    dominantHost: best.dominant.host,
+    dominantShare: best.dominant.share,
     hosts: best.hosts,
     splitByDefault: true,
-    message: `${(dominant.share * 100).toFixed(1)}% of ${best.agentId} records came from ${dominant.host}, not ${others || 'the other host'} — shown split by default`,
+    message: `${hostSplitNotice(best)} — shown split by default`,
   }
 }
 
