@@ -6,6 +6,7 @@ import { basename, dirname, join } from 'node:path'
 import { deriveProjectId, projectRootForCwd, type AgentAdapter, type SourceSpec } from '@agentlens/event-model'
 import { scanSource, type EventSink, type SavedSourceState, type SourceCommit } from '@agentlens/collector'
 import {
+  deriveSessionTitles,
   insertEvents,
   recordParseFailure,
   resolveSubagentParents,
@@ -51,6 +52,8 @@ export interface ScanOutcome {
   subagentsGuessed?: number
   /** Chains left untouched because re-storing the row would have moved an unrelated column. */
   subagentLinksRefused?: number
+  /** Sessions whose title was derived from the store's own title records (§10). */
+  sessionsTitled?: number
 }
 
 export interface SourceRefusal {
@@ -210,6 +213,9 @@ export async function runScan(
   outcome.subagentsProven = relinked.filter((r) => r.evidence === 'foreign-key').length
   outcome.subagentsGuessed = relinked.filter((r) => r.evidence === 'heuristic').length
   outcome.subagentLinksRefused = links.refused.length
+  // §10: the session list is the product's first screen, and the title records are already in
+  // the store (`custom-title` / `ai-title` rows) — this only projects them onto the session.
+  outcome.sessionsTitled = deriveSessionTitles(db).updated
   return outcome
 }
 
@@ -241,6 +247,9 @@ export async function cmdScan(db: DatabaseSync, flags: FlagView, ctx: Ctx): Prom
       `+ ${outcome.subagentsLinked} side-chain ${outcome.subagentsLinked === 1 ? 'row' : 'rows'} linked to its spawn (§4.4 row 8: ` +
         `${outcome.subagentsProven ?? 0} by the spawn's own id, ${outcome.subagentsGuessed ?? 0} by the nearest preceding call)`,
     )
+  }
+  if (outcome.sessionsTitled) {
+    ctx.out(`+ ${outcome.sessionsTitled} session ${outcome.sessionsTitled === 1 ? 'row' : 'rows'} titled from the title records its own logs carry (§10)`)
   }
   if (outcome.subagentLinksRefused) {
     ctx.out(
