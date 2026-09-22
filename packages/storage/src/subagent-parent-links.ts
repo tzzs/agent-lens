@@ -79,6 +79,18 @@ export interface SubagentLinkVocabulary {
   foreignKeyValue: string
   /** metadata key on the closing row carrying the spawn's event id. */
   linkedParentKey: string
+  /**
+   * What `linkedParentKey` actually names. `'event-id'` (the default) is claude-code's shape:
+   * the closing row is derived from the same file as the spawn, so it can quote the spawn's own
+   * event id.
+   *
+   * `'tool-use-id'` exists for an agent whose proof comes from a DIFFERENT store: the spawn's
+   * event id is `deriveEventId({sourceId, rawSeq, …})`, and `rawSeq` is the other source's rowid,
+   * which no adapter can reconstruct from the linking document. Naming the raw call id instead
+   * keeps the proof a fact rather than a guess; this pass resolves it against the pool, and a raw
+   * id matching zero or two spawns is treated as no proof at all.
+   */
+  proofNames?: 'event-id' | 'tool-use-id'
 }
 
 /**
@@ -107,6 +119,8 @@ export interface SubagentSpawnCandidate {
   sourceId: string
   timestamp: number
   rawSeq: number
+  /** The raw id the source names this call by; how a `proofNames: 'tool-use-id'` proof finds it. */
+  toolUseId: string
 }
 
 /** The chain row the pool is matched against: its own position, nothing else. */
@@ -215,6 +229,21 @@ type Row = Record<string, unknown>
  * key can ever collide, and a set because two rows that disagree are not evidence. */
 type ProofIndex = Map<string, Map<string, Set<string>>>
 
+/**
+ * Turn one closing row's proof into the spawn's event id. `'event-id'` proofs are already that;
+ * a `'tool-use-id'` proof must name exactly one spawn in this session, because a raw id shared
+ * by two calls proves nothing about which one opened the chain.
+ */
+function resolveProofTarget(
+  vocab: SubagentLinkVocabulary,
+  candidates: readonly SubagentSpawnCandidate[],
+  proof: string,
+): string | null {
+  if ((vocab.proofNames ?? 'event-id') === 'event-id') return proof
+  const matches = candidates.filter((c) => c.toolUseId === proof)
+  return matches.length === 1 ? (matches[0]?.eventId ?? null) : null
+}
+
 /** The proof for one chain, or null when nothing proves it — or when two things do. */
 function proofAt(proofs: ProofIndex, sessionId: string, chainKey: string): string | null {
   const parents = proofs.get(sessionId)?.get(chainKey)
@@ -269,6 +298,7 @@ function loadPool(db: DatabaseSync, vocab: SubagentLinkVocabulary): {
       sourceId: position.sourceId,
       timestamp: position.timestamp,
       rawSeq: position.rawSeq,
+      toolUseId: r.tool_use_id,
     }
     if (list) list.push(candidate)
     else spawns.set(position.sessionId, [candidate])
@@ -294,7 +324,17 @@ function loadPool(db: DatabaseSync, vocab: SubagentLinkVocabulary): {
   // Set-valued, then narrowed: two closing rows naming different spawns for one chain is a
   // contradiction, not evidence, and "keep the last one read" would make the answer depend on row
   // order. A proof whose spawn row is no longer in the store is the other unusable case.
-  for (const c of proofCandidates) proofSet(proofs, c.sessionId, c.chainKey, c.parent)
+  // A proof that names a raw call id is resolved here, against this session's pool, so every
+  // path below keeps speaking event ids: the resolved answer is still a pure function of stored
+  // rows, never of which source was scanned first.
+  for (const c of proofCandidates) {
+    const target = resolveProofTarget(vocab, spawns.get(c.sessionId) ?? [], c.parent)
+    if (target === null) {
+      unusableProofs++
+      continue
+    }
+    proofSet(proofs, c.sessionId, c.chainKey, target)
+  }
   for (const [sessionId, byChain] of proofs) {
     for (const [chainKey, parents] of byChain) {
       const parent = parents.size === 1 ? [...parents][0] ?? null : null

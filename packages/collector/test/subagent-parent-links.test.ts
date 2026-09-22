@@ -398,6 +398,7 @@ describe('subagent parent rule (pure)', () => {
     sourceId,
     timestamp,
     rawSeq,
+    toolUseId: `use-${eventId}`,
   })
 
   it('reaches across files, where raw_seq is meaningless', () => {
