@@ -106,7 +106,9 @@ v2/tasks-index.sqlite.tasks.task_id  →  cli/db/db.sqlite.session.id     10/10 
 
 `message.data.cost` 在 1,414 条助手消息上 **max=0、sum=0**，`step-finish.cost` 同为 0，而 `provider_id` 是 `builtin:bigmodel-start-plan` / `account:bigmodel-start-plan`（智谱 BigModel 编码套餐）。**套餐计费下 `cost:0` 的含义是"不按 token 计价"，不是"免费"** ⇒ 适配器**不得**把它写进 `costReported`（那等于宣称 $0 用了 1.68 亿 token，正是 §18 row 1 禁止的假零）。规则：`costReported = null`、`costSource = 'none'`，交给价格层算等价 API 成本。
 
-价格覆盖缺口（独立证据）：`packages/pricing/src/default-snapshot.json` 有 `zai.glm-4.7`、`zai.glm-4.7-flash`、`zai.glm-5`，**没有 `GLM-5.3-Flash`**；ccusage 同样报 `unpricedModels`。⇒ 本机 zcode 的 cost 会是 NULL，这是正确结果，不是 bug；`doctor` 要能把它讲成"未定价"而不是"零成本"。
+价格覆盖缺口（独立证据）：`packages/pricing/src/default-snapshot.json` 有 `zai.glm-4.7`、`zai.glm-4.7-flash`、`zai.glm-5`，**没有 `GLM-5.3-Flash`**；ccusage 同样报 `unpricedModels`。
+
+代码级复核（2026-09-23）把这条从"这台机器采样到 0"升级成"写入方式就是 0"：引擎里 `cost:0` 是 7 处字面量、schema 把 `cost` 定为必填非负数，且不存在按量计价的写入路径（详见 §八·3）。⇒ 本机 zcode 的 cost 会是 NULL，这是正确结果，不是 bug；`doctor` 要能把它讲成"未定价"而不是"零成本"。
 
 ## 五、维度词表（全部实测，白名单照此写）
 
@@ -155,7 +157,7 @@ v2/tasks-index.sqlite.tasks.task_id  →  cli/db/db.sqlite.session.id     10/10 
 1. ✅ **纯 CLI 用户的形态——已查到底，本机无法闭合**（证据与判定见 §二·补）：桌面与 CLI 跑的是同一个引擎产物 `zcode.cjs`，`~/.zcode/cli/` 只是 `nativeConfigDir` 的名字；`tasks-index.sqlite` 在引擎里 **0 个写入者**，所以"命中 task 索引"确实是桌面证据。但这台机器**根本没装独立 CLI**（PATH/brew/npm 全局全无，只有 `~/ZCode-3.11.2-mac-arm64.dmg`），故负例（终端创建的会话到底写什么）拿不到。要补的观测只有一条：在装有命令行 `zcode` 的机器上跑一个会话，看它是否留 `tasks` 行。
 2. ✅ **`variant='disabled'` 与 `reasoning_tokens` 恒 0 的关系——已量（`probe-zcode.mjs` §6b）**：上游**根本不上报思考 token**（`model_usage.reasoning_tokens>0` 0 行、`message.data.tokens.reasoning` 1,414 条全 0、`raw_usage_json` 里连 `reasoning`/`thinking` 字样都 0 命中），但**思考内容海量存在**：928 条 `part.type='reasoning'`、合计 **3,265,454 字符**，单条最长 183,165 字符。`variant` 确实在控制它——`disabled` 的 9 个请求带 0 条 reasoning part，`max` 1,363 个请求里 916 个有，`low` 23 里 12 有。每条 reasoning 自带 `{start,end}` 毫秒时间戳。
    **⇒ 对 ZCode+GLM，"思考量"只能用字符与时长度量，不能用 token**；适配器把 `reasoningTokens` 映射为 0 是诚实的（`computed == input+output` 全表成立，没有把思考算两遍），但 UI/doctor 若按"reasoning token = 0 即没思考"呈现就会说谎——这正是 §18 row 5 要求"测不出来的一态不印 0"的那一类。
-3. 非套餐（`account:*` 之外是否有按量付费 provider）下 `cost` 是否变非零 —— 若变，`costSource='reported'` 的分支要提前留好，并注意套餐/按量混用时 `0` 与 `null` 的语义差别。
+3. ✅ **`cost` 会不会变非零——已用引擎代码定论：不会，它是恒 0 的死字段**。`/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs`（11,227,632 B）里 `cost:0` 字面量赋值恰 **7 处**（step-finish、assistant message 的 `data` 构造器、session_fork、timeline_event、history import 等），**没有任何按套餐/按量分叉的写入者**；schema 侧 `cost` 是 `number().nonnegative()` **必填**，所以引擎每次必须交出一个数，它交出的就是 `0`。全库 `payg` / `pay_as_you_go` / `perToken` / `inputPrice` **0 命中**，真实计费模式枚举只有 `accountType ∈ {zai, bigmodel}` × `mode ∈ {start-plan, individual-coding-plan, team-coding-plan, off-peak}`（无按量档）。⇒ **原来这条待测项"换按量账号会不会非零"根本不成立：换了账号也还是 0**。钱在 ZCode 里只活在另一条网络通道（`/v1/credits`、`/v1/report`、`zcode-plan/billing/current`，以及 OpenRouter 形状的 Gateway 客户端自带 `total_cost/market_cost/pricing`），本地 `message`/`part`/`model_usage` 三张表没有任何一列镜像它（`model_usage` 的建表 DDL 里 cost/price 列数为 0）。**决定**：适配器**不加** `cost_source='reported'` 分支——那是没有证据的死代码。仍未验证的只剩 `off-peak` 与 Gateway provider 是否用户可选、`/v1/report` 对套餐账号是否可达，都不影响"本地恒 0"的结论。
 4. `session_task_link`/`workflow_*`/`dwf_*` 五张表本机全空（自动化/off-peak 功能），启用后是不是第 6 份用量口径；`off_peak_tasks` 在桌面库里已有表结构。
 5. ✅🟡 **子代理父链：证据已量清，实现卡在一个跨包的口径决定上**。仓库那条 `packages/storage/src/subagent-parent-links.ts` 已提交（`7ba33b0`），所以这条不再是"别压在流沙上"。重测的结论是**真外键在盘上现成，一条启发式都不需要**：`cli/agents/<父会话>/agent_*/metadata.json` 共 28 个文件，28/28 的 `childSessionId` 能在 `session` 表里找到（表内子会话恰好 28 个），28/28 的 `parentToolUseId` 同时命中 `tool_usage.tool_call_id` 与 `part.data.callID`，而 `part` 表里 `Agent` 调用的 callID 恰好也是 28 个 —— 这是一个**双射**，不是概率匹配。要吃到它需要三处协同改动：
    - (a) **zcode 加第 6 个源**：`cli/agents/*/metadata.json`（`ndir`），只取 `{childSessionId, parentToolUseId, status, createdAt/completedAt}` 产出闭合的 `subagent.end`。同文件里的 `prompt` 是完整子代理提示词（隐私面），`totalTokens`/`usage` 是 §三 的第 5 份 rollup —— 两者都**不得**进 `usage` 或 payload。
