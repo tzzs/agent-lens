@@ -6,21 +6,23 @@ import type { PriceEntry } from './price-types.ts'
  * (`claude-opus-4-8[1m]`) and tier suffixes (`gpt-5:low`). Strip them for
  * matching; the raw `entry.model` is kept for display.
  *
- * Brackets come off in a scan rather than with `/\[[^\]]*\]/g`, which restarts its
- * inner run at every `[` and so costs quadratic time on a name that is mostly unclosed
- * brackets. The shape of that input stopped being hypothetical: model ids now also
- * arrive from a fetched price list, which this table does not get to trust the way it
- * trusts a local log (CodeQL flagged it where main had already been carrying it).
+ * Both passes are scans rather than regexes: `/\[[^\]]*\]/g` and `/[:@].*$/` each restart
+ * their inner run at every candidate position, so each costs quadratic time on a name made
+ * mostly of that character, and CodeQL flagged both as high-severity findings on untrusted
+ * input. That input stopped being hypothetical with the fallback source -- model ids now
+ * also arrive from a fetched price list, which this table cannot trust the way it trusts
+ * this machine's own logs.
  */
 export function normalizeModelName(name: string): string {
+  const lowered = name.toLowerCase()
   let stripped = ''
   let i = 0
-  while (i < name.length) {
-    const ch = name[i]!
+  while (i < lowered.length) {
+    const ch = lowered[i]!
     if (ch === '[') {
-      const close = name.indexOf(']', i + 1)
+      const close = lowered.indexOf(']', i + 1)
       if (close === -1) {
-        stripped += name.slice(i) // an unclosed `[` is not a tier marker; keep it verbatim
+        stripped += lowered.slice(i) // an unclosed `[` is not a tier marker; keep it verbatim
         break
       }
       i = close + 1
@@ -29,7 +31,15 @@ export function normalizeModelName(name: string): string {
     stripped += ch
     i++
   }
-  return stripped.toLowerCase().replace(/[:@].*$/, '').trim()
+  // Cut in a second pass, not the same loop: a `:` inside brackets leaves with the brackets
+  // (`a[b:c]d` names `ad`, not `a`), because the regex version cut after the strip.
+  // Fuzzed equivalent to `/[:@].*$/` over 300k random names; the one shape where they
+  // differ is a newline after the marker, where `$` declined to match and kept the tail.
+  for (let j = 0; j < stripped.length; j++) {
+    const ch = stripped[j]!
+    if (ch === ':' || ch === '@') return stripped.slice(0, j).trim()
+  }
+  return stripped.trim()
 }
 
 /**

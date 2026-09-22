@@ -90,6 +90,8 @@ describe('normalizeModelName', () => {
     ['[a]', ''],
     ['[a]b[c', 'b[c'],
     ['x@y[1m]', 'x'],
+    ['a[b:c]d', 'ad'],
+    ['gpt-5@beta', 'gpt-5'],
     ['  spaced [tier] name ', 'spaced  name'],
   ]
   for (const [input, want] of CASES) {
