@@ -2,6 +2,7 @@
   // GET /api/query — a thin UI over the single §7 cube (this page IS the cube; every
   // other page is a fixed slice of it). The returned `explain` is rendered verbatim
   // so the user always sees the basis behind the numbers (§7 "basis is visible").
+  import type { MessageKey } from '@agentlens/i18n'
   import {
     api,
     CAPABILITY_TYPES,
@@ -16,6 +17,7 @@
   import { range } from '../lib/filter.svelte.js'
   import { options, live } from '../lib/live.svelte.js'
   import { formatCompact, formatInt, formatMs } from '../lib/format.ts'
+  import { t } from '../lib/lang.js'
   import Surface from '../components/ui/Surface.svelte'
   import PageHeader from '../components/ui/PageHeader.svelte'
   import DataTable from '../components/ui/DataTable.svelte'
@@ -95,13 +97,25 @@
   const res = $derived(q.state.data)
   // The cube returns no rows without a dim — the aggregate then lives only in totals.
   const hasDim = $derived(res ? res.columns.some(isDim) : false)
+
+  // The header's window, as a sentence of its own. `{since}` is the raw §7 value the
+  // query sends (`30d`, `365d`) rather than the pill's label: the pill for the last
+  // option reads `1y` in English while this line has always said `365d`, and the two
+  // strings are also what the §14 tests quote.
+  const windowText = $derived(range.since ? $t('usage.windowLast', { values: { since: range.since } }) : $t('usage.windowAll'))
+
   const resultNote = $derived(
     !res
       ? ''
       : nameDims.length
-        ? `Rows restricted to capability type ${nameDims.join(', ')} · ${res.truncated ? 'truncated by limit' : 'not truncated'}`
+        ? $t('usage.rowsRestricted', {
+            values: {
+              dims: nameDims.join(', '),
+              trunc: $t(res.truncated ? 'usage.truncatedByLimit' : 'usage.notTruncated'),
+            },
+          })
         : res.truncated
-          ? 'Truncated by limit'
+          ? $t('usage.truncatedNote')
           : '',
   )
 
@@ -115,8 +129,59 @@
     if (isDim(c)) return c === 'session' || c === 'thread' ? '240px' : '200px'
     return `${Math.max(110, c.length * 7 + 36)}px`
   }
+  /**
+   * The cube's field names as the viewer's language reads them. English repeats the
+   * wire name, so the gloss is a Chinese-only layer: the request, the `totals` keys
+   * and the server's own explain all keep saying `tokens_total`. A field the vocab
+   * lists do not know has no gloss and prints its raw name.
+   */
+  const vocabKeys: Record<string, MessageKey> = {
+    events: 'usage.metrics.events',
+    sessions: 'usage.metrics.sessions',
+    duration: 'usage.metrics.duration',
+    tokens_total: 'usage.metrics.tokensTotal',
+    tokens_input: 'usage.metrics.tokensInput',
+    tokens_output: 'usage.metrics.tokensOutput',
+    tokens_cache_read: 'usage.metrics.tokensCacheRead',
+    tokens_cache_write: 'usage.metrics.tokensCacheWrite',
+    tokens_reasoning: 'usage.metrics.tokensReasoning',
+    cost_api_equiv: 'usage.metrics.costApiEquiv',
+    cost_reported: 'usage.metrics.costReported',
+    time: 'usage.dims.time',
+    day: 'usage.dims.day',
+    week: 'usage.dims.week',
+    month: 'usage.dims.month',
+    agent: 'usage.dims.agent',
+    host: 'usage.dims.host',
+    project: 'usage.dims.project',
+    session: 'usage.dims.session',
+    thread: 'usage.dims.thread',
+    model: 'usage.dims.model',
+    provider: 'usage.dims.provider',
+    capability_type: 'usage.dims.capabilityType',
+    capability_name: 'usage.dims.capabilityName',
+    tool: 'usage.dims.tool',
+    skill: 'usage.dims.skill',
+    mcp: 'usage.dims.mcp',
+    plugin: 'usage.dims.plugin',
+    connector: 'usage.dims.connector',
+    command: 'usage.dims.command',
+    subagent: 'usage.dims.subagent',
+    hook: 'usage.dims.hook',
+    status: 'usage.dims.status',
+    usage_source: 'usage.dims.usageSource',
+  }
+  function vocab(c: string): string {
+    const key = vocabKeys[c]
+    return key ? $t(key) : c
+  }
+  /** A column header carries the raw field name once the label stops being it. */
+  function colInfo(c: string): string | undefined {
+    const label = vocab(c)
+    return label === c ? undefined : c
+  }
   const resultColumns = $derived(
-    (res?.columns ?? []).map((c) => ({ key: c, label: c, align: isDim(c) ? ('left' as const) : ('right' as const), width: colWidth(c) })),
+    (res?.columns ?? []).map((c) => ({ key: c, label: vocab(c), align: isDim(c) ? ('left' as const) : ('right' as const), width: colWidth(c), info: colInfo(c) })),
   )
 
   function totalText(c: string) {
@@ -132,21 +197,25 @@
   function grouped(all: readonly string[], groups: Group[]): Group[] {
     const out = groups.map((g) => ({ ...g, names: g.names.filter((n) => all.includes(n)) }))
     const placed = new Set(out.flatMap((g) => g.names))
-    out.push({ label: 'Other', names: all.filter((n) => !placed.has(n)) })
+    out.push({ label: $t('usage.groupOther'), names: all.filter((n) => !placed.has(n)) })
     return out.filter((g) => g.names.length > 0)
   }
-  const METRIC_GROUPS = grouped(QUERY_METRICS, [
-    { label: 'Activity', names: ['events', 'sessions', 'duration'] },
-    { label: 'Tokens', names: QUERY_METRICS.filter((m) => m.startsWith('tokens')) },
-    { label: 'Cost', names: ['cost_api_equiv', 'cost_reported'] },
-  ])
-  const DIM_GROUPS = grouped(QUERY_DIMS, [
-    { label: 'Time', names: TIME_DIMS },
-    { label: 'Scope', names: ['agent', 'host', 'project', 'session', 'thread'] },
-    { label: 'Model', names: ['model', 'provider'] },
-    { label: 'Capability', names: ['capability_type', 'capability_name'] },
-    { label: 'Capability name', note: 'restricts rows to that kind', names: [...CAPABILITY_TYPES] },
-  ])
+  const METRIC_GROUPS = $derived(
+    grouped(QUERY_METRICS, [
+      { label: $t('usage.groupActivity'), names: ['events', 'sessions', 'duration'] },
+      { label: $t('usage.groupTokens'), names: QUERY_METRICS.filter((m) => m.startsWith('tokens')) },
+      { label: $t('usage.groupCost'), names: ['cost_api_equiv', 'cost_reported'] },
+    ]),
+  )
+  const DIM_GROUPS = $derived(
+    grouped(QUERY_DIMS, [
+      { label: $t('usage.groupTime'), names: TIME_DIMS },
+      { label: $t('usage.groupScope'), names: ['agent', 'host', 'project', 'session', 'thread'] },
+      { label: $t('usage.groupModel'), names: ['model', 'provider'] },
+      { label: $t('usage.groupCapability'), names: ['capability_type', 'capability_name'] },
+      { label: $t('usage.groupCapabilityName'), note: $t('usage.capabilityNameNote'), names: [...CAPABILITY_TYPES] },
+    ]),
+  )
 
   const pill = 'inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-medium transition-colors'
   const pillOff = 'bg-surface text-ink-2 shadow-btn hover:bg-hover hover:text-ink'
@@ -164,8 +233,9 @@
         <div class="flex flex-wrap gap-1.5">
           {#each g.names as n (n)}
             {@const on = selected.includes(n)}
-            <button type="button" aria-pressed={on} class="{pill} {on ? onClass : pillOff}" onclick={() => onToggle(n)}>
-              {#if on}<Icon name="check" size={12} />{/if}{n}
+            {@const nameLabel = vocab(n)}
+            <button type="button" aria-pressed={on} class="{pill} {on ? onClass : pillOff}" onclick={() => onToggle(n)} title={nameLabel === n ? undefined : n}>
+              {#if on}<Icon name="check" size={12} />{/if}{nameLabel}
             </button>
           {/each}
         </div>
@@ -179,48 +249,48 @@
 {/snippet}
 
 <PageHeader
-  title="Usage explorer"
-  description="Pick metrics, dimensions and filters to query the usage cube directly. {range.since ? `Window: last ${range.since}.` : 'Window: all time.'}"
-  info="This page is the query cube itself — every other page is a fixed slice of it (§7). The server's own account of each query is shown under the result."
+  title={$t('usage.explorerTitle')}
+  description={$t('usage.pageDesc', { values: { window: windowText } })}
+  info={$t('usage.pageInfo')}
   refreshing={q.state.refreshing || (q.state.status === 'loading' && !!res)}
 />
 
 <div class="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1fr]">
   <div class="min-w-0 space-y-4">
-    <Surface title="Metrics" note="{metrics.length} selected">
-      {@render picker('Metrics', METRIC_GROUPS, metrics, metricOn, (m) => (metrics = toggle(metrics, m)))}
+    <Surface title={$t('usage.metricsTitle')} note={$t('usage.selectedCount', { values: { n: String(metrics.length) } })}>
+      {@render picker($t('usage.metricsTitle'), METRIC_GROUPS, metrics, metricOn, (m) => (metrics = toggle(metrics, m)))}
     </Surface>
 
-    <Surface title="Dimensions" note="{dims.length} selected">
-      {@render picker('Dimensions', DIM_GROUPS, dims, dimOn, (dm) => (dims = toggle(dims, dm)))}
+    <Surface title={$t('usage.dimsTitle')} note={$t('usage.selectedCount', { values: { n: String(dims.length) } })}>
+      {@render picker($t('usage.dimsTitle'), DIM_GROUPS, dims, dimOn, (dm) => (dims = toggle(dims, dm)))}
     </Surface>
 
-    <Surface title="Filters" info="Only the header's time range applies on this page; agent and status are chosen here.">
+    <Surface title={$t('usage.filtersTitle')} info={$t('usage.filtersInfo')}>
       <div class="space-y-3">
         <div>
-          <label for="usage-agent" class={fieldLabel}>Agent</label>
+          <label for="usage-agent" class={fieldLabel}>{$t('comps.agent')}</label>
           <div class="relative">
             <select id="usage-agent" class="{field} appearance-none pr-8" bind:value={agent}>
-              <option value="">All agents</option>
+              <option value="">{$t('comps.allAgents')}</option>
               {#each options.agents as a (a.agentId)}<option value={a.agentId}>{a.displayName || a.agentId}</option>{/each}
             </select>
             {@render chevron()}
           </div>
         </div>
         <div>
-          <label for="usage-status" class={fieldLabel}>Status</label>
+          <label for="usage-status" class={fieldLabel}>{$t('usage.statusLabel')}</label>
           <div class="relative">
             <select id="usage-status" class="{field} appearance-none pr-8" bind:value={status}>
-              <option value="">Any status</option>
-              <option value="ok">OK</option>
-              <option value="error">Error</option>
-              <option value="unknown">Unknown</option>
+              <option value="">{$t('usage.anyStatus')}</option>
+              <option value="ok">{$t('usage.statusOk')}</option>
+              <option value="error">{$t('usage.statusError')}</option>
+              <option value="unknown">{$t('usage.statusUnknown')}</option>
             </select>
             {@render chevron()}
           </div>
         </div>
         <div>
-          <label for="usage-order" class={fieldLabel}>Order</label>
+          <label for="usage-order" class={fieldLabel}>{$t('usage.orderLabel')}</label>
           <input
             id="usage-order"
             class="{field} nums"
@@ -231,13 +301,13 @@
             aria-describedby="usage-order-hint"
           />
           <p id="usage-order-hint" class="mt-1 text-[11px] text-ink-3">
-            <span class="nums">metric:&lt;name&gt;:desc</span> or <span class="nums">dim:&lt;name&gt;:asc</span>
+            <span class="nums">metric:&lt;name&gt;:desc</span> {$t('usage.orderOr')} <span class="nums">dim:&lt;name&gt;:asc</span>
           </p>
         </div>
         <div>
-          <label for="usage-limit" class={fieldLabel}>Row limit</label>
+          <label for="usage-limit" class={fieldLabel}>{$t('usage.limitLabel')}</label>
           <input id="usage-limit" class="{field} nums" type="number" min="0" max="5000" bind:value={limit} aria-describedby="usage-limit-hint" />
-          <p id="usage-limit-hint" class="mt-1 text-[11px] text-ink-3">0–5,000. Totals always cover every matching event.</p>
+          <p id="usage-limit-hint" class="mt-1 text-[11px] text-ink-3">{$t('usage.limitHint')}</p>
         </div>
       </div>
     </Surface>
@@ -245,29 +315,29 @@
 
   <div class="min-w-0 space-y-4">
     {#if dimConflict}
-      <Alert tone="orange" title="No event can match.">This capability dimension contradicts the capability-type filter, so the query was not run.</Alert>
+      <Alert tone="orange" title={$t('usage.noMatchTitle')}>{$t('usage.noMatchBody')}</Alert>
     {:else if metrics.length === 0}
-      <Alert tone="accent">Select at least one metric.</Alert>
+      <Alert tone="accent">{$t('usage.selectOneMetric')}</Alert>
     {:else if !res}
-      <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} since={q.state.since} loadingText="Running the query" />
+      <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} since={q.state.since} loadingText={$t('usage.loadingText')} />
     {:else}
       {#if q.state.status === 'error'}
-        <Alert tone="red" title="Query failed.">{q.state.error} — the table below is the last successful result.</Alert>
+        <Alert tone="red" title={$t('usage.failedTitle')}>{q.state.error} — {$t('usage.failedTail')}</Alert>
       {/if}
 
       <Surface
         padded={false}
-        title={hasDim ? `${formatInt(res.rows.length)} ${res.rows.length === 1 ? 'row' : 'rows'}` : 'Totals'}
+        title={hasDim ? $t('usage.rowCount', { values: { n: formatInt(res.rows.length) } }) : $t('usage.totals')}
         note={resultNote}
-        info="Totals are computed over every matching event, not just the rows shown: they include rows cut by the limit, and distinct counts such as sessions are not column sums."
+        info={$t('usage.totalsInfo')}
       >
         <DataTable
           columns={resultColumns}
           rows={res.rows}
           key={(_r: Row, i: number) => String(i)}
           dense
-          caption="Query result"
-          empty={hasDim ? 'No rows for this spec' : 'No dimension selected — the totals row below is the whole result'}
+          caption={$t('usage.caption')}
+          empty={hasDim ? $t('usage.emptyNoRows') : $t('usage.emptyNoDim')}
         >
           {#snippet row(r: Row)}
             {#each res.columns as c (c)}
@@ -292,7 +362,7 @@
               {#each res.columns as c, ci (c)}
                 {#if isDim(c)}
                   <!-- dims come first; only the first carries the label, the rest have no total -->
-                  <td class="font-medium text-ink-2">{ci === 0 ? 'Totals' : ''}</td>
+                  <td class="font-medium text-ink-2">{ci === 0 ? $t('usage.totals') : ''}</td>
                 {:else if costMetric(c)}
                   <td class="text-right"><CostFigure value={res.totals[c] ?? null} basis={c === 'cost_reported' ? 'reported' : 'est'} /></td>
                 {:else}
@@ -304,7 +374,7 @@
         </DataTable>
       </Surface>
 
-      <Surface title="How this was computed" info="The query the server actually ran, verbatim (§7 explain).">
+      <Surface title={$t('usage.howTitle')} info={$t('usage.howInfo')}>
         <CodeBlock text={res.explain} />
       </Surface>
     {/if}

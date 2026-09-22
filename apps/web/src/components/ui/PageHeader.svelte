@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
+  import { t } from '../../lib/lang.js'
   import InfoTip from './InfoTip.svelte'
   let {
     title,
@@ -30,7 +31,7 @@
       <span class="truncate">{title}</span>
       {#if info}<InfoTip text={info} />{/if}
       {#if refreshing}
-        <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" title="Refreshing" aria-label="Refreshing"></span>
+        <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" title={$t('comps.refreshing')} aria-label={$t('comps.refreshing')}></span>
       {/if}
     </h1>
     {#if description}<p class="mt-1 text-[13px] text-ink-2">{description}</p>{/if}

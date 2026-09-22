@@ -7,6 +7,7 @@
   import { api, type PayloadView, type TimelineNode } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
   import { live } from '../lib/live.svelte.js'
+  import { t } from '../lib/lang.js'
   import { formatCompact, formatInt, formatMs, formatDateTime, projectLabel, shortId } from '../lib/format.ts'
   import { eventGroups, eventKind, type EventGroup } from '../lib/eventKinds.ts'
   import { buildForest, parentIds, sessionSpan, visibleRows } from '../lib/timeline.ts'
@@ -134,34 +135,34 @@
 </script>
 
 {#if q.state.status === 'error' && !d}
-  <PageHeader title="Session unavailable" back={{ href: '#/sessions', label: 'Sessions' }} />
+  <PageHeader title={$t('sessionDetail.unavailable')} back={{ href: '#/sessions', label: $t('sessionDetail.backSessions') }} />
   <Surface>
     <p class="text-sm text-ink-2">{q.state.error}</p>
     {#if q.state.kind === 'conflict' && q.state.details?.matches}
-      <p class="mt-3 text-xs text-ink-3">The id prefix matched more than one session — pick one:</p>
+      <p class="mt-3 text-xs text-ink-3">{$t('sessionDetail.ambiguousMatches')}</p>
       <ul class="nums mt-2 space-y-1 text-[13px]">
         {#each q.state.details.matches as m (m)}
           <li><a class="text-accent hover:underline" href="#/sessions/{encodeURIComponent(m)}">{m}</a></li>
         {/each}
       </ul>
     {:else if q.state.kind === 'not_found'}
-      <p class="mt-2 text-xs text-ink-3">No session id (or prefix) <span class="nums">{id}</span> exists in this database.</p>
+      <p class="mt-2 text-xs text-ink-3">{$t('sessionDetail.notFoundLead')} <span class="nums">{id}</span>{$t('sessionDetail.notFoundTail')}</p>
     {/if}
   </Surface>
 {:else if !d}
-  <PageHeader title="Session" back={{ href: '#/sessions', label: 'Sessions' }} />
-  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} since={q.state.since} loadingText="Loading timeline" />
+  <PageHeader title={$t('sessionDetail.title')} back={{ href: '#/sessions', label: $t('sessionDetail.backSessions') }} />
+  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} since={q.state.since} loadingText={$t('sessionDetail.loadingTimeline')} />
 {:else}
   <PageHeader
-    title={d.session.title || `Untitled ${d.session.agentId} session`}
-    back={{ href: '#/sessions', label: 'Sessions' }}
+    title={d.session.title || $t('sessionDetail.untitled', { values: { agent: d.session.agentId } })}
+    back={{ href: '#/sessions', label: $t('sessionDetail.backSessions') }}
     refreshing={q.state.refreshing}
   >
     {#snippet actions()}
       <button
         type="button"
         class="nums inline-flex h-7 items-center gap-1.5 rounded-full bg-surface px-3 text-xs text-ink-2 shadow-btn hover:bg-hover"
-        title="Copy full session id: {d.session.id}"
+        title={$t('sessionDetail.copyIdTitle', { values: { id: d.session.id } })}
         onclick={copyId}
       >
         {shortId(d.session.id, 12)}<Icon name={copied ? 'check' : 'copy'} size={12} />
@@ -171,34 +172,34 @@
 
   <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
     {#each [
-      ['Agent', `${d.session.agentId} · ${d.session.hostId}`],
-      ['Project', projectLabel(d.session.project)],
-      ['Started (UTC)', formatDateTime(d.session.firstTimestamp).slice(0, 16)],
-      ['Events', formatInt(d.session.eventCount)],
-      ['Tokens', formatCompact(Number(d.totals.tokens_total ?? 0))],
-      ['Duration', formatMs(Number(d.totals.duration ?? 0))],
+      [$t('sessionDetail.tileAgent'), `${d.session.agentId} · ${d.session.hostId}`],
+      [$t('sessionDetail.tileProject'), projectLabel(d.session.project)],
+      [$t('sessionDetail.tileStarted'), formatDateTime(d.session.firstTimestamp).slice(0, 16)],
+      [$t('sessionDetail.tileEvents'), formatInt(d.session.eventCount)],
+      [$t('sessionDetail.tileTokens'), formatCompact(Number(d.totals.tokens_total ?? 0))],
+      [$t('sessionDetail.tileDuration'), formatMs(Number(d.totals.duration ?? 0))],
     ] as [k, v] (k)}
       <div class="min-w-0 rounded-[10px] bg-surface px-3 py-2 shadow-card">
         <div class="text-xs text-ink-3">{k}</div>
-        <div class="nums truncate text-[13px] text-ink" title={k === 'Project' ? (d.session.project ?? '') : v}>{v}</div>
+        <div class="nums truncate text-[13px] text-ink" title={k === $t('sessionDetail.tileProject') ? (d.session.project ?? '') : v}>{v}</div>
       </div>
     {/each}
   </div>
 
   {#if !d.contentAvailable}
-    <div class="mb-4"><Alert tone="orange" title="Metrics-only timeline.">{d.contentNote}</Alert></div>
+    <div class="mb-4"><Alert tone="orange" title={$t('sessionDetail.metricsOnly')}>{d.contentNote}</Alert></div>
   {/if}
 
   <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-    <FilterChips label="Filter by event kind" options={groupOpts} bind:selected={groups} multiple allLabel="All events" />
+    <FilterChips label={$t('sessionDetail.filterByKind')} options={groupOpts} bind:selected={groups} multiple allLabel={$t('sessionDetail.allEvents')} />
     <div class="flex items-center gap-2">
       <label class="relative flex items-center">
-        <span class="sr-only">Search events</span>
+        <span class="sr-only">{$t('sessionDetail.searchAria')}</span>
         <Icon name="search" size={14} class="pointer-events-none absolute left-2.5 text-ink-3" />
         <input
           type="search"
           bind:value={search}
-          placeholder="Search tools, models, types…"
+          placeholder={$t('sessionDetail.searchPlaceholder')}
           class="h-8 w-56 max-w-full rounded-full bg-surface pl-8 pr-3 text-[13px] text-ink shadow-btn outline-none placeholder:text-ink-3 focus-visible:outline-2 focus-visible:outline-accent"
         />
       </label>
@@ -207,7 +208,7 @@
           type="button"
           class="h-8 whitespace-nowrap rounded-full bg-surface px-3 text-xs font-medium text-ink-2 shadow-btn hover:bg-hover hover:text-ink"
           onclick={() => (expanded = expanded.size ? new Set() : parentIds(forest!))}
-        >{expanded.size ? 'Collapse all' : 'Expand all'}</button>
+        >{expanded.size ? $t('sessionDetail.collapseAll') : $t('sessionDetail.expandAll')}</button>
       {/if}
     </div>
   </div>
@@ -215,14 +216,14 @@
   <div class="grid grid-cols-1 gap-4 {selected ? 'xl:grid-cols-[minmax(0,1fr)_380px]' : ''}">
     <Surface padded={false}>
       <div class="tl-grid items-center border-b border-line px-3 py-2 text-xs font-medium text-ink-3">
-        <span>Event <span class="font-normal">· {formatInt(rows.length)} shown</span></span>
+        <span>{$t('sessionDetail.colEvent')} <span class="font-normal">{$t('sessionDetail.shownOf', { values: { n: formatInt(rows.length) } })}</span></span>
         <span class="tl-track nums flex justify-between font-normal">{#each axis as a, i (i)}<span>{a}</span>{/each}</span>
-        <span class="text-right">Dur.</span>
-        <span class="tl-tokens text-right">Tokens</span>
-        <span class="text-right">Time</span>
+        <span class="text-right">{$t('sessionDetail.colDur')}</span>
+        <span class="tl-tokens text-right">{$t('sessionDetail.colTokens')}</span>
+        <span class="text-right">{$t('sessionDetail.colTime')}</span>
       </div>
       {#if rows.length === 0}
-        <p class="py-12 text-center text-sm text-ink-3">{d.nodes.length ? 'No events match these filters.' : 'This session has no events.'}</p>
+        <p class="py-12 text-center text-sm text-ink-3">{d.nodes.length ? $t('sessionDetail.noMatch') : $t('sessionDetail.noEvents')}</p>
       {:else}
         <VirtualList
           bind:this={list}
@@ -230,7 +231,7 @@
           itemHeight={36}
           height="min(70vh, {Math.max(1, rows.length) * 36}px)"
           key={(r) => r.node.id}
-          label="Session events"
+          label={$t('sessionDetail.listAria')}
           role="tree"
           itemAttrs={(r) => ({ 'aria-level': r.depth + 1, 'aria-selected': r.node.id === selectedId, 'aria-expanded': r.childCount && !matcher ? expanded.has(r.node.id) : undefined })}
           onkeydown={onListKey}
@@ -267,15 +268,15 @@
   </div>
 
   <div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-3">
-    <span class="flex items-center gap-1.5">Est. cost <CostFigure value={d.totals.cost_api_equiv ?? null} basis="est" /> · ↑↓ to move, ←→ to fold, Esc to close</span>
+    <span class="flex items-center gap-1.5">{$t('sessionDetail.estCost')} <CostFigure value={d.totals.cost_api_equiv ?? null} basis="est" /> {$t('sessionDetail.keysHint')}</span>
     {#if forest && forest.orphans > 0}
-      <span title="These rows do carry parent_event_id; the parent is simply outside the session being shown — a subagent thread, or another source of the same conversation. Nothing is missing (§4.4).">
-        {formatInt(forest.orphans)} event(s) hang from a parent outside this session, so they sit at the top level here
+      <span title={$t('sessionDetail.orphansTitle')}>
+        {$t('sessionDetail.orphansNote', { values: { n: formatInt(forest.orphans) } })}
       </span>
     {/if}
   </div>
   <details class="mt-2 text-xs text-ink-3">
-    <summary class="cursor-pointer hover:text-ink-2">How these totals were derived</summary>
+    <summary class="cursor-pointer hover:text-ink-2">{$t('sessionDetail.explainSummary')}</summary>
     <p class="nums mt-1.5 break-words">{d.explain}</p>
   </details>
 {/if}

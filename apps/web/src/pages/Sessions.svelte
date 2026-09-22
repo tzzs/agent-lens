@@ -5,6 +5,7 @@
   import { live } from '../lib/live.svelte.js'
   import { formatCompact, formatInt, formatMs, relativeTime, projectLabel, shortId } from '../lib/format.ts'
   import { SERIES } from '../lib/eventKinds.ts'
+  import { t } from '../lib/lang.js'
   import Surface from '../components/ui/Surface.svelte'
   import PageHeader from '../components/ui/PageHeader.svelte'
   import DataTable from '../components/ui/DataTable.svelte'
@@ -42,37 +43,39 @@
     )
   })
 
-  const columns = [
-    { key: 'session', label: 'Session', width: '31%' },
-    { key: 'agent', label: 'Agent', width: '14%' },
-    { key: 'project', label: 'Project', width: '14%' },
-    { key: 'events', label: 'Events', align: 'right' as const, width: '8%' },
-    { key: 'tokens', label: 'Tokens', align: 'right' as const, width: '8%' },
-    { key: 'duration', label: 'Duration', align: 'right' as const, width: '8%' },
-    { key: 'cost', label: 'Est. cost', align: 'right' as const, width: '12%', info: 'Tokens × list price. n/a when the model has no price — never $0.' },
-    { key: 'last', label: 'Last seen', align: 'right' as const, width: '9%' },
-  ]
+  // Derived, not const: the column heads are the viewer's language, and a
+  // re-render is what turns "Duration" into "时长" without a reload.
+  const columns = $derived([
+    { key: 'session', label: $t('sessions.colSession'), width: '31%' },
+    { key: 'agent', label: $t('sessions.colAgent'), width: '14%' },
+    { key: 'project', label: $t('sessions.colProject'), width: '14%' },
+    { key: 'events', label: $t('sessions.colEvents'), align: 'right' as const, width: '8%' },
+    { key: 'tokens', label: $t('sessions.colTokens'), align: 'right' as const, width: '8%' },
+    { key: 'duration', label: $t('sessions.colDuration'), align: 'right' as const, width: '8%' },
+    { key: 'cost', label: $t('sessions.colCost'), align: 'right' as const, width: '12%', info: $t('sessions.colCostInfo', { values: { na: $t('common.na') } }) },
+    { key: 'last', label: $t('sessions.colLast'), align: 'right' as const, width: '9%' },
+  ])
   const now = $derived(live.lastTick || Date.now())
 </script>
 
-<PageHeader title="Sessions" description="Most recent first. Open one for its waterfall timeline." refreshing={q.state.refreshing} />
+<PageHeader title={$t('sessions.title')} description={$t('sessions.description')} refreshing={q.state.refreshing} />
 
 {#if !d}
-  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} since={q.state.since} loadingText="Loading sessions" />
+  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} since={q.state.since} loadingText={$t('sessions.loading')} />
 {:else}
   {#if !d.content.available}
-    <div class="mb-4"><Alert tone="neutral">Content layer is off — session details will be metrics-only.</Alert></div>
+    <div class="mb-4"><Alert tone="neutral">{$t('sessions.contentOff')}</Alert></div>
   {/if}
 
   <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-    <FilterChips label="Filter by agent" options={agentOpts} bind:selected={agentSel} multiple />
+    <FilterChips label={$t('sessions.filterByAgent')} options={agentOpts} bind:selected={agentSel} multiple />
     <label class="relative flex items-center">
-      <span class="sr-only">Search sessions</span>
+      <span class="sr-only">{$t('sessions.searchLabel')}</span>
       <Icon name="search" size={14} class="pointer-events-none absolute left-2.5 text-ink-3" />
       <input
         type="search"
         bind:value={search}
-        placeholder="Search title, id, project…"
+        placeholder={$t('sessions.searchPlaceholder')}
         class="h-8 w-64 max-w-full rounded-full bg-surface pl-8 pr-3 text-[13px] text-ink shadow-btn outline-none placeholder:text-ink-3 focus-visible:outline-2 focus-visible:outline-accent"
       />
     </label>
@@ -83,13 +86,13 @@
       {columns}
       {rows}
       key={(r: SessionRow) => r.sessionId}
-      caption="Sessions"
-      empty={d.rows.length ? 'No sessions match these filters' : 'No sessions in this window'}
+      caption={$t('sessions.title')}
+      empty={d.rows.length ? $t('sessions.emptyFiltered') : $t('sessions.emptyWindow')}
     >
       {#snippet row(r: SessionRow)}
         <td>
           <a href="#/sessions/{encodeURIComponent(r.sessionId)}" class="block truncate font-medium text-ink hover:text-accent" title={r.title ?? r.sessionId}>
-            {r.title || `Untitled ${r.agentId} session`}
+            {r.title || $t('sessions.untitled', { values: { agent: r.agentId } })}
           </a>
           <div class="nums truncate text-xs text-ink-3" title={r.sessionId}>{shortId(r.sessionId, 12)}</div>
         </td>
@@ -103,13 +106,13 @@
         <td class="text-ink-2" title={r.project}><span class={projectLabel(r.project) !== r.project ? 'nums' : ''}>{projectLabel(r.project)}</span></td>
         <td class="nums text-right">{formatInt(r.events)}</td>
         <td class="nums text-right">{formatCompact(r.tokensTotal)}</td>
-        <td class="nums text-right text-ink-2" title={r.durationMs > 0 ? '' : 'No event durations recorded'}>{r.durationMs > 0 ? formatMs(r.durationMs) : '—'}</td>
+        <td class="nums text-right text-ink-2" title={r.durationMs > 0 ? '' : $t('sessions.noDurations')}>{r.durationMs > 0 ? formatMs(r.durationMs) : $t('common.dash')}</td>
         <td class="text-right"><CostFigure value={r.costApiEquiv} basis="est" showLabel={false} /></td>
         <td class="nums text-right text-ink-3" title={r.lastTimestamp ? new Date(r.lastTimestamp).toISOString() : ''}>{relativeTime(r.lastTimestamp, now)}</td>
       {/snippet}
     </DataTable>
   </Surface>
   <p class="mt-3 text-xs text-ink-3">
-    Showing {formatInt(rows.length)} of {formatInt(d.totalSessions)} sessions{d.truncated ? ' — the 100 most recent; narrow the range or agent to see older ones' : ''}.
+    {$t('sessions.showing', { values: { n: formatInt(rows.length), total: formatInt(d.totalSessions), tail: d.truncated ? $t('sessions.showingTailTruncated') : '' } })}
   </p>
 {/if}

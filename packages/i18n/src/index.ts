@@ -16,6 +16,7 @@ import { IntlMessageFormat } from 'intl-messageformat'
 import banner from './catalog/banner.ts'
 import common from './catalog/common.ts'
 import comps from './catalog/comps.ts'
+import viz from './catalog/viz.ts'
 import doctor from './catalog/doctor.ts'
 import ev from './catalog/ev.ts'
 import fmt from './catalog/fmt.ts'
@@ -60,6 +61,7 @@ export const catalog = {
     doctor: doctor.en,
     settings: settings.en,
     comps: comps.en,
+    viz: viz.en,
   },
   zh: {
     common: common.zh,
@@ -80,6 +82,7 @@ export const catalog = {
     doctor: doctor.zh,
     settings: settings.zh,
     comps: comps.zh,
+    viz: viz.zh,
   },
 } as const
 

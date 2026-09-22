@@ -4,6 +4,7 @@
   //  - a partial total (some agents unpriced) -> "≥ $x" so the figure is a floor
   //  - an estimate is labelled "est." so a computed cost is never mistaken for cash
   import { formatUsd, isUnpriced } from '../lib/format.ts'
+  import { t } from '../lib/lang.js'
 
   let {
     value,
@@ -19,19 +20,23 @@
     showLabel?: boolean
   } = $props()
 
-  const labelText = { est: 'est.', actual: 'actual', reported: 'reported' }
-  const titles = {
-    est: 'Computed estimate: tokens × list price (cost_api_equiv). Not a cash figure.',
-    actual: 'Actual cash after the declared billing mode — subscription and local models spend 0 (§8).',
-    reported: "Cost the agent logged for itself (§18 row 1): only where an agent's own log carries the figure, so which agents report is a fact about the data, not a fixed list; every other cost here falls back to the computed estimate (est.).",
-  }
+  const labelText = $derived({
+    est: $t('viz.costLabelEst'),
+    actual: $t('viz.costLabelActual'),
+    reported: $t('viz.costLabelReported'),
+  })
+  const titles = $derived({
+    est: $t('viz.costTitleEst'),
+    actual: $t('viz.costTitleActual'),
+    reported: $t('viz.costTitleReported'),
+  })
   const text = $derived(formatUsd(value))
   // Decided from the input, never from the rendered glyph: "n/a" is a word, and
   // the word changes with the interface language.
   const na = $derived(isUnpriced(value))
   const shown = $derived(!na && partial ? `≥ ${text}` : text)
   const title = $derived(
-    na ? 'No price available for this model — shown as n/a, never $0 (§8).' : partial ? `${titles[basis]} At least this much: some agents have no price and are excluded.` : titles[basis],
+    na ? $t('viz.costTitleNoPrice') : partial ? `${titles[basis]} ${$t('viz.costTitlePartial')}` : titles[basis],
   )
 </script>
 

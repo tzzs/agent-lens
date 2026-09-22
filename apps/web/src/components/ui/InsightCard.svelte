@@ -2,13 +2,14 @@
   // KPI tile (Beautiful UI insight card): label, one big figure, an optional
   // change vs the previous half of the window, and free-form detail below.
   import type { Snippet } from 'svelte'
+  import { msg } from '@agentlens/i18n'
   import InfoTip from './InfoTip.svelte'
 
   let {
     label,
     info = '',
     delta = null,
-    deltaLabel = 'vs prior period',
+    deltaLabel = msg('comps.vsPriorPeriod'),
     children,
     detail,
   }: {

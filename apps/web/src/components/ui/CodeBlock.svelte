@@ -1,6 +1,7 @@
 <script lang="ts">
   // Monospace block with a copy button (Beautiful UI code block). Used for payload
   // text, metadata JSON and the server's `explain` basis strings.
+  import { t } from '../../lib/lang.js'
   import Icon from './Icon.svelte'
   let {
     text,
@@ -29,7 +30,7 @@
     type="button"
     class="absolute right-1.5 {label ? 'top-1' : 'top-1.5'} grid h-6 w-6 place-items-center rounded-md text-ink-3 opacity-0 transition hover:bg-hover-2 hover:text-ink group-hover:opacity-100 focus-visible:opacity-100"
     onclick={copy}
-    aria-label={copied ? 'Copied' : 'Copy'}
+    aria-label={copied ? $t('common.copied') : $t('common.copy')}
   >
     <Icon name={copied ? 'check' : 'copy'} size={13} />
   </button>

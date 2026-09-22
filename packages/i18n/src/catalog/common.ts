@@ -12,6 +12,10 @@ const en = {
   no: 'no',
   copy: 'Copy',
   copied: 'Copied',
+  // The §7 trend buckets are named by the API, so English reads back the raw unit.
+  granDay: 'day',
+  granWeek: 'week',
+  granMonth: 'month',
 }
 
 const zh = matches(en)({
@@ -21,6 +25,9 @@ const zh = matches(en)({
   no: '否',
   copy: '复制',
   copied: '已复制',
+  granDay: '天',
+  granWeek: '周',
+  granMonth: '月',
 })
 
 export default { en, zh }

@@ -8,6 +8,8 @@
   import { loader } from '../lib/pagestate.svelte.js'
   import { range, filterParams } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
+  import { t } from '../lib/lang.js'
+  import { coverageText } from '../lib/banners.ts'
   import { formatCompact, formatDateTime, formatInt } from '../lib/format.ts'
   import Surface from '../components/ui/Surface.svelte'
   import PageHeader from '../components/ui/PageHeader.svelte'
@@ -72,24 +74,39 @@
   const subagents = $derived(depth?.subagents ?? [])
   const guessedTimestamps = $derived(depth?.guessedTimestamps ?? [])
   const retention = $derived(depth?.retention ?? null)
+  // The §14 coverage banner, worded here from the same structured fields the
+  // overview header uses — the server's `coverage.banner` is one English sentence.
+  const coverageLine = $derived(d ? coverageText(d.coverage) : '')
   const share = (n: number, total: number): string => (total === 0 ? '0.0%' : `${((n / total) * 100).toFixed(1)}%`)
   /** The CLI's own wording for the fold rule, so both reports say the same thing (§14). */
   function foldSentence(a: PerAgentQuality): string {
     return a.policy.mode === 'request_max'
-      ? `request_id dedup ${a.naive > a.folded ? 'active' : 'not needed'}: raw sum ${formatCompact(a.naive)} → ` +
-        `${formatCompact(a.folded)} tokens · ${formatInt(a.groups)} folded groups from ${formatInt(a.usageRows)} usage rows`
-      : `no request_id dedup: raw sum ${formatCompact(a.naive)} = ${formatCompact(a.folded)} · ` +
-        `${formatInt(a.usageRows)} usage rows summed once each`
+      ? $t('doctor.foldActive', {
+          values: {
+            state: $t(a.naive > a.folded ? 'doctor.dedupStateActive' : 'doctor.dedupStateNotNeeded'),
+            naive: formatCompact(a.naive),
+            folded: formatCompact(a.folded),
+            groups: formatInt(a.groups),
+            rows: formatInt(a.usageRows),
+          },
+        })
+      : $t('doctor.foldNone', {
+          values: {
+            naive: formatCompact(a.naive),
+            folded: formatCompact(a.folded),
+            rows: formatInt(a.usageRows),
+          },
+        })
   }
   const foldTone = (a: PerAgentQuality): 'green' | 'neutral' => (a.policy.mode === 'request_max' && a.naive > a.folded ? 'green' : 'neutral')
 
   // Agent status in words, never a bare glyph or colour.
-  const STATUS_LABEL: Record<DoctorAgentRow['status'], string> = {
-    ok: 'OK',
-    'ingested-only': 'Ingested only',
-    'not-detected': 'Not detected',
-    error: 'Error',
-  }
+  const STATUS_LABEL: Record<DoctorAgentRow['status'], string> = $derived({
+    ok: $t('doctor.statusOk'),
+    'ingested-only': $t('doctor.statusIngestedOnly'),
+    'not-detected': $t('doctor.statusNotDetected'),
+    error: $t('doctor.statusError'),
+  })
   const STATUS_TONE: Record<DoctorAgentRow['status'], 'neutral' | 'green' | 'red'> = {
     ok: 'green',
     'ingested-only': 'neutral',
@@ -114,69 +131,69 @@
 </script>
 
 <PageHeader
-  title="Doctor"
-  description="Can you trust these numbers? Parsing, coverage, pricing and permissions checks."
-  info="The same report agl doctor prints (§11). Parsing, usage quality, coverage and pricing cover the whole store; capabilities and cost follow the selected window."
+  title={$t('doctor.title')}
+  description={$t('doctor.pageDesc')}
+  info={$t('doctor.pageInfo')}
   refreshing={q.state.refreshing}
 >
   {#snippet actions()}
-    {#if d}<span class="nums text-xs text-ink-3" title={new Date(d.generatedAt).toISOString()}>Generated {formatDateTime(d.generatedAt)}</span>{/if}
+    {#if d}<span class="nums text-xs text-ink-3" title={new Date(d.generatedAt).toISOString()}>{$t('doctor.generated', { values: { at: formatDateTime(d.generatedAt) } })}</span>{/if}
   {/snippet}
 </PageHeader>
 
 {#if !d}
-  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} since={q.state.since} loadingText="Running diagnostics" />
+  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} since={q.state.since} loadingText={$t('doctor.loading')} />
 {:else}
   {#if q.state.status === 'error'}
-    <div class="mb-4"><Alert tone="red" title="Refresh failed.">{q.state.error} — showing the last good report.</Alert></div>
+    <div class="mb-4"><Alert tone="red" title={$t('states.refreshFailed')}>{q.state.error} — {$t('doctor.showingLastReport')}</Alert></div>
   {/if}
 
   <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-    <InsightCard label="Agents" info="OK means an adapter in this build detected the agent on this machine. Ingested-only agents keep their history but have no adapter here.">
+    <InsightCard label={$t('doctor.agentsTile')} info={$t('doctor.agentsTileInfo')}>
       <div class="flex items-baseline gap-1.5">
         <span class={figure}>{formatInt(agentsOk)}</span>
-        <span class="text-[13px] text-ink-3">of <span class="nums">{formatInt(d.agents.length)}</span> OK</span>
+        <span class="text-[13px] text-ink-3">{$t('doctor.agentsOf')} <span class="nums">{formatInt(d.agents.length)}</span> {$t('doctor.agentsOfTail')}</span>
       </div>
       {#snippet detail()}
-        <p class="text-xs text-ink-3">{agentIssues || (d.agents.length ? 'Every agent detected' : 'No agents known yet')}</p>
+        <p class="text-xs text-ink-3">{agentIssues || (d.agents.length ? $t('doctor.everyAgentDetected') : $t('doctor.noAgentsKnown'))}</p>
       {/snippet}
     </InsightCard>
 
-    <InsightCard label="Parse errors" info="Raw records that failed to parse, as a share of everything read, across the whole store.">
+    <InsightCard label={$t('doctor.parseErrorsTile')} info={$t('doctor.parseErrorsTileInfo')}>
       <div class="{figure} {d.parsing.parseErrors ? 'text-orange' : ''}">{d.parsing.parseErrorPct.toFixed(2)}%</div>
       {#snippet detail()}
         <p class="text-xs text-ink-3">
-          <span class="nums">{formatInt(d.parsing.parseErrors)}</span> failed · <span class="nums">{formatInt(d.parsing.events)}</span> events parsed
+          <span class="nums">{formatInt(d.parsing.parseErrors)}</span> {$t('doctor.failedMid')} <span class="nums">{formatInt(d.parsing.events)}</span> {$t('doctor.eventsParsedTail')}
         </p>
       {/snippet}
     </InsightCard>
 
-    <InsightCard label="Dedup inflation avoided" info="Each agent's tokens are folded under the policy persisted with its own rows (§18 row 2) — request_max folds per request_id, the others never deduplicate. This is how much a raw per-record sum would have over-counted.">
+    <InsightCard label={$t('doctor.dedupTile')} info={$t('doctor.dedupTileInfo')}>
       <div class={figure}>{d.usageQuality.inflationAvoidedPct.toFixed(1)}%</div>
       {#snippet detail()}
         {#if d.usageQuality.dedupActive}
           <p class="text-xs text-ink-3">
-            Raw <span class="nums">{formatCompact(d.usageQuality.naiveTokens)}</span> → <span class="nums">{formatCompact(d.usageQuality.dedupedTokens)}</span> tokens after each agent's own fold
+            {$t('doctor.rawLead')} <span class="nums">{formatCompact(d.usageQuality.naiveTokens)}</span> → <span class="nums">{formatCompact(d.usageQuality.dedupedTokens)}</span> {$t('doctor.tokensAfterFold')}
           </p>
         {:else}
-          <p class="text-xs text-ink-3">No request_id duplication observed</p>
+          <p class="text-xs text-ink-3">{$t('doctor.noDuplication')}</p>
         {/if}
       {/snippet}
     </InsightCard>
 
-    <InsightCard label="Models missing a price" info="A model without a price shows its cost as n/a — never $0 (§8).">
+    <InsightCard label={$t('doctor.missingPriceTile')} info={$t('doctor.missingPriceTileInfo')}>
       {#if d.pricing.pricingConfigured}
         <div class="{figure} {d.pricing.missing.length ? 'text-orange' : ''}">{formatInt(d.pricing.missing.length)}</div>
       {:else}
-        <div class="text-[22px] font-semibold tracking-tight text-orange">All</div>
+        <div class="text-[22px] font-semibold tracking-tight text-orange">{$t('doctor.allModels')}</div>
       {/if}
       {#snippet detail()}
         {#if !d.pricing.pricingConfigured}
-          <p class="text-xs text-ink-3">No price table injected — all cost is n/a</p>
+          <p class="text-xs text-ink-3">{$t('doctor.noPriceTableDetail')}</p>
         {:else if d.pricing.missing.length}
-          <p class="text-xs text-ink-3">Of <span class="nums">{formatInt(d.pricing.modelsSeen)}</span> models seen — their cost is n/a</p>
+          <p class="text-xs text-ink-3">{$t('doctor.modelsSeenLead')} <span class="nums">{formatInt(d.pricing.modelsSeen)}</span> {$t('doctor.modelsSeenTail')}</p>
         {:else}
-          <p class="text-xs text-ink-3">Every model seen has a price</p>
+          <p class="text-xs text-ink-3">{$t('doctor.everyModelPriced')}</p>
         {/if}
       {/snippet}
     </InsightCard>
@@ -184,9 +201,9 @@
 
   <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
     <Surface
-      title="Agents"
-      subtitle={d.adaptersInstalled ? '' : 'No adapters installed in this build'}
-      info="Detection is read-only. An agent without an adapter in this build still shows its ingested history."
+      title={$t('doctor.agentsSurface')}
+      subtitle={d.adaptersInstalled ? '' : $t('doctor.noAdapters')}
+      info={$t('doctor.agentsSurfaceInfo')}
       padded={false}
     >
       {#if d.agents.length}
@@ -204,86 +221,83 @@
                 {#if a.note}<p class="mt-1 text-xs {a.status === 'error' ? 'text-red' : 'text-ink-2'}">{a.note}</p>{/if}
               </div>
               <div class="shrink-0 text-right text-xs leading-5 text-ink-3">
-                <div><span class="nums text-[13px] text-ink">{formatInt(a.events)}</span> events</div>
-                <div><span class="nums text-ink-2">{formatInt(a.sources)}</span> sources</div>
+                <div><span class="nums text-[13px] text-ink">{formatInt(a.events)}</span> {$t('doctor.eventsUnit')}</div>
+                <div><span class="nums text-ink-2">{formatInt(a.sources)}</span> {$t('doctor.sourcesUnit')}</div>
               </div>
             </li>
           {/each}
         </ul>
       {:else}
-        <p class="px-4 py-8 text-center text-[13px] text-ink-3">No agents detected or ingested yet.</p>
+        <p class="px-4 py-8 text-center text-[13px] text-ink-3">{$t('doctor.noAgentsAtAll')}</p>
       {/if}
     </Surface>
 
     <div class="flex min-w-0 flex-col gap-4">
-      <Surface title="Parsing" info="Across the whole store, not only the selected window.">
+      <Surface title={$t('doctor.parsing')} info={$t('doctor.parsingInfo')}>
         <dl class="text-[13px]">
-          <div class={dlRow}><dt class="text-ink-3">Events parsed</dt><dd class="nums text-ink">{formatInt(d.parsing.events)}</dd></div>
+          <div class={dlRow}><dt class="text-ink-3">{$t('doctor.eventsParsed')}</dt><dd class="nums text-ink">{formatInt(d.parsing.events)}</dd></div>
           <div class={dlRow}>
-            <dt class="text-ink-3">Parse errors</dt>
+            <dt class="text-ink-3">{$t('doctor.parseErrors')}</dt>
             <dd class="nums {d.parsing.parseErrors ? 'text-orange' : 'text-ink'}">
               {formatInt(d.parsing.parseErrors)} <span class="text-ink-3">({d.parsing.parseErrorPct.toFixed(2)}%)</span>
             </dd>
           </div>
-          <div class={dlRow}><dt class="text-ink-3">Unknown event types</dt><dd class="nums text-ink">{formatInt(d.parsing.unknownTypes)}</dd></div>
+          <div class={dlRow}><dt class="text-ink-3">{$t('doctor.unknownTypes')}</dt><dd class="nums text-ink">{formatInt(d.parsing.unknownTypes)}</dd></div>
         </dl>
         {#if drift}
           {#if drift.checked === 0}
             <p class="mt-3 text-xs text-ink-3">
-              Parser-version drift can't be evaluated — <span class="nums">{formatInt(drift.unmapped)}</span> source(s) belong to
-              agents with no adapter in this build, <span class="nums">{formatInt(drift.unscanned)}</span> carry no version yet.
+              {$t('doctor.driftNoEval')} <span class="nums">{formatInt(drift.unmapped)}</span> {$t('doctor.driftNoEvalMid')}
+              <span class="nums">{formatInt(drift.unscanned)}</span> {$t('doctor.driftNoEvalTail')}
             </p>
           {:else if drift.drifted > 0}
             <p class="mt-3 text-xs text-orange">
-              <span class="nums">{formatInt(drift.drifted)}</span> of <span class="nums">{formatInt(drift.checked)}</span> sources
-              carry a stale parser_version — the next scan re-reads them in full (§5.3).
+              <span class="nums">{formatInt(drift.drifted)}</span> {$t('doctor.driftStaleOf')} <span class="nums">{formatInt(drift.checked)}</span> {$t('doctor.driftStaleTail')}
             </p>
             <div class="mt-1.5 flex flex-wrap gap-1.5">
               {#each drift.stale as s, i (i)}
-                <Chip mono title="{s.agentId}: {formatInt(s.sources)} source(s) stored by parser v{formatInt(s.parserVersion)}">{s.agentId} v{formatInt(s.parserVersion)}</Chip>
+                <Chip mono title={$t('doctor.staleChipTitle', { values: { agent: s.agentId, sources: formatInt(s.sources), version: `v${formatInt(s.parserVersion)}` } })}>{s.agentId} v{formatInt(s.parserVersion)}</Chip>
               {/each}
             </div>
           {:else}
             <p class="mt-3 text-xs text-ink-2">
-              <Chip tone="green">Parser current</Chip> <span class="nums">{formatInt(drift.checked)}</span> source(s) match their
-              adapter's parser version{drift.unscanned ? ` · ${formatInt(drift.unscanned)} not yet scanned` : ''}.
+              <Chip tone="green">{$t('doctor.parserCurrent')}</Chip> <span class="nums">{formatInt(drift.checked)}</span> {$t('doctor.sourcesMatch', { values: { extra: drift.unscanned ? $t('doctor.unscannedTail', { values: { n: formatInt(drift.unscanned) } }) : '' } })}
             </p>
           {/if}
           {#if drift.unmapped > 0 && drift.checked > 0}
-            <p class="mt-1.5 text-xs text-ink-3"><span class="nums">{formatInt(drift.unmapped)}</span> further source(s) belong to agents with no adapter here — drift unknowable for them.</p>
+            <p class="mt-1.5 text-xs text-ink-3"><span class="nums">{formatInt(drift.unmapped)}</span> {$t('doctor.furtherUnmapped')}</p>
           {/if}
         {/if}
       </Surface>
 
       <Surface
-        title="Usage quality"
-        subtitle="Events by where their token usage came from"
-        info="Reported: the agent logged its own usage. Estimated: usage was derived. Missing: none recorded. Across the whole store."
+        title={$t('doctor.usageQuality')}
+        subtitle={$t('doctor.usageQualitySubtitle')}
+        info={$t('doctor.usageQualityInfo')}
         class="flex-1"
       >
         <dl class="text-[13px]">
-          <div class={dlRow}><dt class="text-ink-3">Reported by the agent</dt><dd class="nums text-ink">{formatInt(d.usageQuality.reported)}</dd></div>
-          <div class={dlRow}><dt class="text-ink-3">Estimated</dt><dd class="nums text-ink">{formatInt(d.usageQuality.estimated)}</dd></div>
-          <div class={dlRow}><dt class="text-ink-3">Missing</dt><dd class="nums text-ink">{formatInt(d.usageQuality.missing)}</dd></div>
-          <div class={dlRow}><dt class="text-ink-3">Without a request_id</dt><dd class="nums text-ink">{formatInt(d.usageQuality.withoutRequestId)}</dd></div>
+          <div class={dlRow}><dt class="text-ink-3">{$t('doctor.reportedByAgent')}</dt><dd class="nums text-ink">{formatInt(d.usageQuality.reported)}</dd></div>
+          <div class={dlRow}><dt class="text-ink-3">{$t('doctor.estimated')}</dt><dd class="nums text-ink">{formatInt(d.usageQuality.estimated)}</dd></div>
+          <div class={dlRow}><dt class="text-ink-3">{$t('doctor.missing')}</dt><dd class="nums text-ink">{formatInt(d.usageQuality.missing)}</dd></div>
+          <div class={dlRow}><dt class="text-ink-3">{$t('doctor.withoutRequestId')}</dt><dd class="nums text-ink">{formatInt(d.usageQuality.withoutRequestId)}</dd></div>
         </dl>
         {#if d.usageQuality.dedupActive}
           <p class="mt-3 flex items-start gap-2 rounded-lg bg-green-tint px-3 py-2 text-[13px] text-green">
             <Icon name="check" size={14} class="mt-0.5" />
             <span>
-              request_id dedup active: raw <span class="nums">{formatCompact(d.usageQuality.naiveTokens)}</span> →
-              <span class="nums">{formatCompact(d.usageQuality.dedupedTokens)}</span> tokens
-              (<span class="nums">{d.usageQuality.inflationAvoidedPct.toFixed(1)}%</span> inflation avoided)
+              {$t('doctor.dedupActiveLead')} <span class="nums">{formatCompact(d.usageQuality.naiveTokens)}</span> →
+              <span class="nums">{formatCompact(d.usageQuality.dedupedTokens)}</span> {$t('doctor.tokensWord')}
+              (<span class="nums">{d.usageQuality.inflationAvoidedPct.toFixed(1)}%</span> {$t('doctor.inflationAvoided')})
             </span>
           </p>
         {:else}
-          <p class="mt-3 text-xs text-ink-3">No request_id duplication observed in this data.</p>
+          <p class="mt-3 text-xs text-ink-3">{$t('doctor.noDupInData')}</p>
         {/if}
         {#if foldModes.length > 1}
           <div class="mt-3">
-            <Alert tone="orange" title="Mixed folds in one database —">
-              <span class="nums">{foldModes.join(', ')}</span>: every figure below is that agent's own fold. No global rule was
-              applied, and none would be correct (§18 row 2).
+            <Alert tone="orange" title={$t('doctor.mixedFoldsTitle')}>
+              <span class="nums">{foldModes.join(', ')}</span>{$t('doctor.mixedFoldsBody')}
             </Alert>
           </div>
         {/if}
@@ -293,43 +307,39 @@
               <li class="py-2">
                 <div class="flex min-w-0 items-center gap-2">
                   <span class="truncate text-[13px] font-medium text-ink" title={a.agentId}>{a.agentId}</span>
-                  <Chip tone={foldTone(a)} title="The fold persisted with this agent's stored rows">{a.policy.mode}</Chip>
+                  <Chip tone={foldTone(a)} title={$t('doctor.foldChipTitle')}>{a.policy.mode}</Chip>
                   <Chip tone="neutral" dashed={!a.policy.subagentsIncluded}>
-                    {a.policy.subagentsIncluded ? 'subagents counted' : 'subagents excluded'}
+                    {a.policy.subagentsIncluded ? $t('doctor.subagentsCounted') : $t('doctor.subagentsExcluded')}
                   </Chip>
                   {#if a.policySource === 'default'}
-                    <Chip tone="orange" title="No policy was persisted for this agent, so the cube's most conservative default applied">defaulted</Chip>
+                    <Chip tone="orange" title={$t('doctor.defaultedTitle')}>{$t('doctor.defaulted')}</Chip>
                   {/if}
                 </div>
                 <div class="nums mt-0.5 text-xs text-ink-3">
-                  reported {share(a.reported, a.events)} · estimated {share(a.estimated, a.events)} · missing {share(a.missing, a.events)}
+                  {$t('doctor.usageShares', { values: { r: share(a.reported, a.events), e: share(a.estimated, a.events), m: share(a.missing, a.events) } })}
                   {#if a.noRequestId > 0}
-                    · <span title="Records the per-request fallback key had to cover, counted individually">{formatInt(a.noRequestId)} without a request_id{a.noRequestIdWithUsage > 0 ? ` (${formatInt(a.noRequestIdWithUsage)} with usage)` : ''}</span>
+                    · <span title={$t('doctor.withoutRequestIdTip')}>{$t('doctor.withoutRequestIdN', { values: { n: formatInt(a.noRequestId), extra: a.noRequestIdWithUsage > 0 ? $t('doctor.withUsageN', { values: { n: formatInt(a.noRequestIdWithUsage) } }) : '' } })}</span>
                   {/if}
                 </div>
                 <div class="mt-0.5 text-xs {a.agrees ? 'text-ink-2' : 'text-red'}">{foldSentence(a)}</div>
                 {#if !a.agrees}
                   <p class="mt-1 text-xs text-red">
-                    Cube and event-model disagree for this agent (<span class="nums">{formatCompact(a.folded)}</span> vs
-                    <span class="nums">{formatCompact(a.modelFolded)}</span>) — one path is wrong, so every token and cost figure for
-                    it is untrustworthy until they match.
+                    {$t('doctor.disagreeLead')}<span class="nums">{formatCompact(a.folded)}</span> {$t('doctor.disagreeVs')} <span class="nums">{formatCompact(a.modelFolded)}</span>{$t('doctor.disagreeTail')}
                   </p>
                 {/if}
                 {#if a.policy.mode !== 'request_max' && a.globalFolded !== a.folded}
                   <p class="mt-1 text-xs text-orange">
-                    This agent declares {a.policy.mode}: one global request_max would have reported
-                    <span class="nums">{formatCompact(a.globalFolded)}</span> instead of <span class="nums">{formatCompact(a.folded)}</span> (§18 row 2).
+                    {$t('doctor.declaresLead')} {a.policy.mode}{$t('doctor.declaresMid')}
+                    <span class="nums">{formatCompact(a.globalFolded)}</span> {$t('doctor.insteadOf')} <span class="nums">{formatCompact(a.folded)}</span>{$t('doctor.declaresEnd')}
                   </p>
                 {/if}
                 {#if a.declared && (a.declared.mode !== a.policy.mode || a.declared.subagentsIncluded !== a.policy.subagentsIncluded)}
                   <p class="mt-1 text-xs text-orange">
-                    Its installed adapter now declares <span class="nums">{a.declared.mode}</span>{a.declared.subagentsIncluded ? '' : ' with subagents excluded'},
-                    but the stored rows are folded <span class="nums">{a.policy.mode}</span>{a.policy.subagentsIncluded ? '' : ' with subagents excluded'} —
-                    the figures describe the rows, not the next scan.
+                    {$t('doctor.itsAdapterNow')} <span class="nums">{a.declared.mode}</span>{a.declared.subagentsIncluded ? '' : ` ${$t('doctor.exclSubagents')}`}{$t('doctor.butRowsFolded')} <span class="nums">{a.policy.mode}</span>{a.policy.subagentsIncluded ? '' : ` ${$t('doctor.exclSubagents')}`} {$t('doctor.rowsNotNextScan')}
                   </p>
                 {/if}
                 {#if !a.declared}
-                  <p class="mt-1 text-xs text-ink-3">No adapter in this build declares a policy for it — nothing above is a claim about the next scan.</p>
+                  <p class="mt-1 text-xs text-ink-3">{$t('doctor.noPolicyForIt')}</p>
                 {/if}
               </li>
             {/each}
@@ -339,28 +349,28 @@
     </div>
 
     <Surface
-      title="Coverage"
-      info="Upstream tools can delete old session files while their folder stays, so a scan can look complete while being partial. These are presence checks, not statistics."
+      title={$t('doctor.coverage')}
+      info={$t('doctor.coverageInfo')}
     >
       <div class="space-y-3">
-        {#if d.coverage.banner}
-          <Alert tone="orange" title="Incomplete history.">{d.coverage.banner}</Alert>
+        {#if coverageLine}
+          <Alert tone="orange" title={$t('banner.coverageTitle')}>{coverageLine}</Alert>
         {:else if d.coverage.incomplete}
-          <Alert tone="orange" title="History may be incomplete.">
-            {formatInt(d.coverage.unreachable.length)} ingested source{d.coverage.unreachable.length === 1 ? '' : 's'} can't be read right now.
+          <Alert tone="orange" title={$t('doctor.historyMaybeIncomplete')}>
+            {$t('doctor.unreachableNow', { values: { n: formatInt(d.coverage.unreachable.length) } })}
           </Alert>
         {:else}
-          <p class="flex items-center gap-2 text-[13px] text-ink-2"><Chip tone="green">Complete</Chip>History looks complete for ingested sources.</p>
+          <p class="flex items-center gap-2 text-[13px] text-ink-2"><Chip tone="green">{$t('doctor.complete')}</Chip>{$t('doctor.historyLooksComplete')}</p>
         {/if}
 
         {#if d.coverage.emptyDirs.length}
           <div>
-            <h4 class="mb-1 text-xs font-medium text-ink-3">Source dirs whose session files are gone</h4>
+            <h4 class="mb-1 text-xs font-medium text-ink-3">{$t('doctor.emptyDirsHeading')}</h4>
             <ul class="max-h-40 overflow-y-auto text-xs">
               {#each d.coverage.emptyDirs as e (e.dir)}
                 <li class="flex items-center justify-between gap-3 border-b border-line-soft py-1.5 last:border-0">
                   <span class="nums min-w-0 truncate text-ink-2" title={e.dir}>{e.dir}</span>
-                  <span class="shrink-0 text-ink-3"><span class="nums">{formatInt(e.missingSources)}</span> missing · {e.agentIds.join(', ')}</span>
+                  <span class="shrink-0 text-ink-3"><span class="nums">{formatInt(e.missingSources)}</span> {$t('doctor.missingWord')} · {e.agentIds.join(', ')}</span>
                 </li>
               {/each}
             </ul>
@@ -369,7 +379,7 @@
 
         {#if d.coverage.projectDirsWithoutSessions.length}
           <div>
-            <h4 class="mb-1.5 text-xs font-medium text-ink-3">Project dirs with no sessions left</h4>
+            <h4 class="mb-1.5 text-xs font-medium text-ink-3">{$t('doctor.projectDirsHeading')}</h4>
             <div class="flex flex-wrap gap-1.5">
               {#each d.coverage.projectDirsWithoutSessions as p, i (i)}
                 <Chip mono title={p.root}>{p.project}</Chip>
@@ -382,169 +392,163 @@
           <div class="border-t border-line-soft pt-3">
             {#if retention.gone + retention.rotated > 0}
               <p class="text-xs text-orange">
-                <span class="nums">{formatInt(retention.gone + retention.rotated)}</span> known source(s) no longer readable
-                (gone <span class="nums">{formatInt(retention.gone)}</span> · rotated
-                <span class="nums">{formatInt(retention.rotated)}</span>) — the events already ingested from them stay, nothing new
-                can arrive.
+                <span class="nums">{formatInt(retention.gone + retention.rotated)}</span> {$t('doctor.retentionUnreadable')}{$t('doctor.retentionGone')} <span class="nums">{formatInt(retention.gone)}</span> · {$t('doctor.retentionRotated')}
+                <span class="nums">{formatInt(retention.rotated)}</span>{$t('doctor.retentionUnreadableTail')}
               </p>
             {/if}
             <p class="{retention.gone + retention.rotated > 0 ? 'mt-1 ' : ''}text-xs text-ink-3">
-              <span class="nums">{formatInt(retention.active)}</span> source(s) read to their end · coverage stops where upstream
-              retention stops (§4.4 row 4).
+              <span class="nums">{formatInt(retention.active)}</span> {$t('doctor.retentionActiveTail')}
             </p>
           </div>
         {/if}
 
-        <p class="border-t border-line-soft pt-3 text-xs text-ink-3">{d.coverage.limits}</p>
+        <p class="border-t border-line-soft pt-3 text-xs text-ink-3">{$t('banner.limits')}</p>
       </div>
     </Surface>
 
     <Surface
-      title="Subagent links"
-      info="§4.4 row 8: a subagent event is attached to the nearest preceding parent call by time, with no foreign key behind it, so some links cannot be resolved."
+      title={$t('doctor.subagentLinks')}
+      info={$t('doctor.subagentLinksInfo')}
     >
       {#if subagents.length === 0}
-        <p class="text-[13px] text-ink-3">No subagent events ingested — the link heuristic is untested on this data.</p>
+        <p class="text-[13px] text-ink-3">{$t('doctor.noSubagentEvents')}</p>
       {:else}
         <dl class="text-[13px]">
           {#each subagents as s (s.agentId)}
             <div class={dlRow}>
               <dt class="min-w-0 truncate text-ink-2" title={s.agentId}>{s.agentId}</dt>
               <dd class="nums shrink-0 {s.orphan > 0 ? 'text-orange' : 'text-ink'}">
-                {formatInt(s.orphan)} of {formatInt(s.total)} unlinked <span class="text-ink-3">({s.orphanPct.toFixed(1)}%)</span>
+                {$t('doctor.orphanOf', { values: { orphan: formatInt(s.orphan), total: formatInt(s.total) } })} <span class="text-ink-3">({s.orphanPct.toFixed(1)}%)</span>
               </dd>
             </div>
           {/each}
         </dl>
         {#if subagents.some((s) => s.orphan > 0)}
           <p class="mt-3 text-xs text-ink-3">
-            Their tokens and cost ARE counted; only the timeline's tree placement is unknown.
+            {$t('doctor.orphansCounted')}
           </p>
         {/if}
       {/if}
     </Surface>
 
     <Surface
-      title="Invented timestamps"
-      info="§5.2: an event whose source stated no time gets one anyway — the source file's last write, or the instant the scan ran. The rows are real activity; only their date is a stand-in."
+      title={$t('doctor.inventedTimestamps')}
+      info={$t('doctor.inventedTimestampsInfo')}
     >
       {#if guessedTimestamps.length === 0}
-        <p class="text-[13px] text-ink-3">Every ingested event carries a timestamp its source stated (§5.2).</p>
+        <p class="text-[13px] text-ink-3">{$t('doctor.allTsStated')}</p>
       {:else}
         <dl class="text-[13px]">
           {#each guessedTimestamps as g (g.agentId)}
             <div class={dlRow}>
               <dt class="min-w-0 truncate text-ink-2" title={g.agentId}>{g.agentId}</dt>
               <dd class="nums shrink-0 text-orange">
-                {formatInt(g.guessed)} of {formatInt(g.events)} guessed
+                {$t('doctor.guessedOf', { values: { g: formatInt(g.guessed), e: formatInt(g.events) } })}
                 <span class="text-ink-3">({share(g.guessed, g.events)})</span>
               </dd>
             </div>
           {/each}
         </dl>
         <p class="mt-3 text-xs text-ink-3">
-          Time-windowed numbers — <span class="nums">--since</span>, this page's window — include these rows whatever their real
-          date is. <span class="nums">{formatInt(guessedTimestamps.reduce((n, g) => n + g.fromIngestClock, 0))}</span> are dated by
-          the scan clock, which bounds nothing;
-          <span class="nums">{formatInt(guessedTimestamps.reduce((n, g) => n + g.fromFileMtime, 0))}</span> by the source file's
-          last write, which does (§19).
+          {$t('doctor.tsWindowLead')} <span class="nums">--since</span>{$t('doctor.tsWindowMid')} <span class="nums">{formatInt(guessedTimestamps.reduce((n, g) => n + g.fromIngestClock, 0))}</span> {$t('doctor.tsScanClock')}
+          <span class="nums">{formatInt(guessedTimestamps.reduce((n, g) => n + g.fromFileMtime, 0))}</span> {$t('doctor.tsFileMtime')}
         </p>
       {/if}
     </Surface>
 
     <div class="flex min-w-0 flex-col gap-4">
-      <Surface title="Capabilities" subtitle="In the selected window">
+      <Surface title={$t('doctor.capabilities')} subtitle={$t('doctor.inSelectedWindow')}>
         {#if d.capabilities.length === 0}
-          <p class="text-[13px] text-ink-3">No capability events in this window.</p>
+          <p class="text-[13px] text-ink-3">{$t('doctor.noCapabilityEvents')}</p>
         {:else}
           <dl class="text-[13px]">
             {#each d.capabilities as c (c.type)}
               <div class={dlRow}>
                 <dt class="text-ink-2">{c.type}</dt>
                 <dd class="nums text-ink">
-                  {formatInt(c.events)}{#if c.errors}<span class="text-red"> · {formatInt(c.errors)} errors</span>{/if}
+                  {formatInt(c.events)}{#if c.errors}<span class="text-red"> · {formatInt(c.errors)} {$t('doctor.errorsWord')}</span>{/if}
                 </dd>
               </div>
             {/each}
           </dl>
         {/if}
         <p class="mt-3 border-t border-line-soft pt-3 text-xs text-ink-3">
-          Catalog: {d.catalog.available ? `${formatInt(d.catalog.installed)} installed · ${formatInt(d.catalog.neverUsed)} never used` : d.catalog.note}
+          {$t('doctor.catalogLabel')} {d.catalog.available ? $t('doctor.catalogCounts', { values: { installed: formatInt(d.catalog.installed), neverUsed: formatInt(d.catalog.neverUsed) } }) : d.catalog.note}
         </p>
       </Surface>
 
-      <Surface title="Pricing" info="Costs use the injected price table. A model without a price shows cost as n/a — never $0 (§8)." class="flex-1">
+      <Surface title={$t('doctor.pricing')} info={$t('doctor.pricingInfo')} class="flex-1">
         {#if d.pricing.pricingConfigured}
           <dl class="text-[13px]">
             <div class={dlRow}>
-              <dt class="text-ink-3">Models priced</dt>
+              <dt class="text-ink-3">{$t('doctor.modelsPriced')}</dt>
               <dd class="nums text-ink">{d.pricing.modelsPriced === null ? '—' : formatInt(d.pricing.modelsPriced)}</dd>
             </div>
-            <div class={dlRow}><dt class="text-ink-3">Models seen</dt><dd class="nums text-ink">{formatInt(d.pricing.modelsSeen)}</dd></div>
+            <div class={dlRow}><dt class="text-ink-3">{$t('doctor.modelsSeen')}</dt><dd class="nums text-ink">{formatInt(d.pricing.modelsSeen)}</dd></div>
           </dl>
           {#if d.pricing.missing.length}
             <div class="mt-3">
-              <Alert tone="orange" title="{formatInt(d.pricing.missing.length)} missing a price — cost n/a:">
+              <Alert tone="orange" title={$t('doctor.missingPriceAlert', { values: { n: formatInt(d.pricing.missing.length) } })}>
                 <span class="nums">{d.pricing.missing.map((m) => m.model).join(', ')}</span>
               </Alert>
             </div>
           {/if}
         {:else}
-          <Alert tone="orange" title="No price table injected —">all cost is n/a, never shown as $0.</Alert>
+          <Alert tone="orange" title={$t('doctor.noPriceTableTitle')}>{$t('doctor.allCostNa')}</Alert>
         {/if}
       </Surface>
     </div>
 
-    <Surface title="Cost" subtitle="In the selected window">
+    <Surface title={$t('doctor.cost')} subtitle={$t('doctor.inSelectedWindow')}>
       <dl class="text-[13px]">
         <div class={dlRow}>
-          <dt class="text-ink-3">Actual, reported where known</dt>
+          <dt class="text-ink-3">{$t('doctor.costActual')}</dt>
           <dd><CostFigure value={d.cost.totalUsd} basis="actual" partial={d.cost.totalPartial} /></dd>
         </div>
         <div class={dlRow}>
-          <dt class="text-ink-3">API-equivalent estimate</dt>
+          <dt class="text-ink-3">{$t('doctor.costApiEquiv')}</dt>
           <dd><CostFigure value={d.cost.apiEquivalentUsd} basis="est" partial={d.cost.apiEquivalentPartial} /></dd>
         </div>
         {#if d.cost.reportedUsd !== null}
           <div class={dlRow}>
-            <dt class="text-ink-3">Reported by agents</dt>
+            <dt class="text-ink-3">{$t('doctor.costReportedBy')}</dt>
             <dd><CostFigure value={d.cost.reportedUsd} basis="reported" /></dd>
           </div>
         {/if}
       </dl>
       {#if d.cost.unpricedAgents.length}
-        <p class="mt-3 text-xs text-orange">No price for {d.cost.unpricedAgents.join(', ')} — the totals above are a floor.</p>
+        <p class="mt-3 text-xs text-orange">{$t('doctor.noPriceFor', { values: { agents: d.cost.unpricedAgents.join(', ') } })}</p>
       {/if}
       <p class="mt-3 border-t border-line-soft pt-3 text-xs text-ink-3">{d.cost.basis}</p>
     </Surface>
 
     <div class="flex min-w-0 flex-col gap-4">
-      <Surface title="Permissions" info="Whether this process can read each detected agent's data root.">
+      <Surface title={$t('doctor.permissions')} info={$t('doctor.permissionsInfo')}>
         {#if d.permissions.length}
           <ul>
             {#each d.permissions as p, i (i)}
               <li class="flex items-center justify-between gap-3 border-b border-line-soft py-1.5 last:border-0">
                 <span class="nums min-w-0 truncate text-xs text-ink-2" title={p.path}>{p.path}</span>
-                {#if p.readable}<Chip tone="green">Readable</Chip>{:else}<Chip tone="red">Unreadable</Chip>{/if}
+                {#if p.readable}<Chip tone="green">{$t('doctor.readable')}</Chip>{:else}<Chip tone="red">{$t('doctor.unreadable')}</Chip>{/if}
               </li>
             {/each}
           </ul>
         {:else}
-          <p class="text-[13px] text-ink-3">Nothing to report — no agent data roots were detected.</p>
+          <p class="text-[13px] text-ink-3">{$t('doctor.noPermissions')}</p>
         {/if}
       </Surface>
 
       <Surface
-        title="Content layer"
-        info="An optional copy of message and tool text, made only when a scan runs with --content. Statistics never depend on it."
+        title={$t('doctor.contentLayer')}
+        info={$t('doctor.contentLayerInfo')}
         class="flex-1"
       >
         <dl class="text-[13px]">
           <div class={dlRow}>
-            <dt class="text-ink-3">Status</dt>
-            <dd>{#if d.content.available}<Chip tone="orange">On</Chip>{:else}<Chip tone="green">Off · metrics only</Chip>{/if}</dd>
+            <dt class="text-ink-3">{$t('doctor.status')}</dt>
+            <dd>{#if d.content.available}<Chip tone="orange">{$t('doctor.contentOn')}</Chip>{:else}<Chip tone="green">{$t('doctor.contentOff')}</Chip>{/if}</dd>
           </div>
-          <div class={dlRow}><dt class="text-ink-3">Payloads stored</dt><dd class="nums text-ink">{formatInt(d.content.payloads)}</dd></div>
+          <div class={dlRow}><dt class="text-ink-3">{$t('doctor.payloadsStored')}</dt><dd class="nums text-ink">{formatInt(d.content.payloads)}</dd></div>
         </dl>
         <p class="mt-3 text-xs text-ink-3">{d.content.note}</p>
       </Surface>
