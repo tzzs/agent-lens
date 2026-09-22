@@ -329,6 +329,33 @@ if (mu && rows(mu, `SELECT name FROM sqlite_master WHERE type='table' AND name='
   })())
   show('tool part 的 tool 名 + state 词表', rows(mu, `SELECT json_extract(data,'$.tool') tool, json_extract(data,'$.state.status') st, COUNT(*) n FROM part WHERE json_extract(data,'$.type')='tool' GROUP BY 1,2 ORDER BY 3 DESC LIMIT 14`))
 
+  hr('6b. 思考（reasoning）到底计在哪一维（§八 第 2 项）')
+  show(
+    'token 桶 vs 实际内容：上游不上报思考 token，但内容存在',
+    rows(
+      mu,
+      `SELECT (SELECT COUNT(*) FROM part WHERE json_extract(data,'$.type')='reasoning') reasoning_parts,
+              (SELECT SUM(length(json_extract(data,'$.text'))) FROM part WHERE json_extract(data,'$.type')='reasoning') reasoning_chars,
+              (SELECT SUM(reasoning_tokens>0) FROM model_usage) rows_with_reasoning_tokens,
+              (SELECT COUNT(*) FROM model_usage WHERE raw_usage_json LIKE '%reasoning%' OR raw_usage_json LIKE '%thinking%') raw_json_mentions_reasoning,
+              (SELECT SUM(computed_total_tokens) FROM model_usage) computed,
+              (SELECT SUM(input_tokens+output_tokens) FROM model_usage) in_plus_out`,
+    ),
+  )
+  show(
+    'variant 是否真控制思考输出（disabled 应当干净地关掉它）',
+    rows(
+      mu,
+      `SELECT u.variant, COUNT(*) requests, SUM(u.reasoning_tokens) reasoning_tokens_sum,
+              SUM(EXISTS(SELECT 1 FROM part p WHERE p.message_id=u.logical_request_id
+                          AND json_extract(p.data,'$.type')='reasoning')) with_reasoning_part,
+              SUM(u.computed_total_tokens) tokens
+         FROM model_usage u GROUP BY 1 ORDER BY 2 DESC`,
+    ),
+  )
+  show('单条 reasoning 的体量与是否有独立耗时', rows(mu, `SELECT MAX(length(json_extract(data,'$.text'))) max_chars, COUNT(*) n FROM part WHERE json_extract(data,'$.type')='reasoning'`))
+  show('reasoning part 自带 start/end（毫秒）⇒ 没有 token 也能量时间', rows(mu, `SELECT substr(json_extract(data,'$.time'),1,60) t FROM part WHERE json_extract(data,'$.type')='reasoning' LIMIT 1`))
+
   hr('7. 能力目录 / 其它表')
   show('tool_usage 词表（含只读/破坏性标记）', rows(mu, `SELECT tool_name, COUNT(*) n, SUM(read_only) read_only, SUM(destructive) destructive, COUNT(DISTINCT side_effect_scope) scopes FROM tool_usage GROUP BY 1 ORDER BY 2 DESC LIMIT 20`))
   show('tool_usage side_effect_scope / approval_status', rows(mu, `SELECT side_effect_scope, approval_status, status, COUNT(*) n FROM tool_usage GROUP BY 1,2,3 ORDER BY 4 DESC LIMIT 10`))

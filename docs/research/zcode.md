@@ -86,7 +86,7 @@ v2/tasks-index.sqlite.tasks.task_id  →  cli/db/db.sqlite.session.id     10/10 
           cache_read <= input                              1395/1395
 ```
 
-⇒ 映射必须**减去**缓存：**`inputTokens = input_tokens − cache_read_input_tokens − cache_creation_input_tokens`**（非负兜底），`cacheRead/Write` 各自成桶。`provider_total_tokens`、`computed_total_tokens` 是 rollup，**永不求和**。`reasoning_tokens` 本机恒 0（`raw_usage_json` 里也没有该字段，列名是 `inputTokens/outputTokens/totalTokens/cacheReadTokens/cacheWriteTokens`）。
+⇒ 映射必须**减去**缓存：**`inputTokens = input_tokens − cache_read_input_tokens − cache_creation_input_tokens`**（非负兜底），`cacheRead/Write` 各自成桶。`provider_total_tokens`、`computed_total_tokens` 是 rollup，**永不求和**。`reasoning_tokens` 本机恒 0（`raw_usage_json` 里也没有该字段，列名是 `inputTokens/outputTokens/totalTokens/cacheReadTokens/cacheWriteTokens`）。思考桶恒 0 不等于没思考：同一库里 928 条 reasoning part 共 3,265,454 字符，只是 GLM 不按 token 上报（详见 §八·2）。
 
 ### 对账（`ccusage@20.0.23`，独立工具，口径互不商量）
 
@@ -153,7 +153,8 @@ v2/tasks-index.sqlite.tasks.task_id  →  cli/db/db.sqlite.session.id     10/10 
 ## 八、待实测确认（2026-09-22 第二轮：三项已推进，三项仍待样本）
 
 1. ✅ **纯 CLI 用户的形态——已查到底，本机无法闭合**（证据与判定见 §二·补）：桌面与 CLI 跑的是同一个引擎产物 `zcode.cjs`，`~/.zcode/cli/` 只是 `nativeConfigDir` 的名字；`tasks-index.sqlite` 在引擎里 **0 个写入者**，所以"命中 task 索引"确实是桌面证据。但这台机器**根本没装独立 CLI**（PATH/brew/npm 全局全无，只有 `~/ZCode-3.11.2-mac-arm64.dmg`），故负例（终端创建的会话到底写什么）拿不到。要补的观测只有一条：在装有命令行 `zcode` 的机器上跑一个会话，看它是否留 `tasks` 行。
-2. `variant='disabled'`(9) 与 `reasoning_tokens` 恒 0 的关系；`GLM-5.3-Flash` 的思考模式是否落到 `part.data.reasoning` 而非 token 桶。
+2. ✅ **`variant='disabled'` 与 `reasoning_tokens` 恒 0 的关系——已量（`probe-zcode.mjs` §6b）**：上游**根本不上报思考 token**（`model_usage.reasoning_tokens>0` 0 行、`message.data.tokens.reasoning` 1,414 条全 0、`raw_usage_json` 里连 `reasoning`/`thinking` 字样都 0 命中），但**思考内容海量存在**：928 条 `part.type='reasoning'`、合计 **3,265,454 字符**，单条最长 183,165 字符。`variant` 确实在控制它——`disabled` 的 9 个请求带 0 条 reasoning part，`max` 1,363 个请求里 916 个有，`low` 23 里 12 有。每条 reasoning 自带 `{start,end}` 毫秒时间戳。
+   **⇒ 对 ZCode+GLM，"思考量"只能用字符与时长度量，不能用 token**；适配器把 `reasoningTokens` 映射为 0 是诚实的（`computed == input+output` 全表成立，没有把思考算两遍），但 UI/doctor 若按"reasoning token = 0 即没思考"呈现就会说谎——这正是 §18 row 5 要求"测不出来的一态不印 0"的那一类。
 3. 非套餐（`account:*` 之外是否有按量付费 provider）下 `cost` 是否变非零 —— 若变，`costSource='reported'` 的分支要提前留好，并注意套餐/按量混用时 `0` 与 `null` 的语义差别。
 4. `session_task_link`/`workflow_*`/`dwf_*` 五张表本机全空（自动化/off-peak 功能），启用后是不是第 6 份用量口径；`off_peak_tasks` 在桌面库里已有表结构。
 5. ✅🟡 **子代理父链：证据已量清，实现卡在一个跨包的口径决定上**。仓库那条 `packages/storage/src/subagent-parent-links.ts` 已提交（`7ba33b0`），所以这条不再是"别压在流沙上"。重测的结论是**真外键在盘上现成，一条启发式都不需要**：`cli/agents/<父会话>/agent_*/metadata.json` 共 28 个文件，28/28 的 `childSessionId` 能在 `session` 表里找到（表内子会话恰好 28 个），28/28 的 `parentToolUseId` 同时命中 `tool_usage.tool_call_id` 与 `part.data.callID`，而 `part` 表里 `Agent` 调用的 callID 恰好也是 28 个 —— 这是一个**双射**，不是概率匹配。要吃到它需要三处协同改动：
