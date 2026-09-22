@@ -68,12 +68,23 @@ function priceStrToPerMTok(v: unknown): number {
 /**
  * Litellm's upstream file is one flat object (model id → cost dict). Wrap it in
  * our own snapshot envelope so fetchedAt/source/schema travel with the data.
+ *
+ * Entries lacking `effective_from` are stamped 0 (undated), the way the build-time
+ * generator stamps them: litellm publishes no price history, so a fetched rate is
+ * today's rate for every model. Dating them to the fetch moment instead would make
+ * `pickEffective` find no entry for any earlier event, and one `agl pricing update`
+ * would turn the whole history of every cost figure into `n/a`.
  */
 export function litellmRawMapToSnapshot(raw: Record<string, unknown>, opts: { fetchedAt: number; source: string }): PriceSnapshot {
   const entries: RawLitellmEntry[] = []
   for (const [key, value] of Object.entries(raw)) {
     if (typeof value !== 'object' || value === null) continue
-    entries.push({ ...(value as object), model: key } as RawLitellmEntry)
+    const entry = value as { effective_from?: unknown }
+    entries.push({
+      ...(value as object),
+      model: key,
+      effective_from: typeof entry.effective_from === 'number' ? entry.effective_from : 0,
+    } as RawLitellmEntry)
   }
   return { schemaVersion: SNAPSHOT_SCHEMA_VERSION, fetchedAt: opts.fetchedAt, source: opts.source, entries }
 }
@@ -194,6 +205,19 @@ export function normalizeOpenRouterEntries(snapshot: OpenRouterSnapshot, opts: {
     })
   }
   return out
+}
+
+const DAY_MS = 86_400_000
+
+/**
+ * How old a snapshot is, in the words a report prints beside it. An undated table is not a
+ * wrong one, but "priced off a table last refreshed four months ago" is the difference
+ * between a cost figure and a bill, and no surface's numbers change unless somebody says it.
+ */
+export function snapshotAgePhrase(fetchedAt: number, now: number): string {
+  if (!Number.isFinite(fetchedAt)) return 'fetched date unknown'
+  const days = Math.floor((now - fetchedAt) / DAY_MS)
+  return days <= 0 ? 'fetched today' : `fetched ${days}d ago`
 }
 
 const BUNDLED_SNAPSHOT_URL = new URL('./default-snapshot.json', import.meta.url)

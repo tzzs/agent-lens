@@ -34,7 +34,7 @@ export function describeQuery(spec: QuerySpec): string {
   lines.push(
     'caveat:  prices are undated by default (effective_from 0 in the generated snapshot), so the current rate is ' +
       "applied to a model's whole history: the $ totals are what today's price would have cost, not what was " +
-      'paid (§8) — `agl pricing update` fetches dated entries, `agl pricing override` pins one model.',
+      'paid (§8) — `agl pricing update` refreshes the rates, `agl pricing override` pins a date for one.',
   )
   return lines.join('\n')
 }

@@ -5,6 +5,7 @@ import {
   loadSnapshot,
   bundledSnapshot,
   openRouterRawToSnapshot,
+  snapshotAgePhrase,
   PricingDataError,
   type OpenRouterSnapshot,
   type PriceSnapshot,
@@ -181,6 +182,24 @@ describe('normalizeLitellmEntries', () => {
     expect(Number.isNaN(e!.outputPerMTok)).toBe(true)
     expect(Number.isNaN(e!.cacheWritePerMTok)).toBe(true)
     expect(e!.reasoningPerMTok).toBeNull()
+  })
+})
+
+describe('snapshotAgePhrase (§11: how old is the table behind a $ figure)', () => {
+  const NOW = Date.UTC(2026, 8, 21)
+  const DAY = 86_400_000
+
+  it('counts whole days, and calls anything not yet a day old today', () => {
+    expect(snapshotAgePhrase(NOW - 22 * DAY, NOW)).toBe('fetched 22d ago')
+    expect(snapshotAgePhrase(NOW - DAY + 1, NOW)).toBe('fetched today')
+    expect(snapshotAgePhrase(NOW, NOW)).toBe('fetched today')
+    // A snapshot stamped in the future (a skewed clock) must not read as negative age.
+    expect(snapshotAgePhrase(NOW + 5 * DAY, NOW)).toBe('fetched today')
+  })
+
+  it('says the date is unknown rather than printing NaN', () => {
+    // `loadSnapshot` coerces a missing fetchedAt with Number(), so NaN reaches here.
+    expect(snapshotAgePhrase(Number.NaN, NOW)).toBe('fetched date unknown')
   })
 })
 

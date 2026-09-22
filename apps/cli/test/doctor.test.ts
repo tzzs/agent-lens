@@ -767,7 +767,9 @@ describe('Pricing', () => {
     const out = recordingCtx(HOME)
     renderPricing(db, out, dbPath)
     const text = out.text()
-    expect(text).toContain('✓ 2 models priced (source: updated snapshot)')
+    // 2026-09-21 minus the epoch, in days: the fixture snapshot is fetchedAt 0, and the
+    // panel now has to say how old the table behind every $ figure is.
+    expect(text).toContain('✓ 2 models priced (source: updated snapshot, fetched 20717d ago)')
     expect(text).toContain('! 2 of 3 ingested models unpriced → cost = "n/a", never $0')
     expect(text).toContain('test-unpriced')
     expect(text).toContain('price entry')
@@ -807,7 +809,7 @@ describe('Pricing', () => {
       const out = recordingCtx(HOME)
       renderPricing(db, out, dbPath)
       const text = out.text()
-      expect(text).toContain('1 of them priced by the OpenRouter fallback (test-openrouter)')
+      expect(text).toContain('1 of them priced by the OpenRouter fallback (test-openrouter, fetched 20717d ago)')
       expect(text).toContain('a gap-filler only: it never overrides a model the primary snapshot prices')
       // One gap closed: the panel counts the remaining unpriced models, not the fixture's two.
       expect(text).toContain('! 1 of 3 ingested models unpriced')

@@ -215,10 +215,9 @@ describe('agl pricing update --source openrouter (§8 fallback)', () => {
   it('fills the gap model without repricing what litellm already priced, in its own file', async () => {
     const dbPath = dbIn('or-fallback')
     seedPair(dbPath)
-    const litellm = await cmdPricingUpdate(dbPath, makeCtx(dbPath).ctx, {
-      fetchImpl: seam(FIXTURE_MAP).fetchImpl,
-      now: () => T0 - 86_400_000,
-    })
+    // No `now`: the fetch is stamped today, which is AFTER these events, and the costs still
+    // have to come out -- a fetched snapshot is undated (§8), not dated to its fetch moment.
+    const litellm = await cmdPricingUpdate(dbPath, makeCtx(dbPath).ctx, { fetchImpl: seam(FIXTURE_MAP).fetchImpl })
     expect(litellm).toBe(0)
     const primaryBefore = readFileSync(snapshotPath(dbPath), 'utf8')
 
@@ -255,10 +254,7 @@ describe('agl pricing update --source openrouter (§8 fallback)', () => {
     const dbPath = dbIn('or-empty')
     seedPair(dbPath)
     const { ctx } = makeCtx(dbPath)
-    expect(await cmdPricingUpdate(dbPath, ctx, {
-      fetchImpl: seam(FIXTURE_MAP).fetchImpl,
-      now: () => T0 - 86_400_000,
-    })).toBe(0)
+    expect(await cmdPricingUpdate(dbPath, ctx, { fetchImpl: seam(FIXTURE_MAP).fetchImpl })).toBe(0)
     const before = makeCtx(dbPath, ['usage', '--by', 'model', '--db', dbPath])
     expect(await runCli(before.ctx)).toBe(0)
     expect(before.lines.join('\n')).toMatch(/test-gap-model.*n\/a/)

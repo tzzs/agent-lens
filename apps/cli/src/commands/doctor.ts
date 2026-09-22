@@ -29,6 +29,7 @@ import {
   unpricedModelKey,
   UPSTREAM_RETENTION,
 } from '@agentlens/server'
+import { snapshotAgePhrase } from '@agentlens/pricing'
 import type { FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
 import { displayPath, machineIdentity, machineLines, makeHostCtx, redactHome } from '../context.ts'
@@ -525,13 +526,14 @@ export function renderPricing(db: DatabaseSync, rctx: Ctx, dbPath: string): void
   const { table: priceTable, snapshot, fallback, fallbackAdded, overrideCount } = loadPricing(dbPath)
   const now = rctx.now()
   rctx.out(
-    `${GLYPH.ok} ${formatCount(priceTable.size())} models priced (source: ${snapshot.source === 'bundled' ? 'bundled snapshot' : 'updated snapshot'}` +
+    `${GLYPH.ok} ${formatCount(priceTable.size())} models priced (source: ${snapshot.source === 'bundled' ? 'bundled snapshot' : 'updated snapshot'}, ` +
+      `${snapshotAgePhrase(snapshot.fetchedAt, now)}` +
       `${overrideCount ? `, ${overrideCount} overrides` : ''})`,
   )
   if (fallback) {
     rctx.out(
-      `${GLYPH.ok} ${formatCount(fallbackAdded)} of them priced by the OpenRouter fallback (${fallback.source}) — ` +
-        'a gap-filler only: it never overrides a model the primary snapshot prices (§8)',
+      `${GLYPH.ok} ${formatCount(fallbackAdded)} of them priced by the OpenRouter fallback (${fallback.source}, ` +
+        `${snapshotAgePhrase(fallback.fetchedAt, now)}) — a gap-filler only: it never overrides a model the primary snapshot prices (§8)`,
     )
   }
   const models = modelSpend(db, now)
@@ -591,7 +593,7 @@ export function renderPricing(db: DatabaseSync, rctx: Ctx, dbPath: string): void
     rctx.out(
       `${GLYPH.warn} ${formatCount(undatedModels)} priced model(s) have an undated entry (effective_from 0): the current rate ` +
         'is applied to their whole history, so the $ totals are what today\'s price would have cost, not what was paid (§8) — ' +
-        '`agl pricing update` fetches dated entries',
+        'no upstream publishes price history, so `agl pricing override` is how a reprice gets a date',
     )
   }
 }

@@ -18,6 +18,7 @@ import {
   type PriceSnapshot,
   type RawOpenRouterEntry,
 } from '../src/snapshot.ts'
+import { PricingTable } from '../src/table.ts'
 
 const RAW_LITELLM = {
   sample_model_names: 'a,b',
@@ -54,6 +55,32 @@ describe('fetchLitellmSnapshot', () => {
       'anthropic/claude-sonnet-5',
       'meta-llama/llama-4-maverick',
     ])
+  })
+
+  /** Fetch a body as if it were litellm's map, as of `now`. */
+  async function fetchMap(body: string, now: number) {
+    return fetchLitellmSnapshot('x', { fetchImpl: async () => fakeResponse(body), now: () => now })
+  }
+
+  it('stamps a fetched rate undated, so refreshing does not unprice history (§8)', async () => {
+    // Litellm publishes no price history, so dating the fetched rows to the fetch moment made
+    // `pickEffective` find no entry for any earlier event: one `agl pricing update` turned every
+    // historical cost into n/a, with hundreds of confidently-dated rows on disk to show for it.
+    const fetched = Date.UTC(2026, 8, 21)
+    const table = PricingTable.fromSnapshot(await fetchMap(JSON.stringify(RAW_LITELLM), fetched))
+    for (const at of [Date.UTC(2020, 0, 1), fetched, fetched + 365 * 86_400_000]) {
+      expect(table.lookup('anthropic', 'claude-sonnet-5', at)?.inputPerMTok, new Date(at).toISOString()).toBe(3)
+    }
+    expect(table.lookup('anthropic', 'claude-sonnet-5', fetched)?.source).toBe('litellm')
+  })
+
+  it('keeps a per-model effective_from a curated snapshot pins', async () => {
+    const pinned = {
+      'claude-sonnet-5': { input_cost_per_token: 3e-6, output_cost_per_token: 1.5e-5, effective_from: Date.UTC(2026, 0, 1) },
+    }
+    const table = PricingTable.fromSnapshot(await fetchMap(JSON.stringify(pinned), Date.UTC(2026, 8, 21)))
+    expect(table.lookup('anthropic', 'claude-sonnet-5', Date.UTC(2025, 11, 31))).toBeNull()
+    expect(table.lookup('anthropic', 'claude-sonnet-5', Date.UTC(2026, 0, 1))?.inputPerMTok).toBe(3)
   })
 
   it('surfaces a network rejection as PricingFetchError instead of crashing', async () => {
