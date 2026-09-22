@@ -13,7 +13,7 @@
  * tokens, so the server folds the cube's per-agent API-equivalent through §8's table —
  * via `actualUsdFor` below, the only place this file states that rule.
  */
-import { query, type QueryFilter } from '@agentlens/query'
+import { costFloor, query, type QueryFilter } from '@agentlens/query'
 import { isMissingPrice, type BillingMode, type PriceEntry } from '@agentlens/pricing'
 import type { DatabaseSync } from 'node:sqlite'
 import type { PriceResolver, ServerCtx } from './types.ts'
@@ -89,7 +89,14 @@ export function costView(ctx: ServerCtx, filter?: QueryFilter): CostView {
     ctx.cubeDeps,
   )
   const reportedTotal = usd(res.rows.map((r) => numOrNull(r.cost_reported)))
-  const fusedTotal = usd(res.rows.map((r) => numOrNull(r.cost_total)))
+  // §18 row 1 NULLs a whole agent's `cost_total` when any of its never-reported slices has no
+  // price. That is the right answer for "what did this agent cost", and the wrong one for a
+  // headline floor: the same agent may report a real figure for the other requests, and dropping
+  // it made the top-line total read *lower* than a number the agent itself logged ($0.2114 shown
+  // beside $0.4200 reported), which understates a known cost — §8's worst direction.
+  // So the floor falls back to the reported slice per agent, and `totalPartial` keeps saying the
+  // rest is unknown rather than pretending the sum is complete.
+  const fusedTotal = usd(res.rows.map((r) => costFloor(numOrNull(r.cost_total), numOrNull(r.cost_reported))))
   const fusedPartial = res.rows.some((r) => numOrNull(r.cost_total) === null)
   if (!ctx.priceResolver) {
     return {

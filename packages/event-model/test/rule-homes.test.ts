@@ -82,6 +82,18 @@ const RULES: Rule[] = [
     ],
   },
   {
+    what: 'what a NULL fused cost leaves as a floor (§8)',
+    home: '@agentlens/query → costFloor',
+    forbidden: [
+      { re: /cost_total\)\s*\?\?\s*numOrNull\(r\.cost_reported/, why: 'the fallback is the floor rule; a surface that writes it inline drifts from the one that prints "at least" vs n/a' },
+      { re: /totals\.cost_total\s*\?\?\s*totals\.cost_reported/, why: 'same rule, CLI side' },
+    ],
+    calls: [
+      { file: 'packages/server/src/cost.ts', symbol: 'costFloor' },
+      { file: 'apps/cli/src/commands/usage.ts', symbol: 'costFloor' },
+    ],
+  },
+  {
     what: 'the order a session timeline is read in',
     home: '@agentlens/storage → loadSessionEvents / SESSION_EVENT_SQL',
     forbidden: [

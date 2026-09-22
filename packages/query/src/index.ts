@@ -1,4 +1,4 @@
 export * from './spec.ts'
 export * from './time.ts'
 export * from './explain.ts'
-export { query, type QueryDeps } from './engine.ts'
+export { costFloor, query, type QueryDeps } from './engine.ts'

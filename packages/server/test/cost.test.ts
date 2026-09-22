@@ -209,3 +209,46 @@ describe('§8 billing fold stays pricing\'s rule (defect 4)', () => {
     expect(view.apiEquivalentUsd).toBeGreaterThan(0)
   })
 })
+
+/**
+ * §8's worst direction is understating a figure the agent itself logged. §18 row 1 NULLs an
+ * agent's `cost_total` when any never-reported slice of it has no price — correct for "what did
+ * this agent cost", but the headline used to drop that agent's *reported* money along with the
+ * unpriceable slice, so the top line read lower than a number already known.
+ */
+describe('§8 the headline floor does not fall below a reported cost', () => {
+  let mixedDb: DatabaseSync
+  beforeAll(() => {
+    mixedDb = openDatabase(':memory:')
+    migrate(mixedDb)
+    insertEvents(
+      mixedDb,
+      [
+        ev('mixed-reported', { agentId: 'opencode', requestId: 'mr-1', model: MODEL, usage: usage(1_000_000), costReported: 0.42, costSource: 'reported' }),
+        ev('mixed-unpriced', { agentId: 'opencode', requestId: 'mr-2', model: { provider: 'nope', name: 'unobtainium' }, usage: usage(1_000_000) }),
+      ],
+      { contentEnabled: false },
+    )
+  })
+  afterAll(() => mixedDb.close())
+
+  it('keeps the reported slice in the total and marks the rest unknown', () => {
+    const view = costView(createContext({ db: mixedDb, now: () => 1_700_000_100_000, priceResolver: testPriceResolver }))
+    const oc = view.perAgent.find((s) => s.agentId === 'opencode')
+    // Per agent the fused answer is still unknown: §18 row 1 must not be quietly relaxed.
+    expect(oc?.totalUsd).toBeNull()
+    expect(oc?.reportedUsd).toBeCloseTo(0.42, 10)
+    // Headline: the known money survives as a floor, and says so.
+    expect(view.totalUsd).not.toBeNull()
+    expect(view.totalUsd!).toBeGreaterThanOrEqual(0.42)
+    expect(view.totalUsd!).toBeLessThan(1.42) // the unpriced work is NOT folded in
+    expect(view.totalPartial).toBe(true)
+    expect(view.basis).toContain('cost_total')
+  })
+
+  it('stays byte-identical when everything is priceable, so the floor adds nothing', () => {
+    const whole = costView(ctx())
+    expect(whole.totalUsd).toBeCloseTo(1.5, 10)
+    expect(whole.totalPartial).toBe(false)
+  })
+})

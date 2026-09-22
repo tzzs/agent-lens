@@ -3,7 +3,7 @@
  * which is why no per-dimension subcommands are needed.
  */
 import type { DatabaseSync } from 'node:sqlite'
-import { assertDim, describeQuery, query, type Dim, type Metric } from '@agentlens/query'
+import { assertDim, costFloor, describeQuery, query, type Dim, type Metric } from '@agentlens/query'
 import { UsageError, type FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
 import { queryDeps } from '../context.ts'
@@ -70,7 +70,10 @@ export function cmdUsage(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath: st
   // asked otherwise, and an excluded number must then say so (§14: 口径 matches the figure).
   if (flags.bool('no-subagents')) cubeFilter.includeSubagentThreads = false
   const spec = {
-    metrics: USAGE_METRICS,
+    // `cost_reported` is asked for but not printed: it is the floor the total line falls back to
+    // when fusion comes back NULL for want of a price (§8: the headline must not read lower than a
+    // figure the agent itself logged).
+    metrics: [...USAGE_METRICS, 'cost_reported'] as Metric[],
     dims,
     filter: cubeFilter,
     limit: flags.num('limit'),
@@ -89,9 +92,18 @@ export function cmdUsage(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath: st
   ctx.out(table(headers, rows, aligns))
   const subagentBasis =
     cubeFilter.includeSubagentThreads === false ? ' · subagent threads excluded (--no-subagents)' : ''
+  // §8: a NULL fused total means "some tokens we could not price", not "nothing is known" — the
+  // agent's own reported money is still a floor. Printing `n/a` there would hide a number the
+  // store already has, and printing the sum without the qualifier would claim it is complete.
+  const strictCost = res.totals.cost_total ?? null
+  const floorCost = costFloor(strictCost, res.totals.cost_reported ?? null)
+  const costText =
+    strictCost === null && floorCost !== null
+      ? `≥ ${formatUsd(floorCost)} cost (partly unpriced)`
+      : `${formatUsd(strictCost)} cost`
   ctx.out(
     `total: ${formatCount(res.totals.events ?? 0)} events · ${formatCount(res.totals.sessions ?? 0)} sessions · ` +
-      `${formatTokens(res.totals.tokens_total)} tokens (deduped) · ${formatUsd(res.totals.cost_total)} cost` +
+      `${formatTokens(res.totals.tokens_total)} tokens (deduped) · ${costText}` +
       ` · ${formatUsd(res.totals.cost_api_equiv)} api-equiv` +
       subagentBasis,
   )

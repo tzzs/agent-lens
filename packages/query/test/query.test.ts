@@ -5,7 +5,7 @@ import { aggregateRequestTokens, aggregateUsage, UnknownAggregationError } from 
 import { hexSeed } from './fixtures.ts'
 import { insertEvents, migrate, openDatabase } from '@agentlens/storage'
 import type { PriceEntry } from '@agentlens/pricing'
-import { bucketTs, query, resolveSince, UnknownDimError, UnknownMetricError, type QuerySpec } from '@agentlens/query'
+import { bucketTs, costFloor, query, resolveSince, UnknownDimError, UnknownMetricError, type QuerySpec } from '@agentlens/query'
 
 function seeded(events: AgentEvent[]): DatabaseSync {
   const db = openDatabase(':memory:')
@@ -610,5 +610,21 @@ describe('§18 row 1 fused cost_total metric', () => {
     expect(byAgent.get('local-agent')?.cost_api_equiv).toBe(3)
     expect(res.totals.cost_total).toBe(3)
     expect(res.totals.cost_api_equiv).toBe(9)
+  })
+})
+
+/** §8/§14: the floor under a NULL fused total, shared by both surfaces. */
+describe('costFloor (§8)', () => {
+  it('leaves a complete answer untouched', () => {
+    expect(costFloor(1.25, 0.4)).toBe(1.25)
+    expect(costFloor(0, 5)).toBe(0) // a real $0 (subscription/local) is not "unknown"
+  })
+
+  it('falls back to the money the agents reported when a slice had no price', () => {
+    expect(costFloor(null, 0.42)).toBe(0.42)
+  })
+
+  it('stays null when nothing at all is known, so n/a survives n/a', () => {
+    expect(costFloor(null, null)).toBeNull()
   })
 })

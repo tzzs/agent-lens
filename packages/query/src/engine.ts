@@ -490,6 +490,22 @@ function fuseCost(reported: number | null, priced: number | null | undefined): n
   return (reported ?? 0) + (priced ?? 0)
 }
 
+/**
+ * §8/§14: the floor beneath a fused total that came back NULL.
+ *
+ * `fuseCost` returns NULL when some never-reported slice has no price, because a partial sum must
+ * not be presented as an answer to "what did this cost". That is right for the figure itself and
+ * wrong as a whole story: the agent may have reported real money for the rest, and dropping it
+ * makes the headline *lower* than a number already known — the direction §8 forbids, and the one
+ * a reader cannot spot, because `n/a` looks more conservative than a too-small total.
+ *
+ * So surfaces print `costFloor(...)` prefixed with "at least" when the strict answer is NULL. The
+ * unpriceable part stays out of the number either way: this is a floor, never an estimate.
+ */
+export function costFloor(strict: number | null, reported: number | null): number | null {
+  return strict ?? reported
+}
+
 export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): QueryResult {
   if (spec.metrics !== undefined && spec.metrics.length === 0) throw new Error('query: metrics must not be empty')
   const metrics = (spec.metrics ?? ['events']).map(assertMetric)
