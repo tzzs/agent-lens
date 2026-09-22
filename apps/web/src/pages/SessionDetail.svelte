@@ -232,8 +232,8 @@
   <div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-3">
     <span class="flex items-center gap-1.5">Est. cost <CostFigure value={d.totals.cost_api_equiv ?? null} basis="est" /> · ↑↓ to move, ←→ to fold, Esc to close</span>
     {#if forest && forest.orphans > 0}
-      <span title="Events whose parent link is absent render as top-level rows (§4.4 allows parent_event_id = NULL)">
-        {formatInt(forest.orphans)} event(s) had no parent link and are shown at the top level
+      <span title="These rows do carry parent_event_id; the parent is simply outside the session being shown — a subagent thread, or another source of the same conversation. Nothing is missing (§4.4).">
+        {formatInt(forest.orphans)} event(s) hang from a parent outside this session, so they sit at the top level here
       </span>
     {/if}
   </div>
