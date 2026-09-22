@@ -11,6 +11,7 @@ import type { ServerCtx } from './types.ts'
 import { costView, missingPriceModels, unpricedModelKey } from './cost.ts'
 import { METRICS, numOr } from './metrics.ts'
 import { parseFilter } from './request-spec.ts'
+import type { ModelNoteCode } from './notes.ts'
 
 export interface ModelRow {
   provider: string
@@ -31,7 +32,7 @@ export interface ModelsResponse {
   pricingConfigured: boolean
   unpriced: { provider: string; model: string; lastSeen: number | null }[]
   cost: ReturnType<typeof costView>
-  note: string
+  noteCode: ModelNoteCode
 }
 
 export function models(ctx: ServerCtx, sp: URLSearchParams): ModelsResponse {
@@ -55,6 +56,6 @@ export function models(ctx: ServerCtx, sp: URLSearchParams): ModelsResponse {
     pricingConfigured: Boolean(ctx.priceResolver),
     unpriced: gaps,
     cost: costView(ctx, filter),
-    note: 'cost shown as n/a when a model has no price: §8 forbids reading an unknown price as $0',
+    noteCode: 'naMeansUnpriced',
   }
 }

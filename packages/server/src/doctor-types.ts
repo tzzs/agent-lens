@@ -10,6 +10,7 @@ import type { AggregationMode } from '@agentlens/event-model'
 import type { AgentUsageQuality, ParserVersionDrift, RetentionCounts } from '@agentlens/storage'
 import { costView } from './cost.ts'
 import { coverageReport } from './coverage.ts'
+import type { AgentNoteCode, CatalogNoteCode, ContentNoteCode } from './notes.ts'
 
 export interface DoctorAgentRow {
   id: string
@@ -19,7 +20,10 @@ export interface DoctorAgentRow {
   events: number
   sources: number
   status: 'ok' | 'ingested-only' | 'not-detected' | 'error'
-  note: string | null
+  /** Which sentence explains this row; null when the row needs none. */
+  noteCode: AgentNoteCode | null
+  /** Verbatim diagnostic text, for `probeError` only: never a translatable sentence. */
+  noteDetail?: string
 }
 
 /** One agent's Usage quality row, plus whether its cube total and event-model's fold agree. */
@@ -80,9 +84,9 @@ export interface DoctorReport {
   retention: RetentionCounts
   capabilities: { type: string; events: number; errors: number }[]
   capabilitySupport: { agentId: string; recorded: string[] }[]
-  catalog: { available: boolean; note: string; installed: number; neverUsed: number }
+  catalog: { available: boolean; noteCode: CatalogNoteCode; noteDetail?: string; installed: number; neverUsed: number }
   pricing: { pricingConfigured: boolean; modelsPriced: number | null; modelsSeen: number; missing: { provider: string; model: string; lastSeen: number | null }[] }
   cost: ReturnType<typeof costView>
   permissions: { path: string; readable: boolean }[]
-  content: { available: boolean; payloads: number; note: string }
+  content: { available: boolean; payloads: number; noteCode: ContentNoteCode }
 }

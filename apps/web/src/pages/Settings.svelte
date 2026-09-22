@@ -10,6 +10,7 @@
   import { loader } from '../lib/pagestate.svelte.js'
   import { live } from '../lib/live.svelte.js'
   import { theme, setTheme } from '../lib/theme.svelte.js'
+  import { agentNote, costBasis } from '../lib/notes.ts'
   import { t } from '../lib/lang.js'
   import { formatDateTime, formatInt } from '../lib/format.ts'
   import Surface from '../components/ui/Surface.svelte'
@@ -192,7 +193,7 @@
             <td class="nums text-ink-2" title={a.dataRoot ?? undefined}>{a.dataRoot ?? '—'}</td>
             <td class="nums text-right text-ink">{formatInt(a.sources)}</td>
             <td>
-              <Chip tone={STATUS_TONE[a.status]} dashed={a.status === 'not-detected'} title={a.note ?? ''}>{STATUS_LABEL[a.status] ?? a.status}</Chip>
+              <Chip tone={STATUS_TONE[a.status]} dashed={a.status === 'not-detected'} title={a.noteCode ? agentNote(a.noteCode, a.noteDetail) : ''}>{STATUS_LABEL[a.status] ?? a.status}</Chip>
             </td>
           {/snippet}
         </DataTable>
@@ -222,7 +223,7 @@
             </dd>
           </div>
         </dl>
-        <p class="mt-3 text-xs leading-relaxed text-ink-3">{doc.cost.basis}</p>
+        <p class="mt-3 text-xs leading-relaxed text-ink-3">{costBasis(doc.cost.basisCode)}</p>
       </Surface>
 
       <Surface

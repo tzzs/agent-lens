@@ -9,6 +9,7 @@ import type { ServerCtx } from './types.ts'
 import { CAPABILITY_TYPES } from '@agentlens/event-model'
 import { ApiError } from './errors.ts'
 import { parseFilter, strParam } from './request-spec.ts'
+import type { CatalogNoteCode } from './notes.ts'
 
 export interface CapabilityNameRow {
   name: string
@@ -32,7 +33,10 @@ export interface CapabilityTypeRow {
 
 export interface CatalogView {
   available: boolean
-  note: string
+  /** Which sentence explains the catalog; `catalogCounts` is worded from `installed`/`neverUsed`. */
+  noteCode: CatalogNoteCode
+  /** Verbatim failure text, for `catalogUnreadable` only. */
+  noteDetail?: string
   installed: number
   neverUsed: { agentId: string | null; type: string; name: string; source: string }[]
 }
@@ -152,7 +156,7 @@ async function buildCatalogView(ctx: ServerCtx, used: Set<string>): Promise<Cata
   if (!ctx.capabilityCatalog) {
     return {
       available: false,
-      note: 'no capability catalog injected in this build (adapters expose capabilities() from M6)',
+      noteCode: 'noCatalogInjected',
       installed: 0,
       neverUsed: [],
     }
@@ -163,7 +167,8 @@ async function buildCatalogView(ctx: ServerCtx, used: Set<string>): Promise<Cata
   } catch (err) {
     return {
       available: false,
-      note: `capability catalog unreadable: ${(err as Error).message}`,
+      noteCode: 'catalogUnreadable',
+      noteDetail: (err as Error).message,
       installed: 0,
       neverUsed: [],
     }
@@ -173,7 +178,7 @@ async function buildCatalogView(ctx: ServerCtx, used: Set<string>): Promise<Cata
     .map((e) => ({ agentId: e.agentId ?? null, type: String(e.type), name: String(e.name), source: String(e.source) }))
   return {
     available: true,
-    note: `${entries.length} catalogued entries · ${neverUsed.length} never observed in the event stream`,
+    noteCode: 'catalogCounts',
     installed: entries.length,
     neverUsed,
   }

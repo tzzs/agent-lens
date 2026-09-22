@@ -50,7 +50,7 @@ describe('GET /api/sessions/:id node window and payload laziness', () => {
     expect(withText.payloadCount).toBe(1)
     // Degraded-mode reporting must not flip just because text was withheld.
     expect(d.contentAvailable).toBe(true)
-    expect(d.contentNote).toContain('payloads=0')
+    expect(d.contentNoteCode).toBe('contentWithheldByParam')
     // Every node still arrives: the waterfall needs all of them to build the forest.
     expect(d.nodes).toHaveLength(9)
     // Metric facts are untouched by the flag.

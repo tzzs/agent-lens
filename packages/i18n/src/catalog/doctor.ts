@@ -178,7 +178,6 @@ const en = {
   noCapabilityEvents: 'No capability events in this window.',
   errorsWord: 'errors',
   catalogLabel: 'Catalog:',
-  catalogCounts: '{installed} installed · {neverUsed} never used',
   pricing: 'Pricing',
   pricingInfo: 'Costs use the injected price table. A model without a price shows cost as n/a — never $0 (§8).',
   modelsPriced: 'Models priced',
@@ -349,7 +348,6 @@ const zh = matches(en)({
   noCapabilityEvents: '这个时间窗内没有能力调用事件。',
   errorsWord: '个出错',
   catalogLabel: '能力目录：',
-  catalogCounts: '已安装 {installed} 个 · 从未用过 {neverUsed} 个',
   pricing: '定价',
   pricingInfo: '成本按注入的价格表计算。没有定价的模型，其成本显示为 n/a，绝不会是 $0（§8）。',
   modelsPriced: '已定价模型',
@@ -378,3 +376,4 @@ const zh = matches(en)({
 })
 
 export default { en, zh }
+

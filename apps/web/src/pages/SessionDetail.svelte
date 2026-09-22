@@ -7,6 +7,7 @@
   import { api, type PayloadView, type TimelineNode } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
   import { live } from '../lib/live.svelte.js'
+  import { contentNote } from '../lib/notes.ts'
   import { t } from '../lib/lang.js'
   import { formatCompact, formatInt, formatMs, formatDateTime, projectLabel, shortId } from '../lib/format.ts'
   import { eventGroups, eventKind, type EventGroup } from '../lib/eventKinds.ts'
@@ -187,7 +188,7 @@
   </div>
 
   {#if !d.contentAvailable}
-    <div class="mb-4"><Alert tone="orange" title={$t('sessionDetail.metricsOnly')}>{d.contentNote}</Alert></div>
+    <div class="mb-4"><Alert tone="orange" title={$t('sessionDetail.metricsOnly')}>{contentNote(d.contentNoteCode)}</Alert></div>
   {/if}
 
   <div class="mb-3 flex flex-wrap items-center justify-between gap-3">

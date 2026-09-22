@@ -18,6 +18,7 @@ import { isMissingPrice, type BillingMode, type PriceEntry } from '@agentlens/pr
 import type { DatabaseSync } from 'node:sqlite'
 import type { PriceResolver, ServerCtx } from './types.ts'
 import { rowsOf } from './resolve.ts'
+import type { CostBasisCode } from './notes.ts'
 
 export interface CostSlice {
   agentId: string
@@ -45,7 +46,7 @@ export interface CostView {
   /** Agents whose price is missing: the UI must render n/a, never 0. */
   unpricedAgents: string[]
   perAgent: CostSlice[]
-  basis: string
+  basisCode: CostBasisCode
 }
 
 function usd(values: (number | null)[]): number | null {
@@ -117,7 +118,7 @@ export function costView(ctx: ServerCtx, filter?: QueryFilter): CostView {
         reportedUsd: numOrNull(r.cost_reported),
         totalUsd: numOrNull(r.cost_total),
       })),
-      basis: 'no price table injected — api-equivalent and actual are n/a (§8: an unknown price must never render as $0); cost_total covers only reported slices',
+      basisCode: 'noPriceTable',
     }
   }
   const perAgent: CostSlice[] = res.rows.map((r) => {
@@ -144,8 +145,7 @@ export function costView(ctx: ServerCtx, filter?: QueryFilter): CostView {
     actualPartial: perAgent.some((s) => s.actualUsd === null),
     unpricedAgents: perAgent.filter((s) => s.apiEquivalentUsd === null).map((s) => s.agentId),
     perAgent,
-    basis:
-      'cost_total (cube, §18 row 1) = agent-reported cost where the agent reported one + priced tokens for the never-reported part, NULL when neither; api-equivalent = all tokens x price (per-agent §18 fold), actual = billing mode applied to it (subscription/local real cash is 0)',
+    basisCode: 'fusedFormula',
   }
 }
 

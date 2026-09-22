@@ -10,6 +10,7 @@ import { costView } from './cost.ts'
 import { metricFields, METRICS } from './metrics.ts'
 import { parseFilter, strParam } from './request-spec.ts'
 import { projectLabelMap, redactHome, rowsOf } from './resolve.ts'
+import type { ProjectNoteCode } from './notes.ts'
 
 function numOr(v: unknown): number | null {
   return v === null || v === undefined ? null : Number(v)
@@ -33,7 +34,7 @@ export interface ProjectsResponse {
   totals: Record<string, number | null>
   truncated: boolean
   cost: ReturnType<typeof costView>
-  note: string
+  noteCode: ProjectNoteCode
 }
 
 export function projects(ctx: ServerCtx, sp: URLSearchParams): ProjectsResponse {
@@ -134,6 +135,6 @@ export function projects(ctx: ServerCtx, sp: URLSearchParams): ProjectsResponse 
     totals: top.totals,
     truncated: top.truncated,
     cost: costView(ctx, filter),
-    note: 'one row per canonical repo root (§4.1): worktrees and subdirectories fold into the parent project, so a row can cover several paths',
+    noteCode: 'canonicalRootFold',
   }
 }

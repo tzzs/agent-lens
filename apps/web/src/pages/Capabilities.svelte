@@ -9,6 +9,7 @@
   import { live } from '../lib/live.svelte.js'
   import { formatCompact, formatInt, formatMs, pct } from '../lib/format.ts'
   import { eventKind } from '../lib/eventKinds.ts'
+  import { catalogNote } from '../lib/notes.ts'
   import { t } from '../lib/lang.js'
   import Surface from '../components/ui/Surface.svelte'
   import PageHeader from '../components/ui/PageHeader.svelte'
@@ -283,7 +284,7 @@
           <Icon name="info" size={15} class="mt-0.5 text-ink-3" />
           <div class="min-w-0">
             <p class="text-[13px] text-ink-2">{$t('capabilities.noCatalog')}</p>
-            <p class="nums mt-1 break-words text-xs text-ink-3">{d.catalog.note}</p>
+            <p class="nums mt-1 break-words text-xs text-ink-3">{catalogNote(d.catalog.noteCode, { installed: d.catalog.installed, neverUsed: d.catalog.neverUsed.length, detail: d.catalog.noteDetail })}</p>
           </div>
         </div>
       {:else if d.catalog.neverUsed.length === 0}
@@ -296,7 +297,7 @@
           {/if}
         </p>
       {:else}
-        <p class="mb-2 text-xs text-ink-3">{d.catalog.note}</p>
+        <p class="mb-2 text-xs text-ink-3">{catalogNote(d.catalog.noteCode, { installed: d.catalog.installed, neverUsed: d.catalog.neverUsed.length, detail: d.catalog.noteDetail })}</p>
         <ul class="max-h-72 divide-y divide-line-soft overflow-y-auto">
           {#each d.catalog.neverUsed as c (`${c.agentId}:${c.type}:${c.name}:${c.source}`)}
             <li class="flex flex-col gap-1 py-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">

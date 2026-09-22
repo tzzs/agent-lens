@@ -45,7 +45,7 @@ describe('GET /api/doctor agents', () => {
     expect(body.adaptersInstalled).toBe(false)
     const row = rowFor(body, 'claude-code')
     expect(row.status).toBe('ingested-only')
-    expect(row.note).toContain('not installed in this build')
+    expect(row.noteCode).toBe('adapterNotInstalled')
     expect(row.events).toBe(11)
   })
 
@@ -62,7 +62,7 @@ describe('GET /api/doctor agents', () => {
     // The root travels redacted, and this machine's fake home is genuinely unreadable.
     expect(body.permissions).toEqual([{ path: '~/.claude', readable: false }])
     expect(rowFor(body, 'claude-code').dataRoot).toBe('~/.claude')
-    expect(rowFor(body, 'claude-code').note).toContain('not readable')
+    expect(rowFor(body, 'claude-code').noteCode).toBe('dataRootUnreadable')
   })
 
   it('keeps an absent adapter visible, and an adapter that throws as an error row', async () => {
@@ -80,7 +80,11 @@ describe('GET /api/doctor agents', () => {
     // An agent with history but no adapter in this run still shows up as ingested-only.
     expect(rowFor(body, 'claude-code').status).toBe('ingested-only')
     expect(rowFor(body, 'opencode').status).toBe('error')
-    expect(rowFor(body, 'opencode').note).toBe('stat failed for ~/.local/share/opencode')
+    expect(rowFor(body, 'opencode')).toMatchObject({
+      noteCode: 'probeError',
+      // The raw failure still travels, home-redacted: it is what a user pastes.
+      noteDetail: 'stat failed for ~/.local/share/opencode',
+    })
   })
 
   it('reports a present adapter without a data root as ok and no permission probe', async () => {

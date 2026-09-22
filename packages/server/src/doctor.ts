@@ -85,7 +85,8 @@ export async function doctor(ctx: ServerCtx, sp: URLSearchParams): Promise<Docto
     capabilitySupport: [...support.entries()].map(([agentId, recorded]) => ({ agentId, recorded })),
     catalog: {
       available: catalog.available,
-      note: catalog.note,
+      noteCode: catalog.noteCode,
+      ...(catalog.noteDetail ? { noteDetail: catalog.noteDetail } : {}),
       installed: catalog.installed,
       neverUsed: catalog.neverUsed.length,
     },
@@ -100,9 +101,7 @@ export async function doctor(ctx: ServerCtx, sp: URLSearchParams): Promise<Docto
     content: {
       available: contentLayerPresent(ctx.db),
       payloads: payloadCount(ctx.db),
-      note: contentLayerPresent(ctx.db)
-        ? 'content layer on: timelines show message/tool text'
-        : 'content layer off (the default; scan with --content) or expired: timelines are metrics-only, statistics unaffected',
+      noteCode: contentLayerPresent(ctx.db) ? 'contentOn' : 'contentOff',
     },
   }
 }

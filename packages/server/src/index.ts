@@ -25,6 +25,22 @@ export type {
   ServerCtx,
   ServerDeps,
 } from './types.ts'
+export {
+  AGENT_NOTE_CODES,
+  CATALOG_NOTE_CODES,
+  CONTENT_NOTE_CODES,
+  COST_BASIS_CODES,
+  MODEL_NOTE_CODES,
+  PROJECT_NOTE_CODES,
+  TOKEN_BASIS_CODES,
+  type AgentNoteCode,
+  type CatalogNoteCode,
+  type ContentNoteCode,
+  type CostBasisCode,
+  type ModelNoteCode,
+  type ProjectNoteCode,
+  type TokenBasisCode,
+} from './notes.ts'
 export { ApiError, toErrorBody, type ErrorBody, type ErrorKind } from './errors.ts'
 export { parseSpec, strParam, listParam } from './request-spec.ts'
 export { overview, type OverviewResponse } from './overview.ts'

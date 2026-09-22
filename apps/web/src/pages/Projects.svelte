@@ -8,6 +8,7 @@
   import { loader } from '../lib/pagestate.svelte.js'
   import { range, filterParams } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
+  import { projectNote } from '../lib/notes.ts'
   import { t } from '../lib/lang.js'
   import { formatCompact, formatInt, relativeTime, projectLabel, shortId, looksLikeHash } from '../lib/format.ts'
   import { SERIES, eventKind } from '../lib/eventKinds.ts'
@@ -41,7 +42,9 @@
   const projectCount = $derived(
     d ? (d.truncated ? $t('projects.countPlus', { values: { n: formatInt(d.rows.length) } }) : $t('projects.count', { values: { n: formatInt(d.rows.length) } })) : '',
   )
-  const note = $derived(d?.note ? d.note.charAt(0).toUpperCase() + d.note.slice(1) : '')
+  // The old page capitalised the server's sentence at render time — an English-only
+  // operation. The note is the viewer's own text now, so it starts as it should.
+  const note = $derived(d ? projectNote(d.noteCode) : '')
 
   const num = (v: number | null | undefined) => Number(v ?? 0)
   // Rows are keyed and ided by position as well as projectId: the server relabels

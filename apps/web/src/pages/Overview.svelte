@@ -5,6 +5,7 @@
   import type { OverviewResponse } from '../lib/api.ts'
   import type { LoaderState } from '../lib/pagestate.svelte.js'
   import type { MessageKey } from '@agentlens/i18n'
+  import { tokenBasis } from '../lib/notes.ts'
   import { t } from '../lib/lang.js'
   import Surface from '../components/ui/Surface.svelte'
   import InsightCard from '../components/ui/InsightCard.svelte'
@@ -82,7 +83,7 @@
   {/if}
 
   <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-    <InsightCard label={$t('overview.tokens')} info={d.cards.tokens.basis} delta={halfOverHalf(trendVals('tokens_total'))} deltaLabel={$t('overview.deltaInfo')}>
+    <InsightCard label={$t('overview.tokens')} info={tokenBasis(d.cards.tokens.basisCode)} delta={halfOverHalf(trendVals('tokens_total'))} deltaLabel={$t('overview.deltaInfo')}>
       <div class="nums text-[26px] font-semibold tracking-tight">{formatCompact(d.cards.tokens.total)}</div>
       {#snippet detail()}
         <dl class="nums grid grid-cols-2 gap-x-4 gap-y-1 text-xs">

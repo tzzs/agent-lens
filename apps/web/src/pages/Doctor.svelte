@@ -8,6 +8,7 @@
   import { loader } from '../lib/pagestate.svelte.js'
   import { range, filterParams } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
+  import { agentNote, catalogNote, contentNote, costBasis } from '../lib/notes.ts'
   import { t } from '../lib/lang.js'
   import { coverageText } from '../lib/banners.ts'
   import { formatCompact, formatDateTime, formatInt } from '../lib/format.ts'
@@ -218,7 +219,7 @@
                 <div class="nums mt-0.5 truncate text-xs text-ink-3" title="{a.detectedVersion ?? '—'} · {a.dataRoot ?? '—'}">
                   {a.detectedVersion ?? '—'} · {a.dataRoot ?? '—'}
                 </div>
-                {#if a.note}<p class="mt-1 text-xs {a.status === 'error' ? 'text-red' : 'text-ink-2'}">{a.note}</p>{/if}
+                {#if a.noteCode}<p class="mt-1 text-xs {a.status === 'error' ? 'text-red' : 'text-ink-2'}">{agentNote(a.noteCode, a.noteDetail)}</p>{/if}
               </div>
               <div class="shrink-0 text-right text-xs leading-5 text-ink-3">
                 <div><span class="nums text-[13px] text-ink">{formatInt(a.events)}</span> {$t('doctor.eventsUnit')}</div>
@@ -473,7 +474,7 @@
           </dl>
         {/if}
         <p class="mt-3 border-t border-line-soft pt-3 text-xs text-ink-3">
-          {$t('doctor.catalogLabel')} {d.catalog.available ? $t('doctor.catalogCounts', { values: { installed: formatInt(d.catalog.installed), neverUsed: formatInt(d.catalog.neverUsed) } }) : d.catalog.note}
+          {$t('doctor.catalogLabel')} {catalogNote(d.catalog.noteCode, { installed: d.catalog.installed, neverUsed: d.catalog.neverUsed, detail: d.catalog.noteDetail })}
         </p>
       </Surface>
 
@@ -519,7 +520,7 @@
       {#if d.cost.unpricedAgents.length}
         <p class="mt-3 text-xs text-orange">{$t('doctor.noPriceFor', { values: { agents: d.cost.unpricedAgents.join(', ') } })}</p>
       {/if}
-      <p class="mt-3 border-t border-line-soft pt-3 text-xs text-ink-3">{d.cost.basis}</p>
+      <p class="mt-3 border-t border-line-soft pt-3 text-xs text-ink-3">{costBasis(d.cost.basisCode)}</p>
     </Surface>
 
     <div class="flex min-w-0 flex-col gap-4">
@@ -550,7 +551,7 @@
           </div>
           <div class={dlRow}><dt class="text-ink-3">{$t('doctor.payloadsStored')}</dt><dd class="nums text-ink">{formatInt(d.content.payloads)}</dd></div>
         </dl>
-        <p class="mt-3 text-xs text-ink-3">{d.content.note}</p>
+        <p class="mt-3 text-xs text-ink-3">{contentNote(d.content.noteCode)}</p>
       </Surface>
     </div>
   </div>

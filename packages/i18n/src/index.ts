@@ -32,6 +32,7 @@ import states from './catalog/states.ts'
 import usage from './catalog/usage.ts'
 import capabilities from './catalog/capabilities.ts'
 import models from './catalog/models.ts'
+import notes from './catalog/notes.ts'
 
 /** The two locales this tool speaks. `zh` covers `zh-*`; region tags fold onto it. */
 export type Locale = 'en' | 'zh'
@@ -61,6 +62,7 @@ export const catalog = {
     doctor: doctor.en,
     settings: settings.en,
     comps: comps.en,
+    notes: notes.en,
     viz: viz.en,
   },
   zh: {
@@ -82,6 +84,7 @@ export const catalog = {
     doctor: doctor.zh,
     settings: settings.zh,
     comps: comps.zh,
+    notes: notes.zh,
     viz: viz.zh,
   },
 } as const

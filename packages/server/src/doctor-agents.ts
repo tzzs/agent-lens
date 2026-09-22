@@ -44,7 +44,7 @@ export async function doctorAgents(ctx: ServerCtx, adapters: readonly AgentAdapt
     try {
       const det = await adapter.detect(hostContext({ homedir: ctx.homedir }))
       if (!det.present) {
-        rows.push({ ...base, status: 'not-detected', note: 'not detected on this machine' })
+        rows.push({ ...base, status: 'not-detected', noteCode: 'notDetected' })
         continue
       }
       const root = det.dataRoot ?? null
@@ -56,10 +56,10 @@ export async function doctorAgents(ctx: ServerCtx, adapters: readonly AgentAdapt
         detectedVersion: det.agentVersion ?? (row?.detected_version ? String(row.detected_version) : null),
         dataRoot: root ? redactHome(root, ctx.homedir) : null,
         status: 'ok',
-        note: readable ? null : 'data root is not readable by this process',
+        noteCode: readable ? null : 'dataRootUnreadable',
       })
     } catch (err) {
-      rows.push({ ...base, status: 'error', note: redactHome((err as Error).message, ctx.homedir) })
+      rows.push({ ...base, status: 'error', noteCode: 'probeError', noteDetail: redactHome((err as Error).message, ctx.homedir) })
     }
   }
 
@@ -74,7 +74,7 @@ export async function doctorAgents(ctx: ServerCtx, adapters: readonly AgentAdapt
       events: count(ctx.db, 'SELECT COUNT(*) AS n FROM events WHERE agent_id = ?', id),
       sources: count(ctx.db, 'SELECT COUNT(*) AS n FROM sources WHERE agent_id = ?', id),
       status: 'ingested-only',
-      note: 'its adapter package is not installed in this build (history stays queryable)',
+      noteCode: 'adapterNotInstalled',
     })
   }
   return { rows, permissions, adaptersInstalled: adapters.length > 0 }
