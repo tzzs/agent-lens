@@ -1,9 +1,11 @@
 {
   "window": {
+    "since": "2026-09-12",
+    "until": "2026-09-13",
     "corpus": "ZCode CLI store, activity 2026-09-12T20:29:07Z .. 2026-09-13T21:15:51Z (whole store)",
     "capturedAt": "2026-09-22T05:15:00Z",
     "command": "ZCODE_HOME=<folded snapshot copy of ~/.zcode> ccusage zcode daily -j -O -z UTC",
-    "note": "ccusage is pointed at a rollback-mode COPY of the live WAL store, never at ~/.zcode itself (§18 row 7: a read-only attach against a WAL store creates or rewrites someone else's -wal/-shm). `-O` keeps the offline price table. ZCode is unpriced in both tools, so totalCost is 0 by plan billing, not by measurement."
+    "note": "ccusage is pointed at a rollback-mode COPY of the live WAL store, never at ~/.zcode itself (§18 row 7: a read-only attach against a WAL store creates or rewrites someone else's -wal/-shm). `-O` keeps the offline price table. The window stops on the last day the store contains: ZCode's tables are append-only, so a pinned window stays comparable while the corpus grows, which is what makes it usable as a regression gate. ZCode is unpriced in both tools, so totalCost is 0 by plan billing, not by measurement."
   },
   "totals": {
     "inputTokens": 7382171,
@@ -14,6 +16,26 @@
     "totalCost": 0,
     "unpricedModels": ["GLM-5.3-Flash"]
   },
+  "daily": [
+    {
+      "date": "2026-09-12",
+      "inputTokens": 475191,
+      "outputTokens": 201501,
+      "cacheReadTokens": 11987456,
+      "cacheCreationTokens": 0,
+      "totalTokens": 12664148,
+      "totalCost": 0
+    },
+    {
+      "date": "2026-09-13",
+      "inputTokens": 6906980,
+      "outputTokens": 1162120,
+      "cacheReadTokens": 146860736,
+      "cacheCreationTokens": 0,
+      "totalTokens": 154929836,
+      "totalCost": 0
+    }
+  ],
   "derived": {
     "rawColumnSums": {
       "input_tokens": 166230363,
@@ -23,11 +45,17 @@
       "computed_total_tokens": 167593984,
       "provider_total_tokens": 167593984
     },
+    "subagentTokens": {
+      "query_source": "subagent",
+      "rows": 367,
+      "totalTokens": 15657611,
+      "shareOfHeadline": 0.0934
+    },
     "equivalences": [
       "ccusage.inputTokens == model_usage.input_tokens - cache_read_input_tokens (166230363 - 158848192)",
-      "ccusage.totalTokens == SUM(computed_total_tokens) == SUM(input_tokens + output_tokens), 1395/1395 rows satisfy computed_total == input+output",
+      "ccusage.totalTokens == SUM(computed_total_tokens) == SUM(input_tokens + output_tokens), and 1395/1395 rows satisfy computed_total == input+output",
       "the store's rows are 1:1 with logical_request_id (1395 rows, 1395 distinct), so per_record_sum and request_max agree",
-      "the headline includes the 367 subagent rows (15657611 tokens, 9.3%) — hence aggregation.subagentsIncluded = true"
+      "the headline INCLUDES the 367 subagent rows (15,657,611 tokens) — hence aggregation.subagentsIncluded = true; excluding them reads -9.3%"
     ]
   }
 }
