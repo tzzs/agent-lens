@@ -2,5 +2,9 @@ packages:
   - packages/*
   - adapters/*
   - apps/*
+# pnpm 11 reads settings from this file, not from package.json's "pnpm" field (which is now
+# gone), and an unapproved postinstall is a hard failure (`ERR_PNPM_IGNORED_BUILDS`) rather
+# than a warning — that is what killed CI. esbuild is the one that must run: Vite links its
+# native binary, so silently skipping it would break `pnpm -F @agentlens/web build` anyway.
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
