@@ -7,29 +7,24 @@
  *
  * §18 row 2 made the fold a per-agent declaration, so every number below is labelled
  * with the policy that produced it and no global rule is ever applied to a mixed database.
+ * The measurement itself is shared with `GET /api/doctor` (storage's `usageQuality`),
+ * because §14 forbids the two reports from disagreeing about it.
  */
 import type { DatabaseSync } from 'node:sqlite'
+import type { AgentAdapter, AggregationPolicy } from '@agentlens/event-model'
 import {
-  aggregateRequestTokens,
-  aggregateUsage,
-  DEFAULT_AGGREGATION,
-  type AgentAdapter,
-  type AgentEvent,
-  type AggregationPolicy,
-  type Usage,
-} from '@agentlens/event-model'
-import { loadAgentAggregations, rowToEvent } from '@agentlens/storage'
+  loadAgentAggregations,
+  usageFoldModes,
+  usageQuality,
+  type AgentUsageQuality,
+  type CubeAgentTotal,
+} from '@agentlens/storage'
 import { query } from '@agentlens/query'
 import type { Ctx } from '../context.ts'
 import { GLYPH, formatCount, formatTokens } from '../render.ts'
-import { rowsOf } from './shared.ts'
 
-/** Grand total of the five buckets — the presentation twin of `tokens_total`. */
-function grand(u: Usage): number {
-  return u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens + u.reasoningTokens
-}
-
-const PER_RECORD_SUM: AggregationPolicy = Object.freeze({ mode: 'per_record_sum', subagentsIncluded: true })
+/** The measurement lives in storage so this report and `GET /api/doctor` share one implementation. */
+export type AgentQuality = AgentUsageQuality
 
 /**
  * Two records of the same rule, deliberately kept apart so their disagreement is visible:
@@ -49,118 +44,20 @@ export function usagePolicies(db: DatabaseSync, adapters: readonly AgentAdapter[
   return { persisted: loadAgentAggregations(db), declared }
 }
 
-export interface AgentQuality {
-  agentId: string
-  events: number
-  reported: number
-  estimated: number
-  missing: number
-  /** Records the §3.1 fallback key had to cover. */
-  noRequestId: number
-  noRequestIdWithUsage: number
-  usageRows: number
-  /** Raw SUM over every usage row: what a report that ignores the fold prints. */
-  naive: number
-  /** The cube's policy-aware total: the number the product reports. */
-  folded: number
-  /** event-model's fold of the same rows under the same policy — the cross-check. */
-  modelFolded: number
-  /** What a single GLOBAL `request_max` would have produced, for the mixed-fold warning. */
-  globalFolded: number
-  /** Fold groups the policy produced: 1 per request under `request_max`, 1 per row otherwise. */
-  groups: number
-  policy: AggregationPolicy
-  /** Where `policy` came from: persisted rows, or the default because nothing was. */
-  policySource: 'persisted' | 'default'
-  /** The installed adapter's own declaration, if any. */
-  declared: AggregationPolicy | null
-}
-
+/** §11's per-agent measurement, with this build's cube totals handed to the shared check. */
 export function measureUsageQuality(db: DatabaseSync, adapters: readonly AgentAdapter[]): AgentQuality[] {
   const { persisted, declared } = usagePolicies(db, adapters)
-
   const cube = query(
     db,
     { metrics: ['events', 'tokens_total'], dims: ['agent'] },
     { aggregation: persisted },
   )
-  const srcRes = query(db, { metrics: ['events'], dims: ['agent', 'usage_source'] })
-  const eventCounts = new Map<string, { reported: number; estimated: number; missing: number }>()
-  for (const r of srcRes.rows) {
-    const agent = String(r.agent)
-    const cur = eventCounts.get(agent) ?? { reported: 0, estimated: 0, missing: 0 }
-    const n = Number(r.events)
-    const source = String(r.usage_source)
-    if (source === 'reported') cur.reported += n
-    else if (source === 'estimated') cur.estimated += n
-    else cur.missing += n
-    eventCounts.set(agent, cur)
-  }
-
-  const noReq = new Map(
-    rowsOf(
-      db,
-      `SELECT COALESCE(agent_id, '') AS agent,
-              COUNT(*) AS n,
-              SUM(CASE WHEN input_tokens IS NOT NULL OR output_tokens IS NOT NULL
-                         OR cache_read_tokens IS NOT NULL OR cache_write_tokens IS NOT NULL
-                         OR reasoning_tokens IS NOT NULL THEN 1 ELSE 0 END) AS with_usage
-       FROM events WHERE request_id IS NULL OR request_id = ''
-       GROUP BY agent`,
-    ).map((r) => [String(r.agent), { n: Number(r.n), withUsage: Number(r.with_usage ?? 0) }]),
-  )
-
-  // The fold comparison needs the rows themselves; only rows that could contribute.
-  const usageRows = rowsOf(
-    db,
-    `SELECT * FROM events WHERE input_tokens IS NOT NULL OR output_tokens IS NOT NULL
-       OR cache_read_tokens IS NOT NULL OR cache_write_tokens IS NOT NULL OR reasoning_tokens IS NOT NULL`,
-  )
-  const byAgent = new Map<string, AgentEvent[]>()
-  for (const row of usageRows) {
-    const ev = rowToEvent(row)
-    const agent = ev.agentId
-    const list = byAgent.get(agent)
-    if (list) list.push(ev)
-    else byAgent.set(agent, [ev])
-  }
-
-  const agents = new Set<string>([
-    ...cube.rows.map((r) => String(r.agent)),
-    ...byAgent.keys(),
-    ...eventCounts.keys(),
-  ])
-  const out: AgentQuality[] = []
-  for (const agentId of [...agents].sort()) {
-    const row = cube.rows.find((r) => String(r.agent) === agentId)
-    const rows = byAgent.get(agentId) ?? []
-    const policy = persisted[agentId] ?? DEFAULT_AGGREGATION
-    const naive = grand(aggregateUsage(rows, PER_RECORD_SUM).usage)
-    const fold = aggregateUsage(rows, policy)
-    // event-model's own naive-vs-folded pair for the `request_max` rule (§11's dedup line);
-    // for any other policy its deduped side is kept only to show what a wrongly global
-    // rule would have done to this agent's rows.
-    const perRequest = aggregateRequestTokens(rows)
-    const counts = eventCounts.get(agentId) ?? { reported: 0, estimated: 0, missing: 0 }
-    const req = noReq.get(agentId) ?? { n: 0, withUsage: 0 }
-    out.push({
-      agentId,
-      events: Number(row?.events ?? 0),
-      ...counts,
-      noRequestId: req.n,
-      noRequestIdWithUsage: req.withUsage,
-      usageRows: rows.length,
-      naive,
-      folded: Number(row?.tokens_total ?? 0),
-      modelFolded: grand(fold.usage),
-      globalFolded: grand(perRequest.deduped),
-      groups: fold.groups,
-      policy,
-      policySource: persisted[agentId] ? 'persisted' : 'default',
-      declared: declared[agentId] ?? null,
-    })
-  }
-  return out
+  const totals: CubeAgentTotal[] = cube.rows.map((r) => ({
+    agentId: String(r.agent),
+    events: Number(r.events ?? 0),
+    tokensTotal: Number(r.tokens_total ?? 0),
+  }))
+  return usageQuality(db, totals, declared)
 }
 
 function pctOf(n: number, total: number): string {
@@ -217,10 +114,10 @@ export function renderUsageQuality(
       )
     }
   }
-  const modes = new Set(qualities.map((q) => q.policy.mode))
-  if (modes.size > 1) {
+  const modes = usageFoldModes(qualities)
+  if (modes.length > 1) {
     ctx.out(
-      `${GLYPH.warn} mixed folds in one database (${[...modes].sort().join(', ')}): every total above is that agent's own fold, ` +
+      `${GLYPH.warn} mixed folds in one database (${modes.join(', ')}): every total above is that agent's own fold, ` +
         'no global rule was applied and none would be correct (§18 row 2)',
     )
   }

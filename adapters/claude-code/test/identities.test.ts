@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { isParseFailure, type AgentEvent } from '@agentlens/event-model'
+import {
+  deriveSessionId,
+  deriveSessionIdFromSource,
+  deriveSessionIdFromTimeBucket,
+  isParseFailure,
+  type AgentEvent,
+  type RawRecord,
+} from '@agentlens/event-model'
 import { claudeCodeAdapter } from '../src/index.ts'
 import { ctxFor, readFixture, recordsFromJsonl, resetStateFor } from './helpers.ts'
 
@@ -231,5 +238,76 @@ describe('mcp / plugin tools', () => {
       name: 'tap',
       provider: 'plugin_build-ios-apps_xcodebuildmcp',
     })
+  })
+})
+
+const MIN = 60 * 1000
+/** A whole 30-minute boundary, so a bucket offset lands exactly where the test says. */
+const T0 = Date.UTC(2026, 8, 20, 12, 0)
+
+/**
+ * §4.1 tier 3: measured reality is that every deployed Claude Code record carries a
+ * `sessionId`, so this tier is the last-resort path — but a source that loses both the
+ * session id and the `uuid` must group its records into one bucketed session instead of
+ * minting one session per line.
+ */
+describe('session id from the source + time bucket (§4.1 tier 3)', () => {
+  const sourceId = ctxFor('idless.jsonl').source.id
+
+  function record(seq: number, atMs: number, extra: Record<string, unknown> = {}): RawRecord {
+    const iso = new Date(atMs).toISOString()
+    return {
+      seq,
+      offset: seq * 128,
+      occurredAt: Date.parse(iso),
+      value: {
+        type: 'assistant',
+        timestamp: iso,
+        entrypoint: 'cli',
+        message: {
+          role: 'assistant',
+          model: 'claude-sonnet-5',
+          content: [{ type: 'text', text: 'id-less record' }],
+        },
+        ...extra,
+      },
+    }
+  }
+
+  async function sessionIdsOf(records: RawRecord[]): Promise<string[]> {
+    const ctx = ctxFor('idless.jsonl')
+    resetStateFor(ctx)
+    const out: string[] = []
+    for (const r of records) {
+      const result = await claudeCodeAdapter.normalize(r, ctx)
+      if (isParseFailure(result)) throw new Error(`seq ${r.seq} failed: ${result.failure.reason}`)
+      expect(result.events.length, `seq ${r.seq} produced no event`).toBeGreaterThan(0)
+      out.push(result.events[0]!.sessionId)
+    }
+    return out
+  }
+
+  it('records under 30 minutes apart join one session instead of one session per record', async () => {
+    const ids = await sessionIdsOf([record(1, T0 + MIN), record(2, T0 + 10 * MIN), record(3, T0 + 29 * MIN)])
+    const bucketed = deriveSessionIdFromTimeBucket(sourceId, T0 + MIN)
+    expect(ids).toEqual([bucketed, bucketed, bucketed])
+  })
+
+  it('a gap over 30 minutes starts a second session', async () => {
+    const ids = await sessionIdsOf([record(1, T0 + MIN), record(2, T0 + 46 * MIN)])
+    expect(ids).toEqual([
+      deriveSessionIdFromTimeBucket(sourceId, T0 + MIN),
+      deriveSessionIdFromTimeBucket(sourceId, T0 + 46 * MIN),
+    ])
+    expect(ids[0]).not.toBe(ids[1])
+  })
+
+  it('a native sessionId still wins, and a uuid still names its own session', async () => {
+    const ids = await sessionIdsOf([
+      record(1, T0 + MIN, { sessionId: 'sess-native' }),
+      record(2, T0 + 2 * MIN, { uuid: 'u-idless' }),
+    ])
+    expect(ids[0]).toBe(deriveSessionId('claude-code', 'sess-native'))
+    expect(ids[1]).toBe(deriveSessionIdFromSource(sourceId, 'u-idless'))
   })
 })

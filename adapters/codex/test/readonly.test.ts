@@ -113,7 +113,7 @@ describe('read-only guarantee (§5.2 rule 3)', () => {
     ])
     expect(codexAdapter.id).toBe('codex')
     expect(codexAdapter.displayName).toBe('Codex')
-    expect(codexAdapter.parserVersion).toBe(1)
+    expect(codexAdapter.parserVersion).toBe(2)
     // §18 row 2: the fold is declared on the adapter, and it is NOT the default
     expect(codexAdapter.aggregation).toEqual({ mode: 'last_call_sum', subagentsIncluded: false })
     expect(Object.isFrozen(codexAdapter.aggregation)).toBe(true)

@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url'
 import {
   deriveSourceId,
   isParseFailure,
+  recordOccurredAt,
   type AgentEvent,
   type HostContext,
   type NormalizeCtx,
@@ -78,18 +79,14 @@ export function recordsFromJsonl(text: string): RawRecord[] {
       } catch (err) {
         value = { [PARSE_ERROR_KEY]: `json-parse: ${String(err)}`, rawLine: line }
       }
-      const ts = (value as { timestamp?: unknown })?.timestamp
+      // Mirrors parseJsonlRecords (§5.1): the record's own time when it states one, and an
+      // explicitly guessed stand-in otherwise — a string-only helper cannot stat a file mtime.
+      const own = recordOccurredAt(value)
       out.push({
         seq,
         offset,
-        occurredAt:
-          typeof ts === 'string'
-            ? Date.parse(ts)
-            : typeof ts === 'number'
-              ? ts < 1e11
-                ? ts * 1000
-                : ts
-              : FIXED_NOW,
+        occurredAt: own ?? FIXED_NOW,
+        occurredAtOrigin: own === null ? 'ingest-clock' : 'record',
         value,
       })
     }

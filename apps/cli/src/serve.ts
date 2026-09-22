@@ -82,6 +82,7 @@ export async function serveDashboard(
     aggregation: deps.aggregation ?? {},
     scan: () => runScan(db, flags, ctx),
     capabilityCatalog: () => staticCatalog(ctx),
+    adapters: getAdapters,
     ...(webDistDir() ? { staticDir: webDistDir() } : {}),
   })
   openBrowser(running.url, ctx)

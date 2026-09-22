@@ -1,0 +1,531 @@
+[
+  {
+    "id": "1299da19daa8913346e19aa6b2757fe46412fbc32bfe444f5fa6be61a5c372c6",
+    "type": "unknown",
+    "subtype": "todo_reminder",
+    "sessionId": "f9f2c59f6aebd8d85ed7ad03c70a1a400eb8908c212bdd08de4cbc35faf6915e",
+    "threadId": "sess_fixture_root_0000000001",
+    "projectId": "project:zroot",
+    "hostId": "zcode",
+    "timestamp": 1760000003000,
+    "rawSeq": 5,
+    "rawOffset": 5,
+    "requestId": null,
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "model": {
+      "provider": "builtin:bigmodel-plan-demo",
+      "name": "Demo-Model-Pro",
+      "tier": null
+    },
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "message",
+      "rowid": 5,
+      "upstream_type": "todo_reminder",
+      "mapped": true,
+      "raw": {
+        "role": "user",
+        "time": {
+          "created": 1760000003000
+        },
+        "agent": "zcode-agent",
+        "model": {
+          "providerID": "builtin:bigmodel-plan-demo",
+          "modelID": "Demo-Model-Pro"
+        },
+        "metadata": "(omitted object)",
+        "semantics": {
+          "origin": "agent_runtime",
+          "kind": "todo_reminder",
+          "uiVisibility": "hidden",
+          "providerVisibility": "visible"
+        }
+      },
+      "semantics_origin": "agent_runtime",
+      "ui_visibility": "hidden"
+    }
+  },
+  {
+    "id": "1453faf47114c8c248a52cf316893ca52e61966e75ae4a3319b5c582b7610f4e",
+    "type": "message.assistant",
+    "subtype": "assistant-rollup",
+    "sessionId": "f9f2c59f6aebd8d85ed7ad03c70a1a400eb8908c212bdd08de4cbc35faf6915e",
+    "threadId": "sess_fixture_root_0000000001",
+    "projectId": "project:zroot",
+    "hostId": "zcode",
+    "timestamp": 1760000002000,
+    "rawSeq": 4,
+    "rawOffset": 4,
+    "requestId": "msg_fixture_error_00000001",
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "model": {
+      "provider": "builtin:bigmodel-plan-demo",
+      "name": "Demo-Model-Pro",
+      "tier": null
+    },
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "message",
+      "rowid": 4,
+      "semantics_kind": "assistant_response",
+      "semantics_origin": "agent_runtime",
+      "native_message_id": "msg_fixture_error_00000001",
+      "parent_message_id": "msg_fixture_prompt_0001",
+      "agent": "zcode-agent",
+      "mode": null,
+      "finish": null,
+      "rollup": {
+        "cost": null,
+        "cost_column_value": 0,
+        "cost_reason": "cost columns exist but are uniformly 0 under a BigModel coding plan; reporting them would claim $0 for real tokens (§18 row 1, zcode.md §四)",
+        "tokens": {
+          "total": 0,
+          "input": 0,
+          "output": 0,
+          "reasoning": 0,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "4082e2819387412346b555aaef2ad85444cb4b656dd4d4b6f6592575839d6677",
+    "type": "unknown",
+    "subtype": "quantum_notification",
+    "sessionId": "f9f2c59f6aebd8d85ed7ad03c70a1a400eb8908c212bdd08de4cbc35faf6915e",
+    "threadId": "sess_fixture_root_0000000001",
+    "projectId": "project:zroot",
+    "hostId": "zcode",
+    "timestamp": 1760000003400,
+    "rawSeq": 9,
+    "rawOffset": 9,
+    "requestId": null,
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "model": null,
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "message",
+      "rowid": 9,
+      "upstream_type": "quantum_notification",
+      "mapped": false,
+      "raw": {
+        "role": "user",
+        "time": {
+          "created": 1760000003400
+        },
+        "semantics": {
+          "origin": "agent_runtime",
+          "kind": "quantum_notification",
+          "uiVisibility": "visible",
+          "providerVisibility": "visible"
+        }
+      }
+    }
+  },
+  {
+    "id": "5c138ecc7f49c06fbd28017dd12fdff1bf44056982143ea08d250c1f63338bd0",
+    "type": "message.user",
+    "subtype": "turn",
+    "sessionId": "f9f2c59f6aebd8d85ed7ad03c70a1a400eb8908c212bdd08de4cbc35faf6915e",
+    "threadId": "sess_fixture_root_0000000001",
+    "projectId": "project:zroot",
+    "hostId": "zcode",
+    "timestamp": 1760000000100,
+    "rawSeq": 1,
+    "rawOffset": 1,
+    "requestId": null,
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "model": null,
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "message",
+      "rowid": 1,
+      "semantics_kind": "user_prompt",
+      "semantics_origin": "real_user",
+      "native_message_id": "msg_fixture_prompt_0001",
+      "parent_message_id": null,
+      "agent": "zcode-agent",
+      "mode": "yolo",
+      "selected_model": {
+        "provider": "builtin:bigmodel-plan-demo",
+        "name": "Demo-Model-Pro",
+        "tier": "max"
+      },
+      "text_in_parts": true
+    }
+  },
+  {
+    "id": "5ca920cbc2611ff4b0307624d9cebdabd43fa9e9f77724ded105dc57f025ed9b",
+    "type": "error",
+    "subtype": "AiSdkModelAdapterError",
+    "sessionId": "f9f2c59f6aebd8d85ed7ad03c70a1a400eb8908c212bdd08de4cbc35faf6915e",
+    "threadId": "sess_fixture_root_0000000001",
+    "projectId": "project:zroot",
+    "hostId": "zcode",
+    "timestamp": 1760000002000,
+    "rawSeq": 4,
+    "rawOffset": 4,
+    "requestId": null,
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "error",
+    "model": {
+      "provider": "builtin:bigmodel-plan-demo",
+      "name": "Demo-Model-Pro",
+      "tier": null
+    },
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "message",
+      "rowid": 4,
+      "error_keys": [
+        "data",
+        "name"
+      ],
+      "error_reason": "rate_limited",
+      "error_code": "model_rate_limited",
+      "status_code": 429,
+      "provider_retryable": false,
+      "raw": {
+        "name": "AiSdkModelAdapterError",
+        "data": {
+          "message": "synthetic concurrency limit exceeded",
+          "code": "model_rate_limited",
+          "attribution": {
+            "source": "provider",
+            "reason": "rate_limited",
+            "errorPhase": "stream",
+            "providerId": "builtin:bigmodel-plan-demo",
+            "modelId": "Demo-Model-Pro",
+            "statusCode": 429,
+            "providerErrorCode": "3008",
+            "retryable": false
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "73d1081e9fb80e2d67b54c23857f80be20ee9e52544eeca7d540df1347f23ce3",
+    "type": "unknown",
+    "subtype": "system_reminder",
+    "sessionId": "f9f2c59f6aebd8d85ed7ad03c70a1a400eb8908c212bdd08de4cbc35faf6915e",
+    "threadId": "sess_fixture_root_0000000001",
+    "projectId": "project:zroot",
+    "hostId": "zcode",
+    "timestamp": 1760000003200,
+    "rawSeq": 7,
+    "rawOffset": 7,
+    "requestId": null,
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "model": null,
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "message",
+      "rowid": 7,
+      "upstream_type": "system_reminder",
+      "mapped": true,
+      "raw": {
+        "role": "user",
+        "time": {
+          "created": 1760000003200
+        },
+        "agent": "zcode-agent",
+        "semantics": {
+          "origin": "agent_runtime",
+          "kind": "system_reminder",
+          "uiVisibility": "visible",
+          "providerVisibility": "visible"
+        }
+      },
+      "semantics_origin": "agent_runtime",
+      "ui_visibility": "visible"
+    }
+  },
+  {
+    "id": "820a53c472591eb176ea155b30eb6b0e242cfd0be9b866ca88932b3a42247643",
+    "type": "unknown",
+    "subtype": "timeline_event",
+    "sessionId": "f9f2c59f6aebd8d85ed7ad03c70a1a400eb8908c212bdd08de4cbc35faf6915e",
+    "threadId": "sess_fixture_root_0000000001",
+    "projectId": "project:zroot",
+    "hostId": "zcode",
+    "timestamp": 1760000003300,
+    "rawSeq": 8,
+    "rawOffset": 8,
+    "requestId": null,
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "model": null,
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "message",
+      "rowid": 8,
+      "upstream_type": "timeline_event",
+      "mapped": true,
+      "raw": {
+        "role": "assistant",
+        "time": {
+          "created": 1760000003300
+        },
+        "agent": "zcode-Explore",
+        "cost": 0,
+        "semantics": {
+          "origin": "system",
+          "kind": "timeline_event",
+          "uiVisibility": "visible",
+          "providerVisibility": "visible"
+        }
+      },
+      "semantics_origin": "system",
+      "ui_visibility": "visible"
+    }
+  },
+  {
+    "id": "874a3eea8cdcb5a5ca5b38ec27c5421d37731bb4822e4bdd80f98b14c88df6f5",
+    "type": "unknown",
+    "subtype": "message-without-semantics",
+    "sessionId": "f9f2c59f6aebd8d85ed7ad03c70a1a400eb8908c212bdd08de4cbc35faf6915e",
+    "threadId": "sess_fixture_root_0000000001",
+    "projectId": "project:zroot",
+    "hostId": "zcode",
+    "timestamp": 1760000003500,
+    "rawSeq": 10,
+    "rawOffset": 10,
+    "requestId": null,
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "model": null,
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "message",
+      "rowid": 10,
+      "upstream_type": "message-without-semantics",
+      "mapped": false,
+      "raw": {
+        "role": "user",
+        "time": {
+          "created": 1760000003500
+        },
+        "somethingNew": true
+      }
+    }
+  },
+  {
+    "id": "878f5f4e9fea67481406fbfdbe5486e4261dfc28ea635f6da54dab4eb91f9824",
+    "type": "message.assistant",
+    "subtype": "assistant-rollup",
+    "sessionId": "f9f2c59f6aebd8d85ed7ad03c70a1a400eb8908c212bdd08de4cbc35faf6915e",
+    "threadId": "sess_fixture_child_0000000002",
+    "projectId": "project:zroot",
+    "hostId": "zcode",
+    "timestamp": 1760000001200,
+    "rawSeq": 3,
+    "rawOffset": 3,
+    "requestId": "msg_fixture_child_asst_001",
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "model": {
+      "provider": "builtin:bigmodel-plan-demo",
+      "name": "Demo-Model-Pro",
+      "tier": null
+    },
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "message",
+      "rowid": 3,
+      "semantics_kind": "assistant_response",
+      "semantics_origin": "agent_runtime",
+      "native_message_id": "msg_fixture_child_asst_001",
+      "parent_message_id": null,
+      "agent": "zcode-general-purpose",
+      "mode": null,
+      "finish": "stop",
+      "rollup": {
+        "cost": null,
+        "cost_column_value": 0,
+        "cost_reason": "cost columns exist but are uniformly 0 under a BigModel coding plan; reporting them would claim $0 for real tokens (§18 row 1, zcode.md §四)",
+        "tokens": {
+          "total": 5200,
+          "input": 5000,
+          "output": 200,
+          "reasoning": 0,
+          "cache": {
+            "read": 4000,
+            "write": 0
+          }
+        }
+      },
+      "subagentThread": true
+    }
+  },
+  {
+    "id": "972e1bd99984cecf0fddb8d9c339e572b13421c516d028bf5587ba93b3076a9d",
+    "type": "unknown",
+    "subtype": "background_notification",
+    "sessionId": "f9f2c59f6aebd8d85ed7ad03c70a1a400eb8908c212bdd08de4cbc35faf6915e",
+    "threadId": "sess_fixture_root_0000000001",
+    "projectId": "project:zroot",
+    "hostId": "zcode",
+    "timestamp": 1760000003100,
+    "rawSeq": 6,
+    "rawOffset": 6,
+    "requestId": null,
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "model": null,
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "message",
+      "rowid": 6,
+      "upstream_type": "background_notification",
+      "mapped": true,
+      "raw": {
+        "role": "user",
+        "time": {
+          "created": 1760000003100
+        },
+        "agent": "zcode-agent",
+        "semantics": {
+          "origin": "agent_runtime",
+          "kind": "background_notification",
+          "uiVisibility": "visible",
+          "providerVisibility": "visible"
+        }
+      },
+      "semantics_origin": "agent_runtime",
+      "ui_visibility": "visible"
+    }
+  },
+  {
+    "id": "fb74aebc1e3a9007b1f3b513a68f96e684a2d1ccd0da0bcdd512bf33c9d1679b",
+    "type": "message.assistant",
+    "subtype": "assistant-rollup",
+    "sessionId": "f9f2c59f6aebd8d85ed7ad03c70a1a400eb8908c212bdd08de4cbc35faf6915e",
+    "threadId": "sess_fixture_root_0000000001",
+    "projectId": "project:zroot",
+    "hostId": "zcode",
+    "timestamp": 1760000000200,
+    "rawSeq": 2,
+    "rawOffset": 2,
+    "requestId": "msg_fixture_assistant_0001",
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "model": {
+      "provider": "builtin:bigmodel-plan-demo",
+      "name": "Demo-Model-Pro",
+      "tier": "max"
+    },
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "message",
+      "rowid": 2,
+      "semantics_kind": "assistant_response",
+      "semantics_origin": "agent_runtime",
+      "native_message_id": "msg_fixture_assistant_0001",
+      "parent_message_id": "msg_fixture_prompt_0001",
+      "agent": "zcode-agent",
+      "mode": "yolo",
+      "finish": "tool-calls",
+      "rollup": {
+        "cost": null,
+        "cost_column_value": 0,
+        "cost_reason": "cost columns exist but are uniformly 0 under a BigModel coding plan; reporting them would claim $0 for real tokens (§18 row 1, zcode.md §四)",
+        "tokens": {
+          "total": 32601,
+          "input": 30527,
+          "output": 2074,
+          "reasoning": 0,
+          "cache": {
+            "read": 26496,
+            "write": 0
+          }
+        }
+      }
+    }
+  }
+]

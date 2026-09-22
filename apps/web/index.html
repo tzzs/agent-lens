@@ -3,8 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
-    <title>AgentLens · Agent Activity Center</title>
+    <meta name="color-scheme" content="light dark" />
+    <title>AgentLens</title>
+    <script>
+      // Resolve the theme before first paint: the user's pinned choice
+      // (localStorage "agl-theme" = light | dark), else the OS preference. The
+      // resolved value always lands in <html data-theme>, which is all app.css
+      // keys off. lib/theme.svelte.js owns changes after mount.
+      ;(function () {
+        var pref = null
+        try { pref = localStorage.getItem('agl-theme') } catch (e) {}
+        var dark = pref === 'dark' || (pref !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

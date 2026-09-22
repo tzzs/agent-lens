@@ -13,10 +13,13 @@
 import {
   deriveErrorFingerprint,
   deriveEventId,
-  deriveProjectId,
   deriveSessionId,
   deriveSessionIdFromSource,
+  eventTimestamp,
   SCHEMA_VERSION,
+  timestampGuess,
+  TIMESTAMP_GUESS_KEY,
+  UNATTRIBUTED_PROJECT_ID,
   type AgentEvent,
   type CapabilityRef,
   type EventType,
@@ -26,6 +29,7 @@ import {
   type ParseFailure,
   type PayloadDraft,
   type RawRecord,
+  type TimestampOrigin,
   type Usage,
   type UsageSource,
 } from '@agentlens/event-model'
@@ -60,7 +64,7 @@ import { threadHintFromPath } from './paths.ts'
 import { ScanState, stateFor, type ThreadContext } from './state.ts'
 
 /** §4.1 rule 5, shared convention with the other adapters. */
-export const UNATTRIBUTED_PROJECT_ID = deriveProjectId('unattributed')
+export { UNATTRIBUTED_PROJECT_ID }
 
 /** §5.3 whitelist: the 8 top-level envelope types in codex.md §2.1. */
 export const CODEX_ENVELOPE_TYPES: readonly string[] = [
@@ -111,6 +115,8 @@ interface Scope {
   projectSource: 'cwd' | 'thread-cwd' | 'unattributed'
   requestId: string | null
   timestamp: number
+  /** §5.2: whether that timestamp is the record's own time or something standing in for it. */
+  timestampOrigin: TimestampOrigin
   rawSeq: number
   rawOffset: number
   model: ModelRef | null
@@ -202,6 +208,7 @@ function buildScope(
   const model = modelRef(thread.modelProvider, modelName)
   const responseId = str(payload.response_id)
   const requestId = responseId && !isPlaceholderResponseId(responseId) ? responseId : null
+  const stamp = eventTimestamp(record, timestampMs(rec, payload), ctx.now())
 
   return {
     rec,
@@ -217,7 +224,8 @@ function buildScope(
     projectId: resolved ?? UNATTRIBUTED_PROJECT_ID,
     projectSource: resolved ? (ownCwd ? 'cwd' : 'thread-cwd') : 'unattributed',
     requestId,
-    timestamp: timestampMs(rec, payload, record.occurredAt || ctx.now()),
+    timestamp: stamp.timestamp,
+    timestampOrigin: stamp.origin,
     rawSeq: record.seq,
     rawOffset: record.offset,
     model,
@@ -232,6 +240,9 @@ function buildScope(
 function event(s: Scope, init: EventInit): AgentEvent {
   const usage = init.usage ?? null
   const metadata: Record<string, unknown> = { ...(init.metadata ?? {}) }
+  // §5.2: an invented timestamp must not pose as a fact — `--since` counts these rows either way.
+  const guess = timestampGuess(s.timestampOrigin)
+  if (guess !== null) metadata[TIMESTAMP_GUESS_KEY] = guess
   // §18 row 3: the query layer filters on this exact marker (dedupe.isSubagentThreadEvent),
   // so every event of a subagent thread — not only its start — has to carry it.
   if (s.subagentThread) metadata.subagentThread = true

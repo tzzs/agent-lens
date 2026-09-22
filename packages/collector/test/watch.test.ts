@@ -15,7 +15,7 @@ import {
   type RawRecord,
   type SourceSpec,
 } from '@agentlens/event-model'
-import { parseJsonlRecords } from '../src/parse-jsonl.ts'
+import { parseJsonlRecords } from '@agentlens/event-model'
 import { scanSource, type EventSink, type SavedSourceState, type SourceCommit } from '../src/orchestrator.ts'
 import { createWatcher, type WatchTarget, type WatcherOptions } from '../src/watch.ts'
 

@@ -36,11 +36,20 @@ export const OTEL_ATTRIBUTE_MAP: OtelAttributeMap = {
     { source: 'usage.outputTokens', attribute: 'gen_ai.usage.output_tokens' },
     { source: 'usage.cacheReadTokens', attribute: 'gen_ai.usage.cache_read.input_tokens' },
     { source: 'usage.cacheWriteTokens', attribute: 'gen_ai.usage.cache_creation.input_tokens' },
+    // §18 row 1: the OTel GenAI registry has no cost attribute at all (the `gen_ai.usage.cost`
+    // seen in the wild is Traceloop/OpenLLMetry, unregistered), so cost stays in our own
+    // namespace rather than claiming a semconv alignment it does not have.
+    { source: 'costReported', attribute: 'agentlens.cost_reported' },
+    { source: 'costSource', attribute: 'agentlens.cost_source' },
     { source: 'hostId', attribute: 'agentlens.host_id' },
     { source: 'capability.type', attribute: 'agentlens.capability.type' },
     { source: 'capability.name', attribute: 'agentlens.capability.name' },
     { source: 'capability.provider', attribute: 'agentlens.capability.provider' },
     { source: 'requestId', attribute: 'agentlens.request_id' },
+    // §18 row 3: thread is the source-grain key (a Codex file is one thread) while session_id
+    // is the product-grain one, so `gen_ai.conversation.id` — which names a conversation —
+    // would be the wrong home for it.
+    { source: 'threadId', attribute: 'agentlens.thread_id' },
     { source: 'sourceId', attribute: 'agentlens.source_id' },
     { source: 'rawSeq', attribute: 'agentlens.raw_seq' },
     { source: 'projectId', attribute: 'agentlens.project_id' },

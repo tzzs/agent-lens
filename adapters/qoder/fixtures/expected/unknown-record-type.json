@@ -81,6 +81,7 @@
                 "not": "a record"
               }
             },
+            "timestampGuess": "ingest-clock",
             "host_diagnostics": [
               "entrypoint-absent"
             ],

@@ -3,7 +3,7 @@ import { Buffer } from 'node:buffer'
 import type { DatabaseSync } from 'node:sqlite'
 import { assertAggregationMode, type AgentEvent, type AggregationPolicy, type ModelRef, type ParseFailure } from '@agentlens/event-model'
 
-/** §3.2 — content layer is off unless explicitly enabled (`--no-content` default). */
+/** §3.2/§6 — the content layer is off unless a scan opts in (`--content`). */
 const DEFAULT_MAX_PAYLOAD_BYTES = 32 * 1024
 /** §3.2 — payloads table-level retention. */
 const DEFAULT_PAYLOAD_TTL_DAYS = 30
@@ -19,6 +19,12 @@ export interface SourceProgress {
   lastOffset: number
   parserVersion: number | null
   sessionIdHint: string | null
+  /**
+   * §4.3: for a `sqlite` source, the table whose rowid high-water `lastOffset` counts; NULL
+   * otherwise. Optional so an omitted value reads as "this commit does not speak for it",
+   * which the upsert below preserves rather than erases.
+   */
+  sqliteTable?: string | null
   status: 'active' | 'gone' | 'error' | 'rotated'
   rowsIngested: number | null
   scanStartedAt: number | null
@@ -47,7 +53,40 @@ function nn<T>(v: T | null | undefined): T | null {
   return v ?? null
 }
 
-/** §4.2 — one transaction per batch; events INSERT OR IGNORE so replay is a no-op. */
+/**
+ * Columns a parser derives from the raw record (§3.1), rewritten on an id conflict so a §5.3
+ * version-drift rescan actually LANDS a changed derivation instead of `INSERT OR IGNORE`-ing the
+ * new values away. `event.id` fingerprints `source_id + raw_seq + type + occurred_at +
+ * discriminator`; it deliberately omits everything here, so a re-derived row collides with its
+ * own stored row and only this update can move it (session_id is the motivating case).
+ *
+ * Deliberately NOT repaired — a fact about storage/provenance, not the parse:
+ *  - `id` — the conflict key itself.
+ *  - `schema_version` — event-model's global tag (§3.1); changing it is a §6 migration, not a
+ *    parser bump, and a row's schema version is provenance we do not silently rewrite.
+ *  - `agent_id` / `source_id` — which adapter and which physical file own the row; `source_id` is
+ *    an input to `id` so it is equal on every conflict, and `agent_id` is fixed per source.
+ *  - `ingested_at` — the instant we read it, a fact about the ingest.
+ *  - `raw_seq` / `raw_offset` — the record's physical position in the source; `raw_seq` is an
+ *    input to `id` (equal on conflict) and a from-0 rescan re-reads identical positions.
+ */
+const REPAIRED_EVENT_COLUMNS = [
+  'host_id', 'session_id', 'project_id', 'parent_event_id', 'request_id', 'thread_id',
+  'timestamp', 'type', 'subtype', 'model_rowid',
+  'input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens', 'reasoning_tokens',
+  'usage_source', 'cost_reported', 'cost_source', 'credits',
+  'capability_type', 'capability_name', 'capability_provider',
+  'duration_ms', 'status', 'error_fingerprint', 'content_ref', 'metadata',
+] as const
+
+// NULL-safe (`IS NOT`) so a repair fires only when some derived value actually differs: a §4.2
+// replay of unchanged rows then stays a genuine no-op — no rewrite, and `changes()` holds at 0 so
+// `inserted` keeps counting real writes rather than every conflict.
+const EVENT_REPAIR_SET = REPAIRED_EVENT_COLUMNS.map((c) => `${c} = excluded.${c}`).join(',\n        ')
+const EVENT_REPAIR_WHERE = REPAIRED_EVENT_COLUMNS.map((c) => `events.${c} IS NOT excluded.${c}`).join('\n           OR ')
+
+/** §4.2/§5.3 — one transaction per batch; events upsert their derived columns so a version-drift
+ * rescan repairs stored rows, while a replay of identical input is a no-op (conflict guard). */
 export function insertEvents(
   db: DatabaseSync,
   events: readonly AgentEvent[],
@@ -91,24 +130,52 @@ export function insertEvents(
       ).run(ev.sourceId, ev.agentId)
     }
 
+    // §5.2/§5.3: the conflict path deliberately does NOT touch the timestamps. A
+    // min/max widening here would be a one-way ratchet: once an event's stored timestamp
+    // is re-derived (ingest-clock guess → source time) or re-homed to another session,
+    // the stale extreme it contributed can never leave, and the columns silently drift
+    // away from the truth they claim to summarize. The single owner of these columns is
+    // the min/max recompute below, which runs after the event rows land. The INSERT arm
+    // still seeds fresh rows from this batch, which that recompute then confirms.
     const upsertSession = db.prepare(`
       INSERT INTO sessions (id, agent_id, host_id, project_id, source_id, first_timestamp, last_timestamp)
       VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         host_id         = COALESCE(sessions.host_id, excluded.host_id),
         project_id      = COALESCE(sessions.project_id, excluded.project_id),
-        source_id       = COALESCE(sessions.source_id, excluded.source_id),
-        first_timestamp = COALESCE(min(sessions.first_timestamp, excluded.first_timestamp),
-                                   sessions.first_timestamp, excluded.first_timestamp),
-        last_timestamp  = COALESCE(max(sessions.last_timestamp, excluded.last_timestamp),
-                                   sessions.last_timestamp, excluded.last_timestamp)
+        source_id       = COALESCE(sessions.source_id, excluded.source_id)
     `)
     for (const [id, s] of sessionIdentities) {
       upsertSession.run(id, s.agentId, s.hostId, s.projectId, s.sourceId, s.first, s.last)
     }
 
+    // A repaired row leaves its old session behind, and that session's tally has to be
+    // recomputed too — so read the pre-existing ids before the rows are touched.
+    const recountSessions = new Set(sessionIdentities.keys())
+    {
+      const ids = events.map((ev) => ev.id)
+      const chunkSize = 500
+      const readSessions = (chunk: string[]) =>
+        db
+          .prepare(`SELECT session_id FROM events WHERE id IN (${chunk.map(() => '?').join(',')})`)
+          .all(...chunk) as { session_id: string | null }[]
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize)!
+        for (const r of readSessions(chunk)) if (r.session_id !== null) recountSessions.add(r.session_id)
+      }
+    }
+
     const insertEvent = db.prepare(`
-      INSERT OR IGNORE INTO events (
+      -- §5.3: a parser_version bump replays the whole source from offset 0, and the replayed
+      -- records can now resolve to *different* derived columns. Plain INSERT OR IGNORE would drop
+      -- them on the floor — event.id fingerprints source_id + raw_seq + type + occurred_at +
+      -- discriminator and omits exactly those — so a row would keep its stale derivation forever.
+      -- ON CONFLICT re-derives them; REPAIRED_EVENT_COLUMNS fixes what is repaired and what stays
+      -- provenance. parent_event_id / request_id are overwritten outright (not COALESCE'd): a
+      -- from-0 rescan reproduces the current parser's own answer, and the store should reflect
+      -- that answer rather than an older scan's. The WHERE guard makes a byte-identical replay
+      -- touch zero rows, which keeps §4.2's replay guarantee observable in rows and counts alike.
+      INSERT INTO events (
         id, schema_version, agent_id, host_id, source_id, session_id, project_id,
         parent_event_id, request_id, thread_id, timestamp, ingested_at, type, subtype,
         model_rowid, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
@@ -116,6 +183,9 @@ export function insertEvents(
         capability_type, capability_name, capability_provider,
         duration_ms, status, error_fingerprint, raw_seq, raw_offset, content_ref, metadata
       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(id) DO UPDATE SET
+        ${EVENT_REPAIR_SET}
+      WHERE ${EVENT_REPAIR_WHERE}
     `)
     const insertPayload = db.prepare(`
       INSERT OR IGNORE INTO payloads (event_id, kind, role, text, bytes, truncated, created_at)
@@ -177,11 +247,20 @@ export function insertEvents(
       }
     }
 
-    // Recomputed (not incremented) so an INSERT-OR-IGNORE replay leaves the count identical.
-    const recomputeCount = db.prepare(
-      'UPDATE sessions SET event_count = (SELECT COUNT(*) FROM events WHERE events.session_id = sessions.id) WHERE id = ?',
-    )
-    for (const id of sessionIdentities.keys()) recomputeCount.run(id)
+    // Recomputed (not incremented) so a byte-identical replay leaves the count
+    // identical — and so a session the rows just left drops to its true count (§5.3).
+    // first/last_timestamp are recomputed in the same statement for the same reason:
+    // they mean MIN/MAX over the session's events, and after a repair that moved or
+    // re-timed rows only this makes the columns converge back (a repair rescan must
+    // be able to SHRINK a span, which the widening upsert could never do).
+    const recomputeSession = db.prepare(`
+      UPDATE sessions SET
+        event_count     = (SELECT COUNT(*) FROM events WHERE events.session_id = sessions.id),
+        first_timestamp = (SELECT MIN(timestamp) FROM events WHERE events.session_id = sessions.id),
+        last_timestamp  = (SELECT MAX(timestamp) FROM events WHERE events.session_id = sessions.id)
+      WHERE id = ?
+    `)
+    for (const id of recountSessions) recomputeSession.run(id)
 
     if (opts?.progress) updateSourceProgressTx(db, opts.progress)
     return { inserted }
@@ -273,8 +352,8 @@ function updateSourceProgressTx(db: DatabaseSync, p: SourceProgress): void {
   db.prepare(`
     INSERT INTO sources (
       id, agent_id, path, kind, inode, size, mtime_ms, last_offset, parser_version,
-      session_id_hint, status, last_error, scan_started_at, scan_finished_at, rows_ingested
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      session_id_hint, sqlite_table, status, last_error, scan_started_at, scan_finished_at, rows_ingested
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET
       agent_id        = excluded.agent_id,
       path            = excluded.path,
@@ -285,6 +364,9 @@ function updateSourceProgressTx(db: DatabaseSync, p: SourceProgress): void {
       last_offset     = excluded.last_offset,
       parser_version  = excluded.parser_version,
       session_id_hint = excluded.session_id_hint,
+      -- §4.3: a commit that does not carry a table name (jsonl, or a source re-upserted
+      -- from a partial row) must not wipe the table a prior sqlite commit recorded.
+      sqlite_table    = COALESCE(excluded.sqlite_table, sources.sqlite_table),
       status          = excluded.status,
       last_error      = excluded.last_error,
       scan_started_at = excluded.scan_started_at,
@@ -301,6 +383,7 @@ function updateSourceProgressTx(db: DatabaseSync, p: SourceProgress): void {
     p.lastOffset,
     nn(p.parserVersion),
     nn(p.sessionIdHint),
+    nn(p.sqliteTable),
     p.status,
     nn(p.lastError),
     nn(p.scanStartedAt),
@@ -344,12 +427,21 @@ export function prune(db: DatabaseSync, opts?: { olderThanDays?: number }): Prun
   const dayMs = 24 * 60 * 60 * 1000
   return withTransaction(db, () => {
     const payloadCutoff = now - (opts?.olderThanDays ?? DEFAULT_PAYLOAD_TTL_DAYS) * dayMs
-    const payloadsDeleted = Number(
+    let payloadsDeleted = Number(
       db.prepare('DELETE FROM payloads WHERE created_at < ?').run(payloadCutoff).changes,
     )
     let eventsDeleted = 0
     if (opts?.olderThanDays !== undefined) {
       const eventCutoff = now - opts.olderThanDays * dayMs
+      // `payloads.event_id` has no ON DELETE action, so an event can only go once the
+      // payloads referencing it have. Their own TTL is independent — a first `--content`
+      // scan writes young payloads for old events, and deleting the events first is a
+      // FOREIGN KEY failure that aborts the whole prune.
+      payloadsDeleted += Number(
+        db
+          .prepare('DELETE FROM payloads WHERE event_id IN (SELECT id FROM events WHERE timestamp < ?)')
+          .run(eventCutoff).changes,
+      )
       eventsDeleted = Number(
         db.prepare('DELETE FROM events WHERE timestamp < ?').run(eventCutoff).changes,
       )

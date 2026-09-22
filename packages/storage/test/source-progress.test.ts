@@ -100,6 +100,31 @@ describe('prune (§6 retention)', () => {
     expect(db.prepare('SELECT COUNT(*) AS c FROM payloads').get()).toEqual({ c: 1 })
     db.close()
   })
+
+  it('tolerates a young payload on an old event (§6: a first --content scan)', () => {
+    const db = openDatabase(':memory:')
+    migrate(db)
+    const now = Date.now()
+    // The event happened 60 days ago but was ingested just now, so its payload is
+    // younger than the payload TTL while the event is older than the event cutoff.
+    insertEvents(
+      db,
+      [
+        makeEvent({
+          id: 'p-late',
+          type: 'message.user',
+          rawSeq: 830,
+          timestamp: now - 60 * 24 * 60 * 60 * 1000,
+          ingestedAt: now,
+          payload: { kind: 'user_message', role: 'user', text: 'backfilled' },
+        }),
+      ],
+      { contentEnabled: true },
+    )
+    expect(prune(db, { olderThanDays: 30 })).toEqual({ payloadsDeleted: 1, eventsDeleted: 1 })
+    expect(db.prepare('SELECT COUNT(*) AS c FROM payloads').get()).toEqual({ c: 0 })
+    db.close()
+  })
 })
 
 describe('parse_errors (§5.2 rule 1)', () => {

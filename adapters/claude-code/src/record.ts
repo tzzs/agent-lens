@@ -12,7 +12,7 @@ export const HOST_DESKTOP = 'claude-desktop'
  * The one marker convention lives in the collector, so a parse-failure marker
  * produced by any framing path is recognised here too (§5.2 rule 1).
  */
-export { PARSE_ERROR_KEY } from '@agentlens/collector'
+export { PARSE_ERROR_KEY } from '@agentlens/event-model'
 
 export interface UnknownRecord {
   [key: string]: unknown
@@ -143,7 +143,8 @@ export function modelRef(name: string | null): { provider: string; name: string 
   return name ? { provider: 'anthropic', name } : null
 }
 
-export function timestampMs(rec: UnknownRecord, fallback: number): number {
+/** §5.2: the record's own time, or `null` — the caller then reports what stood in for it. */
+export function timestampMs(rec: UnknownRecord): number | null {
   const iso = str(rec.timestamp)
   if (iso) {
     const ms = Date.parse(iso)
@@ -151,7 +152,7 @@ export function timestampMs(rec: UnknownRecord, fallback: number): number {
   }
   const epoch = num(rec.timestamp)
   if (epoch !== null) return epoch < 1e11 ? epoch * 1000 : epoch
-  return fallback
+  return null
 }
 
 /**

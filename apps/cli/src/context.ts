@@ -7,10 +7,10 @@ import { accessSync, constants, readFileSync } from 'node:fs'
 import { homedir as osHomedir } from 'node:os'
 import { basename, dirname } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
-import type { HostContext } from '@agentlens/event-model'
+import { projectLabel, type HostContext } from '@agentlens/event-model'
 import type { FlagView } from './args.ts'
 import type { ServeHandle } from './serve.ts'
-import { loadAgentAggregations } from '@agentlens/storage'
+import { ensureMachineId, loadAgentAggregations, type MachineIdentity } from '@agentlens/storage'
 import type { BillingMode, QueryFilter, QueryDeps } from './types.ts'
 import { loadBillingModes, loadPricing } from './pricing-store.ts'
 
@@ -21,6 +21,16 @@ export interface Ctx {
   homedir: string
   env: NodeJS.ProcessEnv
   now: () => number
+  /**
+   * §9: the bare command serves the dashboard, but only where a person can read the
+   * URL and press Ctrl-C. Tests and pipes leave it unset, which reads as "not interactive".
+   */
+  interactive?: boolean
+  /**
+   * Where a WAL-mode third-party store is copied to before anything reads it
+   * (§18 row 7, `sqlite-snapshot.ts`). Unset ⇒ such stores stay refused.
+   */
+  snapshotDir?: string
   /**
    * `--serve` plug point (§14). Tests inject a stub so the suite never binds a socket
    * or launches a browser; the real implementation lives in `serve.ts`.
@@ -36,6 +46,7 @@ export function defaultCtx(argv: string[]): Ctx {
     homedir: osHomedir(),
     env: process.env,
     now: Date.now,
+    interactive: process.stdout.isTTY === true,
   }
 }
 
@@ -96,6 +107,38 @@ export function makeHostCtx(ctx: Ctx, dataRoot?: string | null): HostContext {
       }
     },
   }
+}
+
+/**
+ * §2 Machine tier, read through the CLI context so `status` and `doctor` print the same
+ * thing (and the same thing the server will print once it surfaces it, §14). The id is
+ * minted lazily on first use and lives in the database file itself; a failure to mint
+ * (read-only store) degrades to `null` — an identity gap must never sink a report.
+ */
+export function machineIdentity(db: DatabaseSync): MachineIdentity | null {
+  try {
+    return ensureMachineId(db)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The Machine block, phrased identically by `status` and `doctor` (§14: one fact, one
+ * wording). The label is the privacy posture (§16): a random local id, nothing personal,
+ * nothing transmitted.
+ */
+export function machineLines(machine: MachineIdentity | null): string[] {
+  if (!machine) {
+    return ['Machine', '  - unavailable: the database is not writable, so no machine id could be minted (§2)']
+  }
+  return [
+    'Machine',
+    `  ${machine.id}`,
+    '  random id for this AgentLens install, minted locally on first run. Not a hostname, not a user',
+    '  name, never transmitted (§16); it exists so a future multi-machine merge can say which install',
+    '  produced which data (§2). Per-row attribution is deferred: today every row here is this machine.',
+  ]
 }
 
 export function queryDeps(db: DatabaseSync, dbPath: string, ctx: Ctx): QueryDeps {
@@ -167,7 +210,15 @@ export function resolveProjectIds(db: DatabaseSync, ctx: Ctx, values: string[]):
     'SELECT id, display_name, canonical_root FROM projects',
     (r) => {
       const root = r.canonical_root ? String(r.canonical_root) : null
-      return [String(r.id), r.display_name ? String(r.display_name) : null, root, root ? basename(root) : null]
+      const displayName = r.display_name ? String(r.display_name) : null
+      return [
+        String(r.id),
+        displayName,
+        root,
+        root ? basename(root) : null,
+        // The cube prints this, so whatever it prints has to be searchable here too.
+        projectLabel({ id: String(r.id), displayName, canonicalRoot: root }),
+      ]
     },
     true,
     'project',

@@ -14,7 +14,9 @@ import { AGENT_ID } from './record.ts'
 // v2: subagent parent attribution now prefers the spawn's own tool_result foreign key
 // (docs/research/subagent-attribution.md), so previously written parent_event_id
 // values are stale and the side chain rows must be re-derived.
-export const PARSER_VERSION = 2
+// §5.3: identity derivation changed (tier-3 session bucket, §5.2 timestamp provenance),
+// so stored rows must be replayed and repaired rather than left at the old ids.
+export const PARSER_VERSION = 3
 
 export const claudeCodeAdapter: AgentAdapter = {
   id: AGENT_ID,

@@ -11,16 +11,11 @@ import type { DatabaseSync } from 'node:sqlite'
 import { ApiError } from './errors.ts'
 import { resolveAgentIds, resolveProjectIds } from './resolve.ts'
 
-/**
- * §7 example spec writes the cost metric as `cost_total`; the cube calls it
- * `cost_api_equiv`. The alias is accepted on the wire (and in `order`, which the
- * engine already folds) so the plan's vocabulary works end to end.
- */
-const METRIC_ALIASES: Record<string, string> = { cost_total: 'cost_api_equiv' }
+/** §18 row 3: the subagent switch, spelled for the wire. Absent means the cube's default. */
+const SUBAGENTS_VALUES: Record<string, boolean> = { include: true, exclude: false }
 
 function resolveMetric(name: string): Metric {
-  const aliased = METRIC_ALIASES[name] ?? name
-  return assertKnown(aliased, METRICS, 'metric') as Metric
+  return assertKnown(name, METRICS, 'metric') as Metric
 }
 
 const LIST_PARAMS = [
@@ -110,6 +105,15 @@ export function parseSpec(sp: URLSearchParams, db: DatabaseSync): QuerySpec {
     if (key === 'agent' || key === 'project') continue
     const v = listParam(sp, key)
     if (v) (filter as Record<string, unknown>)[key] = v
+  }
+
+  const subagents = strParam(sp, 'subagents')
+  if (subagents !== undefined) {
+    const keep = SUBAGENTS_VALUES[subagents]
+    if (keep === undefined) {
+      throw ApiError.badRequest(`unknown subagents ${JSON.stringify(subagents)}`, { allowed: ['include', 'exclude'] })
+    }
+    filter.includeSubagentThreads = keep
   }
 
   const spec: QuerySpec = { filter }

@@ -1,0 +1,199 @@
+[
+  {
+    "id": "ec98c1ab087191b46cdf88bf2eed50b75524cecb49b62f8eadac7af1f85b0185",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "f09f2be620f56ef3423cd6ebabe1e36f93b76721f0e7862f932480cd1527b9ec",
+    "sessionId": "611e5446f3f2fa249d5a4bc4b2ff85d9273e4355f31339f8b9fb6e67e209eb13",
+    "projectId": "d42d99c3305e156cfed44f339624e342a662ead29b44e32be9d357d4575fd1b3",
+    "parentEventId": null,
+    "requestId": null,
+    "timestamp": 1789902001000,
+    "ingestedAt": 1760000000000,
+    "type": "message.user",
+    "subtype": null,
+    "model": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 1,
+    "rawOffset": 0,
+    "payload": {
+      "kind": "user_message",
+      "role": "user",
+      "text": "没有会话头的文件"
+    },
+    "metadata": {
+      "mapped": true,
+      "role_raw": "user",
+      "parent_id": null,
+      "content_chars": 8,
+      "diagnostics": [
+        "session-header-absent",
+        "cwd-absent-unattributed"
+      ],
+      "project_source": "unattributed"
+    }
+  },
+  {
+    "id": "eeb02e7bb6df4cc3e4f1c098ed35439bb44eaaf544c4b7bdcd5b96210c222358",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "f09f2be620f56ef3423cd6ebabe1e36f93b76721f0e7862f932480cd1527b9ec",
+    "sessionId": "611e5446f3f2fa249d5a4bc4b2ff85d9273e4355f31339f8b9fb6e67e209eb13",
+    "projectId": "d42d99c3305e156cfed44f339624e342a662ead29b44e32be9d357d4575fd1b3",
+    "parentEventId": "ec98c1ab087191b46cdf88bf2eed50b75524cecb49b62f8eadac7af1f85b0185",
+    "requestId": null,
+    "timestamp": 1789902006000,
+    "ingestedAt": 1760000000000,
+    "type": "message.assistant",
+    "subtype": "stop",
+    "model": {
+      "provider": "anthropic",
+      "name": "gpt-5-mini"
+    },
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 2,
+    "rawOffset": 157,
+    "payload": {
+      "kind": "assistant_message",
+      "role": "assistant",
+      "text": "头丢了也要能记账。"
+    },
+    "metadata": {
+      "mapped": true,
+      "role_raw": "assistant",
+      "api": "anthropic-messages",
+      "stop_reason": "stop",
+      "error_message_present": false,
+      "record_id": "nh2",
+      "parent_id": "nh1",
+      "content_chars": 9,
+      "diagnostics": [
+        "session-header-absent",
+        "cwd-absent-unattributed"
+      ],
+      "project_source": "unattributed"
+    }
+  },
+  {
+    "id": "37207f60d533c7f36a640df56d7723272a027e02b66f9421b5d90569329059dc",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "f09f2be620f56ef3423cd6ebabe1e36f93b76721f0e7862f932480cd1527b9ec",
+    "sessionId": "611e5446f3f2fa249d5a4bc4b2ff85d9273e4355f31339f8b9fb6e67e209eb13",
+    "projectId": "d42d99c3305e156cfed44f339624e342a662ead29b44e32be9d357d4575fd1b3",
+    "parentEventId": null,
+    "requestId": "resp-nh",
+    "timestamp": 1789902006000,
+    "ingestedAt": 1760000000000,
+    "type": "generation.end",
+    "subtype": "usage:assistant",
+    "model": {
+      "provider": "anthropic",
+      "name": "gpt-5-mini"
+    },
+    "usage": {
+      "inputTokens": 10,
+      "outputTokens": 1,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "reasoningTokens": 0
+    },
+    "usageSource": "reported",
+    "costReported": 0.0002,
+    "costSource": "reported",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 2,
+    "rawOffset": 157,
+    "payload": null,
+    "metadata": {
+      "mapped": true,
+      "reported_fields": [
+        "cacheRead",
+        "cacheWrite",
+        "input",
+        "output"
+      ],
+      "unmapped_fields": [
+        "totalTokens"
+      ],
+      "reasoning_tokens_absent": true,
+      "cache_write_reported": true,
+      "input_includes_cache_read": false,
+      "cost_breakdown": {
+        "input": 0.0001,
+        "output": 0.0001,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "total": 0.0002
+      },
+      "provider_request_id": "resp-nh",
+      "diagnostics": [
+        "session-header-absent",
+        "cwd-absent-unattributed"
+      ],
+      "project_source": "unattributed"
+    }
+  },
+  {
+    "id": "7fa98bae96abe22431aaed9c3881f5e8605f747342a93ffa1937c1c27b3f51b4",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "f09f2be620f56ef3423cd6ebabe1e36f93b76721f0e7862f932480cd1527b9ec",
+    "sessionId": "611e5446f3f2fa249d5a4bc4b2ff85d9273e4355f31339f8b9fb6e67e209eb13",
+    "projectId": "d42d99c3305e156cfed44f339624e342a662ead29b44e32be9d357d4575fd1b3",
+    "parentEventId": "eeb02e7bb6df4cc3e4f1c098ed35439bb44eaaf544c4b7bdcd5b96210c222358",
+    "requestId": null,
+    "timestamp": 1789902009000,
+    "ingestedAt": 1760000000000,
+    "type": "message.user",
+    "subtype": null,
+    "model": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 3,
+    "rawOffset": 615,
+    "payload": {
+      "kind": "user_message",
+      "role": "user",
+      "text": "继续"
+    },
+    "metadata": {
+      "mapped": true,
+      "role_raw": "user",
+      "parent_id": "nh2",
+      "content_chars": 2,
+      "diagnostics": [
+        "session-header-absent",
+        "cwd-absent-unattributed"
+      ],
+      "project_source": "unattributed"
+    }
+  }
+]

@@ -22,7 +22,7 @@ export const HOST_WORKBUDDY = 'workbuddy'
 /** The one marker the census does show on local records. */
 export const CODEBUDDY_LOCAL_MARKER = '__codebuddyLocal'
 
-export { PARSE_ERROR_KEY } from '@agentlens/collector'
+export { PARSE_ERROR_KEY } from '@agentlens/event-model'
 
 export interface UnknownRecord {
   [key: string]: unknown
@@ -70,9 +70,10 @@ export function typeName(value: unknown): string | null {
 
 /**
  * `timestamp` is a documented top-level key; the census does not say whether it is ISO
- * text or an epoch. Both are accepted, and a seconds-epoch is scaled.
+ * text or an epoch. Both are accepted, and a seconds-epoch is scaled. `null` means the record
+ * states no time, so §5.2 makes the caller label whatever stands in.
  */
-export function timestampMs(rec: UnknownRecord, fallback: number): number {
+export function timestampMs(rec: UnknownRecord): number | null {
   const iso = str(rec.timestamp)
   if (iso) {
     const ms = Date.parse(iso)
@@ -80,7 +81,7 @@ export function timestampMs(rec: UnknownRecord, fallback: number): number {
   }
   const epoch = num(rec.timestamp)
   if (epoch !== null) return epoch < 1e11 ? epoch * 1000 : epoch
-  return fallback
+  return null
 }
 
 /**

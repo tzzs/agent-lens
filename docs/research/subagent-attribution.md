@@ -151,3 +151,49 @@ node docs/research/probe-subagent-attribution.mjs --verbose   # 每侧链一行�
 ```
 
 本机数字（93 源 = 56 session + 36 侧链 + `history.jsonl`、36 侧链、42 spawn、2,484 侧链记录、36/36 外键、30/6/0/0 时间窗分类）已于改码后重跑核验，两次输出的逐行表**完全一致**；换机器请重跑而不是沿用本文数字。
+
+---
+
+## 10. 追加（2026-09-22）· 用**内容通道**做独立 ground truth 复测启发式父链准确率（M1 ⑤ 收口）
+
+- 脚本：`docs/research/probe-subagent-parents.mjs`（只读、零依赖、`AGL_PROBE_CLAUDE_DIR` 可指向 fixture 配置目录）
+- 测量时的 git HEAD：**`a4ea03a7a58b3aec60aa218061b33f3ad84a10bd`**（任务下发时为 `6497d2a…`，测量期间后台 Agent 又有提交；启发式代码以脚本 import 到的该 SHA 为准）
+- 隐私：输出只有 sha256 截断标识符、计数、长度与得分。prompt 正文只在内存中参与打分，不落盘、不打印。
+
+### 10.1 被测规则（读实现，不读旧文案）
+
+`state.ts::linkSidechain()`（normalize.ts 在 `Agent`/`Task` tool_use 上 `noteAgentEntry` 登记候选）：**同 `sessionId` 候选中取 `rawSeq <= 链首 && timestamp <= 链首` 且 `rawSeq` 最大者；无候选 → `parent_event_id = NULL`（`parent_source='none'`）**。探针不复写该规则——用真实 `discover/parse/normalize` 跑出来、再把 `parent_event_id` 在同一次运行内反查回 `tool_use.id`。
+
+### 10.2 ground truth 方法与结果
+
+独立信号＝**内容**：侧链首条 user 记录的正文就是父 `Agent` tool_use `input.prompt` 的**逐字重放**（本机 39/39 全等）。打分器为归一化字符 2-gram 内含率 ∪ 最长公共前缀率（对中英文都成立），FLOOR=0.3，TIE=0.05（top−second<0.05 记"歧义"）。样本：39 条侧链全体按路径排序**等距抽 20**。
+
+| 指标 | 数值 |
+|---|---|
+| 部署形态（每文件一源）下启发式命中 | **0/20，全 NULL** —— 侧链源看不见父文件的候选（§7 的结构性问题，本测再次确认） |
+| 合并流（反事实内联形态，规则的设计场景）命中 | 20/20 |
+| **准确率（启发式 == 无歧义内容 picks）** | **17/17 = 100%**，0 例 confidently-wrong，0 例"有候选却 NULL" |
+| 启发式 × 外键一致 | 20/20（含 3 条歧义行的 top pick） |
+| 内容 × 外键一致 | 17/17（内容通道从不读外键——三向互相印证） |
+| 歧义（第二候选 ≥ top−0.05） | 3/20：都是 top=1.0 而次高 0.95+，形态是**同一会话里近似重复的 prompt**（连发/重试同一任务） |
+| 无前序候选 / 无父文件 / 无内容信号 | 0 / 0 / 0 |
+
+复现命令与真实尾部：
+
+```bash
+node docs/research/probe-subagent-parents.mjs | tail -6
+```
+```
+| 19 | 8c56810a10 | 556c8287 | 97 | 999 | 1 | 61eb83/1/0 (prompt) | 61eb83 | heuristic | NULL | 61eb83 | correct |
+| 20 | e927fb859f | fa50ab4a | 77 | 1581 | 1 | bedcc8/1/0 (prompt) | bedcc8 | heuristic | NULL | bedcc8 | correct |
+
+Privacy: only digests, counts, lengths and scores printed; prompts/tool inputs are never emitted or persisted.
+```
+（表列含 content 的 `id/top/second`，此处从略；逐行见脚本输出。）
+
+### 10.3 结论与建议（维持 §0/§6，不新增改动）
+
+1. **内容通道没有发现比外键更强的信号**——它给出的答案与 §3.1 外键 20/20 同解，等于第三条独立证据。头条仍是已落地的那条：真外键在 `tool_result`（`tool_use_id` + `toolUseResult.agentId`）上，`confirmSidechainParent` 已实现。
+2. **启发式处置：保留、不收紧、不替换**——在它能运行的形态里 17/17 无错（rule-of-three 上界 ≈ 3/20→13.9%，但三种已观测错误模式 (c)(d) 均 0 例）；它的真实缺陷不是排序而是**部署形态下拿不到候选**（0/20，全 NULL），那是 §7 方案 1（按 `sessionId` 的跨源台账）该解决的问题，不是改匹配规则能解决的。
+3. **不要用内容相似度做运行时归属**：prompt 正文默认不入库（隐私决策），且近似重复 prompt 已让内容通道自身出现 15% 歧义——外键零歧义、零成本，优先级没有悬念。
+4. M1 ⑤ 的"抽 20 个侧链人工核对父链准确率"自此有了仓库证据：`probe-subagent-parents.mjs` 可重跑，n=20（全体 39 等距抽样），准确率 100%（17/17 可判定，歧义 3、无前序候选 0）。

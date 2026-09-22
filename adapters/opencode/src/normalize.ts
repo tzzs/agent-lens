@@ -14,9 +14,12 @@
 import {
   deriveErrorFingerprint,
   deriveEventId,
-  deriveProjectId,
   deriveSessionId,
+  eventTimestamp,
   SCHEMA_VERSION,
+  timestampGuess,
+  TIMESTAMP_GUESS_KEY,
+  UNATTRIBUTED_PROJECT_ID,
   type AgentEvent,
   type CapabilityRef,
   type EventType,
@@ -26,6 +29,7 @@ import {
   type ParseFailure,
   type PayloadDraft,
   type RawRecord,
+  type TimestampOrigin,
   type Usage,
 } from '@agentlens/event-model'
 import {
@@ -47,11 +51,11 @@ import {
   type TokenDraft,
   type UnknownRecord,
 } from './record.ts'
-import { PARSE_ERROR_KEY } from '@agentlens/collector'
+import { PARSE_ERROR_KEY } from '@agentlens/event-model'
 import { TABLE_MESSAGE, TABLE_PART, TABLE_SESSION } from './record.ts'
 
 /** §4.1 rule 5: an unattributable cwd is reported, never guessed. */
-export const UNATTRIBUTED_PROJECT_ID = deriveProjectId('unattributed')
+export { UNATTRIBUTED_PROJECT_ID }
 
 /**
  * §3.2 / §6: these parts carry whole file or page bodies (measured tools:
@@ -79,6 +83,8 @@ interface Scope {
   rowid: number
   nativeId: string | null
   timestamp: number
+  /** §5.2: whether that timestamp is the row's own time or something standing in for it. */
+  timestampOrigin: TimestampOrigin
   sessionId: string
   threadId: string | null
   parentSessionId: string | null
@@ -138,6 +144,7 @@ function buildScope(record: RawRecord, ctx: NormalizeCtx, value: UnknownRecord):
   const model = modelRefOf(value.__session_model ?? value.model, messageData ?? (table === TABLE_PART ? partialMessage(value) : null))
   if (!hasColumns) diagnostics.push('partial_row')
   const parentSessionId = str(value.__session_parent_id) ?? (table === TABLE_SESSION ? str(value.parent_id) : null)
+  const stamp = eventTimestamp(record, ms(value.time_created) ?? ms(value.time_updated), ctx.now())
 
   return {
     ctx,
@@ -146,7 +153,8 @@ function buildScope(record: RawRecord, ctx: NormalizeCtx, value: UnknownRecord):
     data,
     rowid,
     nativeId: str(value.id),
-    timestamp: ms(value.time_created) ?? ms(value.time_updated) ?? (record.occurredAt > 0 ? record.occurredAt : ctx.now()),
+    timestamp: stamp.timestamp,
+    timestampOrigin: stamp.origin,
     sessionId,
     threadId: ownSession,
     parentSessionId,
@@ -198,6 +206,10 @@ function event(s: Scope, init: EventInit): AgentEvent {
   // so the marker is inherited from the scope instead of being set per event.
   if (init.subagentThread ?? s.subagentThread) metadata.subagentThread = true
   const timestamp = init.timestamp ?? s.timestamp
+  // §5.2: an event that names its own row time states a fact; one wearing the scope's stamp
+  // inherits that stamp's provenance, guessed or not.
+  const guess = timestamp === s.timestamp ? timestampGuess(s.timestampOrigin) : null
+  if (guess !== null) metadata[TIMESTAMP_GUESS_KEY] = guess
   return {
     id: deriveEventId({
       sourceId: s.ctx.source.id,

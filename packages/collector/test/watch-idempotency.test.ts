@@ -14,7 +14,7 @@ import {
   type SourceSpec,
 } from '@agentlens/event-model'
 import { insertEvents, migrate, openDatabase, updateSourceProgress, dumpTable, type SourceProgress } from '@agentlens/storage'
-import { parseJsonlRecords } from '../src/parse-jsonl.ts'
+import { parseJsonlRecords } from '@agentlens/event-model'
 import { scanSource, type EventSink, type SavedSourceState } from '../src/orchestrator.ts'
 import { createWatcher, type WatchTarget } from '../src/watch.ts'
 

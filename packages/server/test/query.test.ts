@@ -57,11 +57,25 @@ describe('GET /api/query is a thin wrapper over query()', () => {
       expect(res.body.totals.tokens_total).toBe(direct.totals.tokens_total)
     })
 
-    it('accepts cost_total as the §7 alias for cost_api_equiv', async () => {
-      const alias = await h.get('/api/query?metrics=cost_total')
-      const real = await h.get('/api/query?metrics=cost_api_equiv')
-      expect(alias.status).toBe(200)
-      expect(alias.body.totals).toEqual(real.body.totals)
+    it('exposes cost_total as the §18 row 1 fused metric, identical to the cube', async () => {
+      const res = await h.get('/api/query?metrics=cost_total')
+      expect(res.status).toBe(200)
+      const direct = query(h.seeded.db, { metrics: ['cost_total'] }, h.ctx.cubeDeps)
+      // The fixture reports no cost, so the fusion degrades to the priced figure —
+      // and the unpriced f1 row still drags it to NULL, never to a floor.
+      expect(res.body.totals.cost_total).toBeNull()
+      expect(res.body.totals.cost_total).toEqual(direct.totals.cost_total)
+    })
+
+    it('subagents=exclude/false reaches the cube filter; the wire default stays include', async () => {
+      const ex = await h.get('/api/query?metrics=events&subagents=exclude')
+      expect(ex.status).toBe(200)
+      expect(ex.body.spec.filter.includeSubagentThreads).toBe(false)
+      const off = await h.get('/api/query?metrics=events&subagents=include')
+      expect(off.body.spec.filter.includeSubagentThreads).toBe(true)
+      // The fixture carries no flagged rows, so every reading sees the same number.
+      expect(ex.body.totals).toEqual(off.body.totals)
+      expect(off.body.totals).toEqual((await h.get('/api/query?metrics=events')).body.totals)
     })
 
     it('resolves a human agent name to the opaque id the cube filters on', async () => {
@@ -90,6 +104,7 @@ describe('request validation', () => {
       ['bad limit', '/api/query?limit=-3'],
       ['empty metrics', '/api/query?metrics='],
       ['duplicate dims', '/api/query?dims=agent,agent'],
+      ['bad subagents', '/api/query?subagents=sometimes'],
     ]
     for (const [label, path] of bad) {
       it(`answers a structured 400 for ${label}`, async () => {

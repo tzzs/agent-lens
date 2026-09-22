@@ -21,6 +21,18 @@ export const METRICS = [
    * about different things, so they are separate metrics and are never added together.
    */
   'cost_reported',
+  /**
+   * §18 row 1 query priority (reported > computed) resolved INSIDE the cube, so no
+   * caller has to pick a metric and can double count an event whose reported cost and
+   * priced tokens describe the same work: within a group, cost = what the agent
+   * reported — folded per its §18 stage-1 policy so duplicates count once — plus the
+   * CASH price (§8 billing mode) of ONLY the requests that reported nothing. This is
+   * §8's "实际花费"; `cost_api_equiv` is its "等价 API 价值" for the same tokens, which
+   * is why a subscription or local agent reads $0 here and a real number there.
+   * NULL when a group has neither fact, and NULL whenever a never-reported slice has no
+   * price: never $0 (§8).
+   */
+  'cost_total',
 ] as const
 export type Metric = (typeof METRICS)[number]
 
@@ -104,6 +116,14 @@ export interface QuerySpec {
   /** `metric:cost_api_equiv:desc` | `dim:project:asc` */
   order?: string
   limit?: number
+  /**
+   * Default true. Set false to skip the `totals` fold, which is a SECOND full pass over
+   * stage 1 with the dims stripped: a caller that reads only `rows` — a per-project model
+   * mix, a banner — would pay ~5 s at 343k events for a number it throws away. `totals`
+   * then comes back as `{}`, which is deliberately empty rather than zero-filled: an
+   * omitted total must not be readable as a measured one (§5.2).
+   */
+  totals?: boolean
 }
 
 export type Row = Record<string, unknown>
@@ -111,7 +131,7 @@ export type Row = Record<string, unknown>
 export interface QueryResult {
   rows: Row[]
   columns: string[]
-  /** Same metric keys aggregated over the whole filtered set (ignoring dims). */
+  /** Same metric keys aggregated over the whole filtered set (ignoring dims); empty when `totals: false`. */
   totals: Record<string, number | null>
   /** True when `limit` cut rows away. */
   truncated: boolean

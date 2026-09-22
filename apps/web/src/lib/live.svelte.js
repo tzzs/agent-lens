@@ -3,6 +3,7 @@
 // `live.lastTick` bumping is what tells pages to refetch; `connected` drives the
 // header indicator. Neither holds statistics — only the transport signal.
 
+/** @type {{ connected: boolean, events: number, maxTimestamp: number | null, lastTick: number, serverTime: number | null }} */
 export const live = $state({
   connected: false,
   events: 0,
@@ -11,7 +12,8 @@ export const live = $state({
   serverTime: null,
 })
 
+/** @type {{ agents: { agentId: string, displayName: string | null }[], hosts: string[] }} */
 export const options = $state({
-  agents: [], // { agentId, displayName }
-  hosts: [], // string[]
+  agents: [],
+  hosts: [],
 })

@@ -2,7 +2,7 @@
  * §5.1 `detect` — presence + best-effort upstream version (`version` is a
  * top-level key on Qoder records per the §1.1 census), read-only, never throws.
  */
-import { walkForFiles } from '@agentlens/collector'
+import { walkForFiles } from '@agentlens/event-model'
 import type { Detection, HostContext } from '@agentlens/event-model'
 import { projectsDirOf, rootOf } from './paths.ts'
 import { asRecord, str } from './record.ts'

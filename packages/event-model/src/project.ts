@@ -231,10 +231,39 @@ export function canonicalRepoRoot(cwd: string, opts: CanonicalizeOptions = {}): 
   return step12
 }
 
+/**
+ * The path `projectIdForCwd` digests. Callers that must show a project to a human need
+ * this: the id is a digest, and `projects.canonical_root` is the only reversible part.
+ */
+export function projectRootForCwd(cwd: string, opts: CanonicalizeOptions = {}): string {
+  const canonical = canonicalRepoRoot(cwd, opts)
+  if (canonical) return canonical
+  return normalizePath(cwd, opts.homedir ?? homedir()) ?? cwd
+}
+
 /** Never returns a null project: unresolvable cwds fall back to the normalized path. */
 export function projectIdForCwd(cwd: string, opts: CanonicalizeOptions = {}): string {
-  const canonical = canonicalRepoRoot(cwd, opts)
-  if (canonical) return deriveProjectId(canonical)
-  const normalized = normalizePath(cwd, opts.homedir ?? homedir()) ?? cwd
-  return deriveProjectId(normalized)
+  return deriveProjectId(projectRootForCwd(cwd, opts))
+}
+
+/**
+ * §5.2: a record with no attributable cwd is reported, never guessed. Every adapter
+ * falls back to this one id, so it lives here rather than being re-derived five times.
+ */
+export const UNATTRIBUTED_PROJECT_ID: string = deriveProjectId('unattributed')
+
+/**
+ * §7 label precedence — `display_name`, then the root's directory name, then the id.
+ * The id is a digest and unreadable, so the one project that is not a path at all is
+ * spelled out instead.
+ */
+export function projectLabel(project: {
+  id: string
+  displayName?: string | null
+  canonicalRoot?: string | null
+}): string {
+  if (project.displayName) return project.displayName
+  const base = project.canonicalRoot ? basename(project.canonicalRoot) : ''
+  if (base) return base
+  return project.id === UNATTRIBUTED_PROJECT_ID ? 'unattributed' : project.id
 }

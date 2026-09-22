@@ -1,8 +1,15 @@
 /**
  * §18 row 7 (hard safety rule, outranks completeness): opening a *third-party*
- * SQLite file is only safe when a read-only connection provably cannot create
- * `-wal`/`-shm` siblings. WorkBuddy's WAL store did exactly that; OpenCode's does
- * not, because its WAL machinery is already materialised by the running app.
+ * SQLite file is only safe when a read-only connection provably cannot touch
+ * `-wal`/`-shm`. WorkBuddy's WAL store proved the create case; OpenCode's proved
+ * the modify case — a read-only attach against a WAL store whose siblings already
+ * exist rewrites the app's own `-shm` (measured: its mtime moved to the minute an
+ * `agl` command ran while no OpenCode process was alive), which is a write into
+ * another application's data directory just as much as creating it would be.
+ *
+ * So: WAL ⇒ refuse, full stop, same rule as `packages/collector/src/sqlite-source.ts`.
+ * The two used to disagree, which let this adapter enumerate tables and read session
+ * roots from a store the collector then refused to scan.
  *
  * Journal mode is read from the file header (bytes 18/19) instead of
  * `PRAGMA journal_mode`: the header needs no SQLite connection at all, so the
@@ -20,6 +27,19 @@ export interface ReadOnlyAssessment {
   walSidecar: boolean
   shmSidecar: boolean
   reason: string | null
+  /**
+   * Sibling inventory at decision time, size and mtime included. `verifyNoSidecars`
+   * compares against this rather than mere existence: an attach that leaves a WAL
+   * store's `-shm` in place but rewrites it is exactly the write this rule forbids.
+   */
+  sidecars: SidecarStat[]
+}
+
+export interface SidecarStat {
+  path: string
+  existed: boolean
+  size: number
+  mtimeMs: number
 }
 
 /** WAL/SHM sibling names for a database path. */
@@ -27,11 +47,12 @@ export function sidecarPaths(dbPath: string): { wal: string; shm: string } {
   return { wal: `${dbPath}-wal`, shm: `${dbPath}-shm` }
 }
 
-async function exists(path: string): Promise<boolean> {
+async function statSidecar(path: string): Promise<SidecarStat> {
   try {
-    return (await stat(path)) !== null
+    const s = await stat(path)
+    return { path, existed: true, size: s.size, mtimeMs: s.mtimeMs }
   } catch {
-    return false
+    return { path, existed: false, size: 0, mtimeMs: 0 }
   }
 }
 
@@ -53,25 +74,24 @@ export async function readJournalMode(dbPath: string): Promise<'wal' | 'journal'
 
 export async function assessReadOnly(dbPath: string): Promise<ReadOnlyAssessment> {
   const { wal, shm } = sidecarPaths(dbPath)
-  const [walSidecar, shmSidecar] = await Promise.all([exists(wal), exists(shm)])
+  const sidecars = await Promise.all([statSidecar(wal), statSidecar(shm)])
+  const [walStat, shmStat] = sidecars
   const journalMode = await readJournalMode(dbPath)
   if (journalMode !== 'wal') {
-    return { safe: true, journalMode, walSidecar, shmSidecar, reason: null }
+    return { safe: true, journalMode, walSidecar: walStat.existed, shmSidecar: shmStat.existed, sidecars, reason: null }
   }
-  // WHY: with both siblings already on disk the WAL index exists and is owned by
-  // the app, so our read can only attach to it. If either is missing, opening is
-  // what creates it — that is the WorkBuddy side-effect, so we refuse instead.
-  if (walSidecar && shmSidecar) {
-    return { safe: true, journalMode, walSidecar, shmSidecar, reason: null }
-  }
-  return { safe: false, journalMode, walSidecar, shmSidecar, reason: WAL_REASON }
+  // WHY unconditionally: with both siblings already on disk the WAL index belongs to the
+  // app and attaching is what rewrites it; with either missing, attaching is what creates
+  // it. Both are writes into someone else's data directory, so neither is licensed by the
+  // other, and the collector applies the same rule in `journalModeOf`.
+  return { safe: false, journalMode, walSidecar: walStat.existed, shmSidecar: shmStat.existed, sidecars, reason: WAL_REASON }
 }
 
-/** Raised when a read-only open turned out to create a sidecar anyway (never ignored). */
+/** Raised when a read-only open turned out to touch a sidecar anyway (never ignored). */
 export class SidecarCreatedError extends Error {
   override readonly name = 'SidecarCreatedError'
   constructor(dbPath: string, created: string[]) {
-    super(`read-only open of ${dbPath} created ${created.join(', ')}; refusing further access`)
+    super(`read-only open of ${dbPath} touched ${created.join(', ')}; refusing further access`)
   }
 }
 
@@ -81,7 +101,7 @@ export interface ReadOnlyHandle {
   verifyNoSidecars(): Promise<void>
 }
 
-/** Opens strictly read-only, refusing WAL stores whose sidecars we would create. */
+/** Opens strictly read-only, refusing every WAL store whose `-shm` an attach would create or rewrite. */
 export async function openReadOnly(dbPath: string): Promise<ReadOnlyHandle> {
   const assessment = await assessReadOnly(dbPath)
   if (!assessment.safe) throw new Error(`${WAL_REASON} (${dbPath})`)
@@ -97,15 +117,15 @@ export async function openReadOnly(dbPath: string): Promise<ReadOnlyHandle> {
   return {
     db,
     async verifyNoSidecars() {
-      const { wal, shm } = sidecarPaths(dbPath)
-      const created: string[] = []
-      for (const [path, existedBefore] of [
-        [wal, assessment.walSidecar],
-        [shm, assessment.shmSidecar],
-      ] as const) {
-        if (!existedBefore && (await exists(path))) created.push(path)
+      const touched: string[] = []
+      for (const before of assessment.sidecars) {
+        const now = await statSidecar(before.path)
+        if (!before.existed && now.existed) touched.push(`${now.path} (created)`)
+        else if (before.existed && (now.size !== before.size || now.mtimeMs !== before.mtimeMs)) {
+          touched.push(`${now.path} (rewritten)`)
+        }
       }
-      if (created.length > 0) throw new SidecarCreatedError(dbPath, created)
+      if (touched.length > 0) throw new SidecarCreatedError(dbPath, touched)
     },
   }
 }

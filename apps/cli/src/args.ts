@@ -148,7 +148,9 @@ export const CLI_FLAG_SCHEMA: FlagSchema = {
   version: { kind: 'boolean', aliases: ['V'] },
   db: { kind: 'value' },
   serve: { kind: 'boolean' },
+  'no-serve': { kind: 'boolean' },
   interval: { kind: 'value' },
+  content: { kind: 'boolean' },
   'no-content': { kind: 'boolean' },
   explain: { kind: 'boolean' },
   agent: { kind: 'repeat' },
@@ -164,7 +166,13 @@ export const CLI_FLAG_SCHEMA: FlagSchema = {
   by: { kind: 'repeat' },
   limit: { kind: 'value' },
   format: { kind: 'value' },
+  // §12 export leg: POST the OTel spans to an OTLP/HTTP collector (Langfuse, Phoenix).
+  push: { kind: 'value' },
+  'push-header': { kind: 'repeat' },
   'older-than': { kind: 'value' },
+  // §18 row 3: drop metadata.subagentThread events from the totals (ccusage alignment).
+  // Include stays the default (spec.ts); this only ever excludes.
+  'no-subagents': { kind: 'boolean' },
   // pricing override
   input: { kind: 'value' },
   output: { kind: 'value' },

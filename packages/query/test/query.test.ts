@@ -5,7 +5,7 @@ import { aggregateRequestTokens, aggregateUsage, UnknownAggregationError } from 
 import { hexSeed } from './fixtures.ts'
 import { insertEvents, migrate, openDatabase } from '@agentlens/storage'
 import type { PriceEntry } from '@agentlens/pricing'
-import { bucketTs, query, resolveSince, UnknownDimError, UnknownMetricError } from '@agentlens/query'
+import { bucketTs, query, resolveSince, UnknownDimError, UnknownMetricError, type QuerySpec } from '@agentlens/query'
 
 function seeded(events: AgentEvent[]): DatabaseSync {
   const db = openDatabase(':memory:')
@@ -198,6 +198,41 @@ describe('order / limit / truncated', () => {
     const res = query(db, { metrics: ['tokens_input'], dims: ['project'], order: 'dim:project:asc' })
     expect(res.rows.map((r) => r.project)).toEqual(['p0', 'p1', 'p2'])
     expect(res.truncated).toBe(false)
+  })
+})
+
+describe('totals: false (§7, the per-request cost of the grand-total fold)', () => {
+  const db = (): DatabaseSync =>
+    seeded(
+      [100, 300, 200].map((v, i) =>
+        hexSeed(
+          {
+            sessionId: `s${i}`,
+            projectId: `p${i}`,
+            requestId: `rq${i}`,
+            usage: { inputTokens: v, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 },
+          },
+          `t${i}`,
+        ),
+      ),
+    )
+
+  it('drops only `totals`; rows, order and truncated stay byte-identical', () => {
+    const spec: QuerySpec = { metrics: ['tokens_input'], dims: ['project'], order: 'metric:tokens_input:desc', limit: 2 }
+    const withTotals = query(db(), spec)
+    const without = query(db(), { ...spec, totals: false })
+    expect(without.rows).toEqual(withTotals.rows)
+    expect(without.truncated).toBe(withTotals.truncated)
+    expect(without.columns).toEqual(withTotals.columns)
+    // Empty, not zero-filled: an omitted total must never read as a measured 0 (§5.2).
+    expect(without.totals).toEqual({})
+    expect(withTotals.totals.tokens_input).toBe(600)
+  })
+
+  it('defaults to computing totals, so an omitted flag changes nothing', () => {
+    const a = query(db(), { metrics: ['tokens_input'], dims: ['project'] })
+    const b = query(db(), { metrics: ['tokens_input'], dims: ['project'], totals: true })
+    expect(b.totals).toEqual(a.totals)
   })
 })
 
@@ -455,5 +490,125 @@ describe('§18 cost_reported metric', () => {
     )
     expect(dimmed.rows[0]?.cost_reported).toBeCloseTo(0.5, 10)
     expect(dimmed.rows[0]?.cost_api_equiv).toBeNull() // zero tokens: nothing priced, and 0.5 did not leak in
+  })
+})
+
+describe('§18 row 1 fused cost_total metric', () => {
+  const usage = (inputTokens: number): Usage => ({
+    inputTokens,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 0,
+  })
+  const PRICE_ROW = { provider: 'anthropic', name: 'test-model' }
+  const UNPRICED = { provider: 'anthropic', name: 'no-such-model' }
+  const reported = (v: number) => ({ costReported: v, costSource: 'reported' as const })
+
+  // One OpenCode-shaped event: its reported cost and its tokens describe the SAME work.
+  // A caller must never have to pick a metric and risk adding 3 + 0.25 for it (§18 row 1).
+  it('reported cost wins per request; only the never-reported part is priced from tokens', () => {
+    const events = [
+      hexSeed({ requestId: 'fuse-1', usage: usage(1_000_000), ...reported(0.25), model: PRICE_ROW }, 'fu1'),
+      // Duplicate row of the SAME request reporting the same number: folded once under request_max.
+      hexSeed({ requestId: 'fuse-1', usage: usage(1_000_000), ...reported(0.25), model: PRICE_ROW }, 'fu1b'),
+      // Reported nothing: this is the only slice the price table may charge for.
+      hexSeed({ requestId: 'fuse-2', usage: usage(1_000_000), model: PRICE_ROW }, 'fu2'),
+    ]
+    const res = query(
+      seeded(events),
+      { metrics: ['cost_total', 'cost_reported', 'cost_api_equiv'] },
+      { priceResolver: resolver },
+    )
+    expect(res.totals.cost_total).toBeCloseTo(3.25, 10) // 0.25 reported + 3.00 priced; not 3.50, not 0.50
+    expect(res.totals.cost_reported).toBeCloseTo(0.5, 10) // raw SUM: today's semantics, untouched
+    expect(res.totals.cost_api_equiv).toBeCloseTo(6, 10) // prices every token, untouched
+    expect(res.columns).toEqual(['cost_total', 'cost_reported', 'cost_api_equiv'])
+  })
+
+  it('honours the agent-declared stage-1 policy: per_record_sum counts every reported row', () => {
+    const events = [
+      hexSeed({ agentId: 'opencode', requestId: 'dup', usage: usage(10), ...reported(0.4), model: PRICE_ROW }, 'oc1'),
+      hexSeed({ agentId: 'opencode', requestId: 'dup', usage: usage(20), ...reported(0.4), model: PRICE_ROW }, 'oc2'),
+    ]
+    const res = query(seeded(events), { metrics: ['cost_total'] }, {
+      priceResolver: resolver,
+      aggregation: { opencode: { mode: 'per_record_sum', subagentsIncluded: false } },
+    })
+    expect(res.totals.cost_total).toBeCloseTo(0.8, 10) // each per-call row is its own group
+    const folded = query(seeded(events), { metrics: ['cost_total'] }, { priceResolver: resolver })
+    expect(folded.totals.cost_total).toBeCloseTo(0.4, 10) // request_max (the fallback) folds the dup once
+  })
+
+  it('NULL when a group has neither a report nor priced tokens — never 0 (§8)', () => {
+    const db = seeded([hexSeed({ requestId: 'nz', sessionId: 'no-cost', usage: null }, 'nz1')])
+    expect(query(db, { metrics: ['cost_total'] }).totals.cost_total).toBeNull()
+    const dimmed = query(db, { metrics: ['cost_total'], dims: ['session'] })
+    expect(dimmed.rows[0]?.cost_total).toBeNull()
+    expect(query(seeded([]), { metrics: ['cost_total'] }).totals.cost_total).toBeNull()
+  })
+
+  it('an unpriced never-reported slice keeps the fused figure NULL, even beside a reported one', () => {
+    const events = [
+      hexSeed({ requestId: 'up1', sessionId: 'mixed', usage: usage(10), ...reported(0.25), model: PRICE_ROW }, 'upr'),
+      hexSeed({ requestId: 'up2', sessionId: 'mixed', usage: usage(10), model: UNPRICED }, 'upn'),
+    ]
+    const res = query(seeded(events), { metrics: ['cost_total'], dims: ['session'] }, { priceResolver: resolver })
+    expect(res.rows[0]?.cost_total).toBeNull() // 0.25 + unknown is unknown, not a floor
+    expect(res.totals.cost_total).toBeNull()
+    const alone = query(seeded([events[0]!]), { metrics: ['cost_total'] }, { priceResolver: resolver })
+    expect(alone.totals.cost_total).toBeCloseTo(0.25, 10) // reported-only still fuses
+  })
+
+  it('no price table: reported part still fuses; an unreported token slice forces NULL, not silence', () => {
+    const rep = hexSeed({ requestId: 'np1', usage: usage(10), ...reported(0.5), model: PRICE_ROW }, 'np1')
+    const unreported = hexSeed({ requestId: 'np2', sessionId: 'np', usage: usage(10), model: PRICE_ROW }, 'np2')
+    expect(query(seeded([rep]), { metrics: ['cost_total'] }).totals.cost_total).toBeCloseTo(0.5, 10)
+    expect(query(seeded([rep, unreported]), { metrics: ['cost_total'] }).totals.cost_total).toBeNull()
+  })
+
+  it('groups per dim and totals coherently', () => {
+    const events = [
+      hexSeed({ agentId: 'a1', requestId: 'g1', usage: usage(1_000_000), ...reported(0.25), model: PRICE_ROW }, 'g1'),
+      hexSeed({ agentId: 'a2', requestId: 'g2', usage: usage(1_000_000), model: PRICE_ROW }, 'g2'),
+    ]
+    const res = query(seeded(events), { metrics: ['cost_total'], dims: ['agent'] }, { priceResolver: resolver })
+    expect(Object.fromEntries(res.rows.map((r) => [r.agent, r.cost_total]))).toMatchObject({ a1: 0.25, a2: 3 })
+    expect(res.totals.cost_total).toBeCloseTo(3.25, 10)
+  })
+
+  it('the §18 row 3 subagent switch drops a flagged row reported cost before folding', () => {
+    const events = [
+      hexSeed({ requestId: 'sa1', usage: usage(10), ...reported(0.25), model: PRICE_ROW }, 'sa1'),
+      hexSeed({ requestId: 'sa2', usage: usage(10), ...reported(0.5), model: PRICE_ROW, metadata: { subagentThread: true } }, 'sa2'),
+    ]
+    const both = query(seeded(events), { metrics: ['cost_total'] }, { priceResolver: resolver })
+    expect(both.totals.cost_total).toBeCloseTo(0.75, 10)
+    const ex = query(seeded(events), { metrics: ['cost_total'], filter: { includeSubagentThreads: false } }, { priceResolver: resolver })
+    expect(ex.totals.cost_total).toBeCloseTo(0.25, 10)
+  })
+
+  it('§8 keeps 实际花费 and 等价 API 价值 apart per declared billing mode', () => {
+    const events = [
+      hexSeed({ agentId: 'api-agent', requestId: 'bm1', usage: usage(1_000_000), model: PRICE_ROW }, 'bm1'),
+      hexSeed({ agentId: 'sub-agent', requestId: 'bm2', usage: usage(1_000_000), model: PRICE_ROW }, 'bm2'),
+      hexSeed({ agentId: 'local-agent', requestId: 'bm3', usage: usage(1_000_000), model: PRICE_ROW }, 'bm3'),
+    ]
+    const deps = {
+      priceResolver: resolver,
+      billingModeFor: (agent: string) =>
+        agent === 'sub-agent' ? ('subscription' as const) : agent === 'local-agent' ? ('local' as const) : ('api' as const),
+    }
+    const res = query(seeded(events), { metrics: ['cost_total', 'cost_api_equiv'], dims: ['agent'] }, deps)
+    const byAgent = new Map(res.rows.map((r) => [String(r.agent), r]))
+    expect(byAgent.get('api-agent')?.cost_total).toBe(3)
+    // A subscription's cash flow is the plan fee and a local model costs nothing per token,
+    // so both read $0 here — which is exactly why the other column exists (§8).
+    expect(byAgent.get('sub-agent')?.cost_total).toBe(0)
+    expect(byAgent.get('local-agent')?.cost_total).toBe(0)
+    expect(byAgent.get('sub-agent')?.cost_api_equiv).toBe(3)
+    expect(byAgent.get('local-agent')?.cost_api_equiv).toBe(3)
+    expect(res.totals.cost_total).toBe(3)
+    expect(res.totals.cost_api_equiv).toBe(9)
   })
 })

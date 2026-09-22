@@ -132,7 +132,6 @@ describe("collector's SQLite source path (§4.3)", () => {
           hostId: 'opencode',
           resolveProject: ctx.resolveProject,
           now: () => FIXED_NOW,
-          sqlite: { rowidColumn: 'rowid', column: 'data' },
         },
       )
       expect(result.action).toBe('append')
@@ -152,7 +151,6 @@ describe("collector's SQLite source path (§4.3)", () => {
           hostId: 'opencode',
           resolveProject: ctx.resolveProject,
           now: () => FIXED_NOW,
-          sqlite: { rowidColumn: 'rowid', column: 'data' },
         },
       )
       expect(again.linesConsumed).toBe(0)
@@ -161,9 +159,9 @@ describe("collector's SQLite source path (§4.3)", () => {
     })
   })
 
-  it('the single-column path loses every join column, and the adapter says so', async () => {
+  it('a record without the join columns degrades visibly, and the adapter says so', async () => {
     await withHost(async (host) => {
-      // `readSqliteIncremental` hands over one column's JSON only, so a part row
+      // A single-column value (what a framing that skipped `parse`'s joins would carry)
       // arrives without session_id / message role: degradation must be visible.
       const { parseJson } = await import('../src/record.ts')
       const value = parseJson(

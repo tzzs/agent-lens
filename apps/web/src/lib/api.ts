@@ -47,6 +47,27 @@ async function getJSON<T>(path: string, params?: Record<string, string | number 
   return parsed as T
 }
 
+/** The one write in the app: a JSON POST, same error contract as GET. */
+async function postJSON<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const text = await res.text()
+  let parsed: unknown = text
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    /* an error body that is not JSON is reported as its own text */
+  }
+  if (!res.ok) {
+    const err = parsed && typeof parsed === 'object' && 'error' in (parsed as object) ? parsed : { error: { kind: 'internal', message: text || res.statusText } }
+    throw new ApiError(res.status, err as ErrorBody)
+  }
+  return parsed as T
+}
+
 /** Builds a relative /api URL from a base path and optional params (arrays repeat). */
 export function buildURL(path: string, params?: Record<string, string | number | string[] | undefined>): string {
   const sp = new URLSearchParams()
@@ -164,8 +185,12 @@ export function capabilityDimCell(dim: string, value: unknown, selected: readonl
 export interface CostView {
   pricingConfigured: boolean
   apiEquivalentUsd: number | null
+  /** §18 row 1 resolved in the cube: what the agent reported where it did, priced cash where it did not. */
+  totalUsd: number | null
+  /** Mode-folded estimate that ignores reported facts — kept for the pricing view, not the spend. */
   actualUsd: number | null
   reportedUsd: number | null
+  totalPartial: boolean
   apiEquivalentPartial: boolean
   actualPartial: boolean
   unpricedAgents: string[]
@@ -173,6 +198,7 @@ export interface CostView {
     agentId: string
     billingMode: string
     apiEquivalentUsd: number | null
+    totalUsd: number | null
     actualUsd: number | null
     reportedUsd: number | null
   }[]
@@ -339,6 +365,12 @@ export interface TimelineNode {
   errorFingerprint: string | null
   metadata: Record<string, unknown> | null
   payloads: PayloadView[]
+  /**
+   * How many payload rows this node has. The timeline is fetched with `payloads=0`, so on
+   * first load this is the only sign a row has content worth opening — and the count comes
+   * without the text, which for a 40k-event session was a 48 MB response body.
+   */
+  payloadCount: number
 }
 export interface SessionDetailResponse {
   session: {
@@ -522,6 +554,34 @@ export interface DoctorReport {
 }
 
 /* ------------------------------------------------------------------ *
+ * Billing-mode declarations (§8)
+ * ------------------------------------------------------------------ */
+
+/** The three §8口径; the server validates against this union. */
+export type BillingMode = 'api' | 'subscription' | 'local'
+export const BILLING_MODES: readonly BillingMode[] = ['api', 'subscription', 'local']
+
+export interface BillingAgentRow {
+  agentId: string
+  displayName: string | null
+  /** The mode the cost figures are folded with right now. */
+  billingMode: BillingMode
+  /** False when the agent simply has no declaration and inherits the `api` default. */
+  declared: boolean
+}
+export interface BillingSettingsResponse {
+  configFile: string
+  modes: Record<string, BillingMode>
+  agents: BillingAgentRow[]
+}
+export interface BillingWriteResponse {
+  agent: string
+  /** Effective mode after the write: clearing returns the agent to `api`. */
+  mode: BillingMode
+  modes: Record<string, BillingMode>
+}
+
+/* ------------------------------------------------------------------ *
  * Route helpers — every path is relative to this origin.
  * ------------------------------------------------------------------ */
 
@@ -532,11 +592,24 @@ export const api = {
   overview: (params?: FilterParams) => getJSON<OverviewResponse>('/api/overview', params),
   query: (params: FilterParams) => getJSON<QueryResponse>('/api/query', params),
   sessions: (params?: FilterParams) => getJSON<SessionListResponse>('/api/sessions', params),
-  session: (id: string) => getJSON<SessionDetailResponse>(`/api/sessions/${encodeURIComponent(id)}`),
+  session: (id: string, params?: FilterParams) =>
+    getJSON<SessionDetailResponse>(`/api/sessions/${encodeURIComponent(id)}`, params),
+  /**
+   * Payload text for one node, fetched when the inspector opens it. `?node=` repeats, so a
+   * caller that wants several can batch them.
+   */
+  nodePayloads: (id: string, nodeId: string) =>
+    getJSON<{ sessionId: string; payloads: Record<string, PayloadView[]> }>(
+      `/api/sessions/${encodeURIComponent(id)}/nodes/${encodeURIComponent(nodeId)}/payloads`,
+    ),
   capabilities: (params?: FilterParams) => getJSON<CapabilityResponse>('/api/capabilities', params),
   projects: (params?: FilterParams) => getJSON<ProjectsResponse>('/api/projects', params),
   agents: (params?: FilterParams) => getJSON<AgentsResponse>('/api/agents', params),
   models: (params?: FilterParams) => getJSON<ModelsResponse>('/api/models', params),
   doctor: (params?: FilterParams) => getJSON<DoctorReport>('/api/doctor', params),
   coverage: () => getJSON<CoverageReport>('/api/coverage'),
+  billingSettings: () => getJSON<BillingSettingsResponse>('/api/settings/billing'),
+  /** `mode: null` drops the declaration, so the agent falls back to the `api` default. */
+  setBilling: (body: { agent: string; mode: BillingMode | null }) =>
+    postJSON<BillingWriteResponse>('/api/settings/billing', body),
 }

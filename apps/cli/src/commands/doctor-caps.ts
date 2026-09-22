@@ -101,7 +101,7 @@ export async function measureCapabilities(
     }
   }
 
-  const invokedRes = query(db, { metrics: ['events'], dims: ['capability_type'] })
+  const invokedRes = query(db, { metrics: ['events'], dims: ['capability_type'], totals: false })
   const invoked = new Map<CapabilityType, number>()
   for (const r of invokedRes.rows) {
     const t = String(r.capability_type)

@@ -28,6 +28,15 @@
  * computed API-equivalent estimate are different facts, so they are separate metrics and
  * are never added together.
  *
+ * `cost_total` (§18 row 1's reported > computed priority) IS resolved inside the cube, at
+ * the stage-1 request grain: a group pays its agent's reported number where the agent
+ * reported one (MAX-folded inside the group, so a request split across duplicate rows is
+ * counted once under `request_max` and once per row under the sum modes), plus priced
+ * tokens ONLY for the request rows that reported nothing. That grain is what makes the
+ * fusion double-count-proof: each request row contributes either its report or its
+ * price, never both. NULL when a group has neither fact, and NULL whenever a
+ * never-reported slice has no price — never $0 (§8).
+ *
  * Injection posture: dim/metric names are validated against the exported
  * whitelist and mapped to *constant* SQL fragments; every filter VALUE — and every agent
  * id in the aggregation map — is a bound parameter. User strings can never reach the
@@ -38,6 +47,7 @@ import { computeCost, type BillingMode, type PriceEntry } from '@agentlens/prici
 import {
   assertAggregationMode,
   DEFAULT_AGGREGATION,
+  projectLabel,
   type AggregationMode,
   type AggregationPolicy,
 } from '@agentlens/event-model'
@@ -53,47 +63,83 @@ import {
   type Row,
 } from './spec.ts'
 import { resolveSince } from './time.ts'
+import { foldKey, type FoldCache } from './fold-cache.ts'
 
 const DAY_MS = 86_400_000
 
-const DAY_SQL = "strftime('%Y-%m-%d', CAST(e.timestamp / 1000 AS INTEGER), 'unixepoch')"
-// ISO-style weeks: floor to Monday 00:00 UTC (epoch day 0 is a Thursday → +4d offset).
-const WEEK_SQL =
-  "strftime('%Y-%m-%d', CAST(e.timestamp / 1000 AS INTEGER) - " +
-  "(CAST(e.timestamp / 1000 AS INTEGER) - 345600) % 604800, 'unixepoch')"
-const MONTH_SQL = "strftime('%Y-%m', CAST(e.timestamp / 1000 AS INTEGER), 'unixepoch')"
+/**
+ * The stage-2 read source: either the inline `req` CTE joined back to `events` for the
+ * representative row, or a materialised fold that already carries those columns. Both are
+ * described by one `ReadSource` so `dimSql` can generate the dim expressions for either —
+ * two hand-written copies of 24 dims is exactly how CLI and Web numbers would start to
+ * disagree (§7).
+ */
+interface ReadSource {
+  /** Relation holding the representative row's `events` columns. */
+  rep: string
+  /** Relation holding `name`/`provider` (always `models`). */
+  models: string
+}
+/** Today's shape: stage-1 CTE + a join back to the events table. */
+const CTE_SOURCE: ReadSource = { rep: 'e', models: 'm' }
+/** Materialised shape: the fold temp table, joined to `models` only for its rowid. */
+const FOLD_TABLE_SOURCE: ReadSource = { rep: 'r', models: 'm' }
 
-function capNameSql(type: CapabilityDim): string {
-  // `type` comes from the closed CAPABILITY list, never from user input.
-  return `CASE WHEN e.capability_type = '${type}' THEN COALESCE(e.capability_name, '') ELSE '' END`
+function dimSql(src: ReadSource): Record<Dim, string> {
+  const { rep, models } = src
+  const ts = `CAST(${rep}.timestamp / 1000 AS INTEGER)`
+  const DAY = `strftime('%Y-%m-%d', ${ts}, 'unixepoch')`
+  // ISO-style weeks: floor to Monday 00:00 UTC (epoch day 0 is a Thursday → +4d offset).
+  const WEEK = `strftime('%Y-%m-%d', ${ts} - (${ts} - 345600) % 604800, 'unixepoch')`
+  const MONTH = `strftime('%Y-%m', ${ts}, 'unixepoch')`
+  const capName = (type: CapabilityDim): string =>
+    // `type` comes from the closed CAPABILITY list, never from user input.
+    `CASE WHEN ${rep}.capability_type = '${type}' THEN COALESCE(${rep}.capability_name, '') ELSE '' END`
+  return {
+    time: DAY,
+    day: DAY,
+    week: WEEK,
+    month: MONTH,
+    agent: `COALESCE(${rep}.agent_id, '')`,
+    host: `COALESCE(${rep}.host_id, '')`,
+    project: `COALESCE(${rep}.project_id, '')`,
+    session: `COALESCE(${rep}.session_id, '')`,
+    thread: `COALESCE(${rep}.thread_id, '')`,
+    model: `COALESCE(${models}.name, '')`,
+    provider: `COALESCE(${models}.provider, '')`,
+    capability_type: `COALESCE(${rep}.capability_type, '')`,
+    capability_name: `CASE WHEN ${rep}.capability_type IS NULL THEN '' ELSE COALESCE(${rep}.capability_name, '') END`,
+    tool: capName('tool'),
+    skill: capName('skill'),
+    mcp: capName('mcp'),
+    plugin: capName('plugin'),
+    connector: capName('connector'),
+    command: capName('command'),
+    subagent: capName('subagent'),
+    hook: capName('hook'),
+    status: `COALESCE(${rep}.status, '')`,
+    usage_source: `COALESCE(${rep}.usage_source, '')`,
+  }
 }
 
-/** Constant SQL fragment per dim. `e` = events alias, `m` = models LEFT-join alias. */
-const DIM_SQL: Record<Dim, string> = {
-  time: DAY_SQL,
-  day: DAY_SQL,
-  week: WEEK_SQL,
-  month: MONTH_SQL,
-  agent: "COALESCE(e.agent_id, '')",
-  host: "COALESCE(e.host_id, '')",
-  project: "COALESCE(e.project_id, '')",
-  session: "COALESCE(e.session_id, '')",
-  thread: "COALESCE(e.thread_id, '')",
-  model: "COALESCE(m.name, '')",
-  provider: "COALESCE(m.provider, '')",
-  capability_type: "COALESCE(e.capability_type, '')",
-  capability_name: "CASE WHEN e.capability_type IS NULL THEN '' ELSE COALESCE(e.capability_name, '') END",
-  tool: capNameSql('tool'),
-  skill: capNameSql('skill'),
-  mcp: capNameSql('mcp'),
-  plugin: capNameSql('plugin'),
-  connector: capNameSql('connector'),
-  command: capNameSql('command'),
-  subagent: capNameSql('subagent'),
-  hook: capNameSql('hook'),
-  status: "COALESCE(e.status, '')",
-  usage_source: "COALESCE(e.usage_source, '')",
-}
+/**
+ * The representative-row columns a materialised fold must keep: every `events` column any
+ * dim expression reads (see `dimSql`), plus `model_rowid` so `provider`/`model` still join
+ * to `models`. `type` and `metadata` are filter-only and never a dim, so they stay out.
+ */
+const FOLD_REP_COLUMNS = [
+  'timestamp',
+  'agent_id',
+  'host_id',
+  'project_id',
+  'session_id',
+  'thread_id',
+  'capability_type',
+  'capability_name',
+  'status',
+  'usage_source',
+  'model_rowid',
+] as const
 
 type TokenField = 'input' | 'output' | 'cacheRead' | 'cacheWrite' | 'reasoning'
 const TOKEN_FIELDS: readonly TokenField[] = ['input', 'output', 'cacheRead', 'cacheWrite', 'reasoning']
@@ -125,6 +171,17 @@ interface Reqs {
   where: Prepared
   /** Stage-1 fold: request-key expression + its bound agent ids (§18 per-adapter policy). */
   fold: Prepared
+  /**
+   * True when the filter mentions `models` (`model`/`provider`), so stage 1 must join it.
+   * Joining unconditionally cost ~750 ms per fold on the measured store for a join that
+   * only ever answered "does this row's model match" — and on the common path, nothing.
+   */
+  joinsModels: boolean
+  /**
+   * Name of the temp table holding a materialised stage 1, when this request has one.
+   * Stage 2 then reads that relation instead of re-running the fold.
+   */
+  foldTable?: string
 }
 
 /** Stage-1 request key per §18 mode. `e` is the events alias. */
@@ -182,6 +239,21 @@ export interface QueryDeps {
    * mode throws UnknownAggregationError instead of silently guessing.
    */
   aggregation?: Record<string, AggregationPolicy>
+  /**
+   * Share one materialised stage-1 fold across every cube call in this scope. Absent means
+   * the inline CTE path, which re-folds per statement — correct, just slower. The caller
+   * owns the cache's lifetime and must `dispose()` it (see `createFoldCache`).
+   */
+  foldCache?: FoldCache
+  /**
+   * The clock a relative `since`/`until` (`'30d'`) is measured against. Defaults to
+   * `Date.now()` per call, which means each cube call in one request resolves a window a
+   * few milliseconds apart from its siblings — the numbers still agree to within noise, but
+   * nothing downstream can recognise two such windows as the same query. Pass one pinned
+   * clock per request and the window stops drifting: the fold cache then hits, and the
+   * page's cards, trend and splits are guaranteed to describe the same span.
+   */
+  now?: () => number
 }
 
 function num(v: unknown): number {
@@ -195,16 +267,16 @@ function nullableNum(v: unknown): number | null {
   return Number(v)
 }
 
-function toTs(v: string | number, label: string): number {
+function toTs(v: string | number, label: string, now?: () => number): number {
   if (typeof v === 'number') return v
   try {
-    return resolveSince(v)
+    return resolveSince(v, now?.())
   } catch (err) {
     throw new Error(`filter ${label}: ${(err as Error).message}`)
   }
 }
 
-function buildWhere(filter: QueryFilter | undefined): Prepared {
+function buildWhere(filter: QueryFilter | undefined, now?: () => number): Prepared {
   const parts: string[] = []
   const params: unknown[] = []
   const inList = (col: string, values: string[] | undefined) => {
@@ -214,11 +286,11 @@ function buildWhere(filter: QueryFilter | undefined): Prepared {
   }
   if (filter?.since !== undefined) {
     parts.push('e.timestamp >= ?')
-    params.push(toTs(filter.since, 'since'))
+    params.push(toTs(filter.since, 'since', now))
   }
   if (filter?.until !== undefined) {
     parts.push('e.timestamp <= ?')
-    params.push(toTs(filter.until, 'until'))
+    params.push(toTs(filter.until, 'until', now))
   }
   inList('e.agent_id', filter?.agent)
   inList('e.host_id', filter?.host)
@@ -238,41 +310,117 @@ function buildWhere(filter: QueryFilter | undefined): Prepared {
   return { sql: parts.length ? `WHERE ${parts.join(' AND ')}` : '', params }
 }
 
-/** Stage 1 (§18): one row per (agent, request key), MAX per token column under `request_max`. */
-function dedupStage(reqs: Reqs): string {
+/** Stage 1's projected columns. `duration` and `rep_cost` are always kept in a materialised
+ *  fold so one table can serve every stage-2 shape in the scope; the inline CTE keeps them
+ *  conditional so a spec that asks for neither emits exactly the SQL it always did. */
+function foldSelectList(reqs: Reqs, withDuration: boolean, withReported: boolean): string {
   const tokenMaxes = TOKEN_FIELDS.map(
     (f) => `MAX(COALESCE(e.${TOKEN_EVENT_COL[f]}, 0)) AS ${TOKEN_METRIC[f]}`,
   ).join(',\n      ')
-  const needsDuration = reqs.metrics.includes('duration')
+  // §18 row 1 fusion: one reported number per request row. MAX keeps NULL "nothing
+  // reported" distinct from 0 (§8); under request_max it also folds a duplicate row's
+  // copy of the same report so it can be counted twice.
+  const reportedFold = withReported ? ',\n      MAX(e.cost_reported) AS rep_cost' : ''
+  return `SELECT COALESCE(e.agent_id, '') AS agent_key, ${reqs.fold.sql} AS req_key, MAX(e.id) AS rep_id,
+      ${tokenMaxes}${withDuration ? ',\n      MAX(COALESCE(e.duration_ms, 0)) AS duration' : ''}${reportedFold}`
+}
+
+/** Stage 1 (§18): one row per (agent, request key), MAX per token column under `request_max`. */
+function dedupStage(reqs: Reqs, withDuration: boolean, withReported: boolean): string {
   return `req AS (
-      SELECT COALESCE(e.agent_id, '') AS agent_key, ${reqs.fold.sql} AS req_key, MAX(e.id) AS rep_id,
-      ${tokenMaxes}${needsDuration ? ',\n      MAX(COALESCE(e.duration_ms, 0)) AS duration' : ''}
+      ${foldSelectList(reqs, withDuration, withReported)}
       FROM events e
-      LEFT JOIN models m ON m.rowid = e.model_rowid
+      ${reqs.joinsModels ? 'LEFT JOIN models m ON m.rowid = e.model_rowid' : ''}
       ${reqs.where.sql}
       GROUP BY agent_key, req_key
     )`
 }
 
-/** Stage-1 params precede the WHERE params in query text order (the fold key is in SELECT). */
-function stageParams(reqs: Reqs): unknown[] {
-  return [...reqs.fold.params, ...reqs.where.params]
+/**
+ * The one-off materialisation: stage 1 plus the representative row's dim columns, so stage 2
+ * reads a ~1-row-per-request relation instead of re-folding and re-joining. The rep row's
+ * `model_rowid` is kept rather than the model name, so `provider`/`model` still resolve
+ * through the same `models` join as the inline path.
+ *
+ * Stage 1 runs in its superset shape (every token bucket + duration) even for a query that
+ * asks for fewer metrics: one table then serves every stage-2 shape in the scope, which is
+ * the whole point of sharing it.
+ */
+function materialiseFoldSql(reqs: Reqs, table: string): Prepared {
+  const repCols = FOLD_REP_COLUMNS.map((c) => `e.${c}`).join(', ')
+  // `rep_cost` is the §18 row 1 folded report and must ride along: stage 2 tests it for
+  // IS NULL to find the requests that reported nothing, and a NULL has to survive the round
+  // trip through the temp table exactly as it does in the CTE (a column declared by
+  // expression carries no affinity, so a REAL stays the identical REAL and a NULL stays NULL).
+  const foldCols = [...TOKEN_FIELDS.map((f) => TOKEN_METRIC[f]), 'duration', 'rep_cost']
+    .map((c) => `r.${c}`)
+    .join(', ')
+  return {
+    sql: `CREATE TEMP TABLE "${table}" AS
+      WITH ${dedupStage(reqs, true, true)}
+      SELECT r.agent_key, r.req_key, r.rep_id, ${foldCols}, ${repCols}
+      FROM req r
+      JOIN events e ON e.id = r.rep_id`,
+    params: [...reqs.fold.params, ...reqs.where.params],
+  }
 }
 
-function selectClause(reqs: Reqs, metricSqls: string[]): { selects: string; groupBy: string } {
+/** Params for a stage-2 statement: a materialised fold has already absorbed them all. */
+function stageParams(reqs: Reqs): unknown[] {
+  return reqs.foldTable ? [] : [...reqs.fold.params, ...reqs.where.params]
+}
+
+/** Whether a statement's dim list needs `models`, which is only ever joined through. */
+function dimsNeedModels(dims: Dim[]): boolean {
+  return dims.includes('model') || dims.includes('provider')
+}
+
+/**
+ * Stage-2 FROM clause. Two shapes, one intent — read the folded row plus its representative
+ * row's columns:
+ *   inline:  the `req` CTE joined back to `events` by `rep_id` (and to `models` through it);
+ *   cached:  the materialised fold, which already carries those columns, so the 81k-probe
+ *            join-back disappears and only `models` may still be joined.
+ * `needsRepRow` is the caller's question, not this function's guess: with no dims there are
+ * no representative-row values to read and `id` is the primary key, so the join-back cannot
+ * add, drop or change a row — but the cost buckets read `agent_id` and `timestamp` off it
+ * even with no dims, so they always ask for it.
+ */
+function stage2From(reqs: Reqs, needsRepRow: boolean, needsModels: boolean): string {
+  if (reqs.foldTable) {
+    return `FROM ${reqs.foldTable} r${needsModels ? ' LEFT JOIN models m ON m.rowid = r.model_rowid' : ''}`
+  }
+  return `FROM req r${needsRepRow ? ' JOIN events e ON e.id = r.rep_id' : ''}${
+    needsModels && needsRepRow ? ' LEFT JOIN models m ON m.rowid = e.model_rowid' : ''
+  }`
+}
+
+/**
+ * Where stage 2 reads the representative row from: the materialised fold carries the
+ * columns itself, the inline CTE has to join back to `events`. Stage 1 (`eventQuery`) reads
+ * raw events and never has either, so it always passes `CTE_SOURCE` explicitly — deriving the
+ * source from `reqs.foldTable` there would emit `r.` columns against an `events e` FROM.
+ */
+function stageSource(reqs: Reqs): ReadSource {
+  return reqs.foldTable ? FOLD_TABLE_SOURCE : CTE_SOURCE
+}
+
+/** The dim expressions for one read source. */
+function dimFor(src: ReadSource): Record<Dim, string> {
+  return dimSql(src)
+}
+
+function selectClause(reqs: Reqs, metricSqls: string[], src: ReadSource): { selects: string; groupBy: string } {
   const metrics = metricSqls.length ? metricSqls.join(', ') : 'COUNT(*) AS _noop' // COUNT keeps the no-dims case one row
   if (reqs.dims.length === 0) {
     return { selects: metrics, groupBy: '' }
   }
-  const named = reqs.dims.map((d) => `${DIM_SQL[d]} AS ${d}`).join(', ')
+  const D = dimFor(src)
+  const named = reqs.dims.map((d) => `${D[d]} AS ${d}`).join(', ')
   return {
     selects: `${named}, ${metrics}`,
     groupBy: `GROUP BY ${reqs.dims.map((_, i) => i + 1).join(', ')}`,
   }
-}
-
-function fromClause(): string {
-  return 'FROM events e LEFT JOIN models m ON m.rowid = e.model_rowid'
 }
 
 function eventQuery(reqs: Reqs): Prepared {
@@ -282,8 +430,11 @@ function eventQuery(reqs: Reqs): Prepared {
   // Raw SUM, never the fold: a reported cost is already the agent's final number (§18 row 1).
   // SQLite SUM returns NULL when every row is NULL, which is exactly the "no data" we must show.
   if (reqs.metrics.includes('cost_reported')) metricSqls.push('SUM(e.cost_reported) AS cost_reported')
-  const { selects, groupBy } = selectClause(reqs, metricSqls)
-  return { sql: `SELECT ${selects} ${fromClause()} ${reqs.where.sql} ${groupBy}`, params: reqs.where.params }
+  const { selects, groupBy } = selectClause(reqs, metricSqls, CTE_SOURCE)
+  const from = `FROM events e${
+    reqs.joinsModels || dimsNeedModels(reqs.dims) ? ' LEFT JOIN models m ON m.rowid = e.model_rowid' : ''
+  }`
+  return { sql: `SELECT ${selects} ${from} ${reqs.where.sql} ${groupBy}`, params: reqs.where.params }
 }
 
 /** Stage 2 (§18): SUM over the folded per-agent request rows for token/duration metrics. */
@@ -297,46 +448,52 @@ function requestStageQuery(reqs: Reqs): Prepared | null {
       metricSqls.push(`SUM(r.${m}) AS ${m}`)
     } else if (m === 'duration') {
       metricSqls.push('SUM(r.duration) AS duration')
+    } else if (m === 'cost_total') {
+      // Only the reported half of the fusion rides the stage-2 SQL; the priced half
+      // goes through the (model, day) buckets below, over the rows that reported nothing.
+      metricSqls.push('SUM(r.rep_cost) AS reported_folded')
     }
   }
   if (metricSqls.length === 0) return null
-  const { selects, groupBy } = selectClause(reqs, metricSqls)
+  const { selects, groupBy } = selectClause(reqs, metricSqls, stageSource(reqs))
+  const needsModels = dimsNeedModels(reqs.dims)
   return {
-    sql: `WITH ${dedupStage(reqs)}
+    sql: `${reqs.foldTable ? '' : `WITH ${dedupStage(reqs, reqs.metrics.includes('duration'), reqs.metrics.includes('cost_total'))}`}
       SELECT ${selects}
-      FROM req r
-      JOIN events e ON e.id = r.rep_id
-      LEFT JOIN models m ON m.rowid = e.model_rowid
+      ${stage2From(reqs, reqs.dims.length > 0, needsModels)}
       ${groupBy}`,
     params: stageParams(reqs),
   }
 }
 
 /** Request stage grouped additionally by (agent, provider, model, day) so cost is
- *  derived from the DEDUPED totals per (model, date) via the injected price table (§8). */
-function costBucketsQuery(reqs: Reqs): Prepared | null {
-  if (!reqs.metrics.includes('cost_api_equiv')) return null
+ *  derived from the DEDUPED totals per (model, date) via the injected price table (§8).
+ *  `unreportedOnly` restricts the buckets to request rows whose agent reported nothing:
+ *  the priced half of the §18 row 1 fusion, so a report is never priced on top of itself. */
+function costBucketsQuery(reqs: Reqs, unreportedOnly = false): Prepared | null {
+  if (unreportedOnly ? !reqs.metrics.includes('cost_total') : !reqs.metrics.includes('cost_api_equiv')) return null
+  const src = stageSource(reqs)
+  const D = dimFor(src)
   const bucketNames = ['b_agent', 'b_provider', 'b_model', 'b_day']
   const bucketSqls = [
-    "COALESCE(e.agent_id, '') AS b_agent",
+    `COALESCE(${src.rep}.agent_id, '') AS b_agent`,
     "COALESCE(m.provider, '') AS b_provider",
     "COALESCE(m.name, '') AS b_model",
-    `${DAY_SQL} AS b_day`,
+    `${D.day} AS b_day`,
   ]
   const tokenSums = TOKEN_FIELDS.map((f) => `SUM(r.${TOKEN_METRIC[f]}) AS ${TOKEN_METRIC[f]}`).join(', ')
   const dimPart =
     reqs.dims.length > 0
-      ? reqs.dims.map((d) => `${DIM_SQL[d]} AS ${d}`).join(', ') + ', '
+      ? reqs.dims.map((d) => `${D[d]} AS ${d}`).join(', ') + ', '
       : ''
   const dimGroup = reqs.dims.length > 0 ? reqs.dims.map((_, i) => i + 1).join(', ') + ', ' : ''
   const groupStart = reqs.dims.length
   const bucketGroup = bucketNames.map((_, i) => groupStart + i + 1).join(', ')
   return {
-    sql: `WITH ${dedupStage(reqs)}
+    sql: `${reqs.foldTable ? '' : `WITH ${dedupStage(reqs, reqs.metrics.includes('duration'), unreportedOnly)}`}
       SELECT ${dimPart}${bucketSqls.join(', ')}, ${tokenSums}
-      FROM req r
-      JOIN events e ON e.id = r.rep_id
-      LEFT JOIN models m ON m.rowid = e.model_rowid
+      ${stage2From(reqs, true, true)}
+      ${unreportedOnly ? 'WHERE r.rep_cost IS NULL' : ''}
       GROUP BY ${dimGroup}${bucketGroup}`,
     params: stageParams(reqs),
   }
@@ -368,8 +525,6 @@ function parseOrder(order: string | undefined): Order | null {
   }
   const kind = parts[0] as Order['kind']
   const dir = (parts[2] === 'asc' ? 1 : -1) as 1 | -1
-  // `cost_total` is the §7 example alias for the only cost metric we expose.
-  if (parts[1] === 'cost_total') return { kind: 'metric', name: 'cost_api_equiv', dir }
   if (kind === 'metric') return { kind, name: assertMetric(parts[1]!), dir }
   return { kind, name: assertDim(parts[1]!), dir }
 }
@@ -396,9 +551,11 @@ function projectLabels(db: DatabaseSync): Map<string, string> {
   const rows = runPrepared(db, { sql: 'SELECT id, display_name, canonical_root FROM projects', params: [] })
   const map = new Map<string, string>()
   for (const r of rows) {
-    const root = r.canonical_root ? String(r.canonical_root) : null
-    const base = root ? (root.split('/').filter(Boolean).pop() ?? null) : null
-    map.set(String(r.id), (r.display_name ? String(r.display_name) : null) ?? base ?? String(r.id))
+    map.set(String(r.id), projectLabel({
+      id: String(r.id),
+      displayName: r.display_name ? String(r.display_name) : null,
+      canonicalRoot: r.canonical_root ? String(r.canonical_root) : null,
+    }))
   }
   return map
 }
@@ -417,13 +574,16 @@ function totalTokens(u: ReturnType<typeof usageOf>): number {
   return u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens + u.reasoningTokens
 }
 
-/** Prices every deduped (dims…, agent, provider, model, day) bucket and folds the
- *  api-equivalent cost up into one accumulator per dim-key ('' key = grand total). */
+/** Prices every deduped (dims…, agent, provider, model, day) bucket and folds one cost
+ *  field up into one accumulator per dim-key ('' key = grand total). `field` is what makes
+ *  §8's two numbers separable: `apiEquivalentUsd` is the API-equivalent view, `actualUsd`
+ *  is the cash a declared billing mode really costs. */
 function priceBuckets(
   db: DatabaseSync,
   cq: Prepared,
   reqs: Reqs,
   deps: QueryDeps,
+  field: 'apiEquivalentUsd' | 'actualUsd',
 ): Map<string, number | null> {
   const priceResolver = deps.priceResolver
   const billingModeFor = deps.billingModeFor ?? (() => 'api' as BillingMode)
@@ -436,10 +596,43 @@ function priceBuckets(
     const entry = priceResolver(String(row.b_provider), String(row.b_model), dayMs)
     const cost = computeCost(usage, entry, billingModeFor(String(row.b_agent)))
     const key = rowKey(row, reqs.dims)
+    const priced = cost[field]
     // NULL dominates, never $0 (§8: unknown price must not read as free).
-    costs.set(key, costs.get(key) === null || cost.apiEquivalentUsd === null ? null : (costs.get(key) ?? 0) + cost.apiEquivalentUsd)
+    costs.set(key, costs.get(key) === null || priced === null ? null : (costs.get(key) ?? 0) + priced)
   }
   return costs
+}
+
+/** The priced half of the fusion over rows that reported nothing, priced as CASH: what a
+ *  request actually costs follows the declared billing mode (§8), while `cost_api_equiv`
+ *  keeps showing the API-equivalent value of the same tokens. Without an injected
+ *  price table an unreported token slice is simply unpriceable, so resolve it through a
+ *  resolver that finds no price: the gap rule turns it into NULL instead of a silent drop. */
+function unreportedPriced(db: DatabaseSync, reqs: Reqs, deps: QueryDeps): Map<string, number | null> {
+  const cq = costBucketsQuery(reqs, true)
+  if (!cq) return new Map()
+  return priceBuckets(db, cq, reqs, { ...deps, priceResolver: deps.priceResolver ?? (() => null) }, 'actualUsd')
+}
+
+/**
+ * §18 row 1 query priority as arithmetic on NULL-preserving facts: `reported` is the
+ * group's folded report (NULL = none), `priced` the cost of the never-reported requests
+ * (undefined = none exist, NULL = exists but unpriced). Unknown is never 0 (§8), so an
+ * unpriced unreported slice NULLs the whole group rather than leaking a floor.
+ */
+function fuseCost(reported: number | null, priced: number | null | undefined): number | null {
+  if (priced === null) return null
+  if (reported === null && priced === undefined) return null
+  return (reported ?? 0) + (priced ?? 0)
+}
+
+/** Metrics that make stage 1 run at all: token/duration read the fold, `cost_api_equiv`
+ *  prices its buckets, and `cost_total` needs both the folded report and the unreported
+ *  buckets. A spec with none of them must never pay for — or create — one. */
+function usesFold(metrics: Metric[]): boolean {
+  return metrics.some(
+    (m) => TOKEN_METRIC_NAMES.includes(m) || m === 'duration' || m === 'cost_api_equiv' || m === 'cost_total',
+  )
 }
 
 export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): QueryResult {
@@ -447,7 +640,24 @@ export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): Quer
   const metrics = (spec.metrics ?? ['events']).map(assertMetric)
   const dims = (spec.dims ?? []).map(assertDim)
   if (new Set(dims).size !== dims.length) throw new Error('query: duplicate dims in spec')
-  const reqs: Reqs = { metrics, dims, where: buildWhere(spec.filter), fold: buildFold(deps?.aggregation) }
+  const where = buildWhere(spec.filter, deps?.now)
+  const fold = buildFold(deps?.aggregation)
+  const reqs: Reqs = {
+    metrics,
+    dims,
+    where,
+    fold,
+    joinsModels: Boolean(spec.filter?.model?.length || spec.filter?.provider?.length),
+  }
+  // One materialisation per distinct (fold key, filter) inside the scope: the four stage-2
+  // statements below (grouped, totals, and their two cost-bucket variants) otherwise each
+  // re-run the fold, and a whole dashboard page re-runs it ~14 times over.
+  if (deps?.foldCache && usesFold(metrics)) {
+    const draft: Reqs = { ...reqs }
+    reqs.foldTable = deps.foldCache.ensure(foldKey([fold.sql, where.sql, where.params, reqs.joinsModels]), (table) =>
+      materialiseFoldSql(draft, table),
+    )
+  }
 
   const eventRows = runPrepared(db, eventQuery(reqs))
   const tokenQ = requestStageQuery(reqs)
@@ -460,7 +670,7 @@ export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): Quer
     if (!r) {
       r = {}
       for (const d of dims) r[d] = row[d] ?? ''
-      for (const m of metrics) r[m] = m === 'cost_api_equiv' || m === 'cost_reported' ? null : 0
+      for (const m of metrics) r[m] = m === 'cost_api_equiv' || m === 'cost_reported' || m === 'cost_total' ? null : 0
       merged.set(key, r)
     }
     return r
@@ -483,12 +693,20 @@ export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): Quer
     const costDeps = deps
     const cq = costBucketsQuery(reqs)
     if (cq) {
-      const costs = priceBuckets(db, cq, reqs, costDeps)
+      const costs = priceBuckets(db, cq, reqs, costDeps, 'apiEquivalentUsd')
       for (const [key, api] of costs) {
         const row = merged.get(key)
         if (row) row.cost_api_equiv = api
       }
     }
+  }
+
+  // Fusion last so both halves read the same stage-1 fold; keys are still raw dim values.
+  if (metrics.includes('cost_total')) {
+    const priced = unreportedPriced(db, reqs, deps ?? {})
+    const reportedByDim = new Map<string, number | null>()
+    for (const row of tokenRows) reportedByDim.set(rowKey(row, dims), nullableNum(row.reported_folded))
+    for (const [key, r] of merged) r.cost_total = fuseCost(reportedByDim.get(key) ?? null, priced.get(key))
   }
 
   // The project dim surfaces human labels (§9 shows names, not hashes); merge keys
@@ -514,7 +732,7 @@ export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): Quer
   }
 
   const columns = [...dims, ...metrics]
-  const totals = computeTotals(db, reqs, deps)
+  const totals = spec.totals === false ? {} : computeTotals(db, reqs, deps)
   return { rows, columns, totals, truncated }
 }
 
@@ -529,15 +747,20 @@ function computeTotals(db: DatabaseSync, reqs: Reqs, deps: QueryDeps | undefined
     else if (m === 'sessions') totals.sessions = num(ev.sessions)
     else if (m === 'cost_api_equiv') totals.cost_api_equiv = null
     else if (m === 'cost_reported') totals.cost_reported = nullableNum(ev.cost_reported)
+    else if (m === 'cost_total') totals.cost_total = null // filled from the fusion below
     else totals[m] = num(tk[m])
   }
   if (reqs.metrics.includes('cost_api_equiv') && deps?.priceResolver) {
     const costDeps = deps
     const cq = costBucketsQuery(totalsReq)
     if (cq) {
-      const costs = priceBuckets(db, cq, totalsReq, costDeps)
+      const costs = priceBuckets(db, cq, totalsReq, costDeps, 'apiEquivalentUsd')
       totals.cost_api_equiv = costs.get('[]') ?? null
     }
+  }
+  if (reqs.metrics.includes('cost_total')) {
+    const priced = unreportedPriced(db, totalsReq, deps ?? {})
+    totals.cost_total = fuseCost(nullableNum(tk.reported_folded), priced.get('[]'))
   }
   return totals
 }

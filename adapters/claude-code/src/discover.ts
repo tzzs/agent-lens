@@ -4,7 +4,7 @@
  * known here). Sorted output so `source_id` enumeration and fixture tests are stable.
  */
 import { basename } from 'node:path'
-import { walkForFiles } from '@agentlens/collector'
+import { walkForFiles } from '@agentlens/event-model'
 import { deriveSourceId, type HostContext, type SourceSpec } from '@agentlens/event-model'
 import { AGENT_ID } from './record.ts'
 import { historyFileOf, projectsDirOf } from './paths.ts'

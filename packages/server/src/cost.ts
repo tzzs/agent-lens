@@ -1,10 +1,16 @@
 /**
  * §8 billing modes as a read model.
  *
- * The cube exposes one cost metric — `cost_api_equiv` — because that is the
- * only number derivable from tokens alone. "Actual cash" is a property of the
- * agent's declared billing mode, not of the tokens, so the server folds the
- * cube's per-agent API-equivalent through §8's table:
+ * The cube exposes the §18 row 1 cost priority as one metric — `cost_total` — so
+ * this route never adds a reported cost onto a priced estimate of the same work.
+ * The two underlying facts stay visible as their own columns; what is resolved in
+ * SQL, not here, is which one pays for which request:
+ *
+ *   reported where the agent reported it, priced tokens for the never-reported part,
+ *   NULL when a group has neither (§8: $0 reads as "free local model").
+ *
+ * "Actual cash" is a property of the agent's declared billing mode, not of the
+ * tokens, so the server folds the cube's per-agent API-equivalent through §8's table:
  *
  *   api          -> actual = api-equivalent
  *   subscription -> actual = 0 (the plan fee is flat, not per-token)
@@ -24,6 +30,8 @@ export interface CostSlice {
   actualUsd: number | null
   /** §18 row 1: cost the agent reported for itself (OpenCode/WorkBuddy); null = it logs none. */
   reportedUsd: number | null
+  /** §18 row 1 fused: reported-where-reported + priced-where-not, from the cube's cost_total. */
+  totalUsd: number | null
 }
 
 export interface CostView {
@@ -31,6 +39,10 @@ export interface CostView {
   apiEquivalentUsd: number | null
   actualUsd: number | null
   reportedUsd: number | null
+  /** One number per §18 row 1 priority; null when any slice is unknown (§8, never 0). */
+  totalUsd: number | null
+  /** True when a per-agent fused slice is null: the total above is a floor, not a total. */
+  totalPartial: boolean
   /** True when at least one agent is unpriced: the totals above are floors, not totals. */
   apiEquivalentPartial: boolean
   actualPartial: boolean
@@ -51,42 +63,53 @@ function usd(values: (number | null)[]): number | null {
 }
 
 export function costView(ctx: ServerCtx, filter?: QueryFilter): CostView {
+  // With a DB file, createContext already wired billingModeFor to the `config.json`
+  // declarations (§8); this literal 'api' only stands for a DB-less in-process ctx.
   const modeFor = ctx.billingModeFor ?? ((): BillingMode => 'api')
-  // §18 row 1: reported cost needs no price table, so it is folded even when
-  // pricing is not configured — it is the agent's own number, not ours.
-  const reported = query(ctx.db, { metrics: ['cost_reported'], dims: ['agent'], filter }, ctx.cubeDeps)
-  const reportedByAgent = new Map(reported.rows.map((r) => [String(r.agent), numOrNull(r.cost_reported)]))
-  const reportedTotal = usd([...reportedByAgent.values()])
+  // One cube call carries all three cost facts (raw reported, priced, and the §18 row 1
+  // fusion) so the route pays one stage-1 fold per slice, not three, and the three
+  // numbers per agent cannot come from different filter/fold vintages.
+  const res = query(
+    ctx.db,
+    { metrics: ['cost_reported', 'cost_api_equiv', 'cost_total'], dims: ['agent'], filter, totals: false },
+    ctx.cubeDeps,
+  )
+  const reportedTotal = usd(res.rows.map((r) => numOrNull(r.cost_reported)))
+  const fusedTotal = usd(res.rows.map((r) => numOrNull(r.cost_total)))
+  const fusedPartial = res.rows.some((r) => numOrNull(r.cost_total) === null)
   if (!ctx.priceResolver) {
     return {
       pricingConfigured: false,
       apiEquivalentUsd: null,
       actualUsd: null,
       reportedUsd: reportedTotal,
-      apiEquivalentPartial: reportedByAgent.size > 0 && [...reportedByAgent.values()].some((v) => v === null),
+      totalUsd: fusedTotal,
+      totalPartial: fusedPartial,
+      apiEquivalentPartial: res.rows.length > 0 && res.rows.some((r) => numOrNull(r.cost_reported) === null),
       actualPartial: false,
       unpricedAgents: [],
-      perAgent: [...reportedByAgent.keys()].map((agentId) => ({
-        agentId,
-        billingMode: modeFor(agentId),
+      perAgent: res.rows.map((r) => ({
+        agentId: String(r.agent ?? ''),
+        billingMode: modeFor(String(r.agent ?? '')),
         apiEquivalentUsd: null,
         actualUsd: null,
-        reportedUsd: reportedByAgent.get(agentId) ?? null,
+        reportedUsd: numOrNull(r.cost_reported),
+        totalUsd: numOrNull(r.cost_total),
       })),
-      basis: 'no price table injected — api-equivalent and actual are n/a (§8: an unknown price must never render as $0)',
+      basis: 'no price table injected — api-equivalent and actual are n/a (§8: an unknown price must never render as $0); cost_total covers only reported slices',
     }
   }
-  const res = query(ctx.db, { metrics: ['cost_api_equiv'], dims: ['agent'], filter }, ctx.cubeDeps)
   const perAgent: CostSlice[] = res.rows.map((r) => {
     const agentId = String(r.agent ?? '')
     const billingMode = modeFor(agentId)
-    const api = r.cost_api_equiv === null || r.cost_api_equiv === undefined ? null : Number(r.cost_api_equiv)
+    const api = numOrNull(r.cost_api_equiv)
     return {
       agentId,
       billingMode,
       apiEquivalentUsd: api,
       actualUsd: api === null ? null : billingMode === 'api' ? api : 0,
-      reportedUsd: reportedByAgent.get(agentId) ?? null,
+      reportedUsd: numOrNull(r.cost_reported),
+      totalUsd: numOrNull(r.cost_total),
     }
   })
   return {
@@ -94,12 +117,14 @@ export function costView(ctx: ServerCtx, filter?: QueryFilter): CostView {
     apiEquivalentUsd: usd(perAgent.map((s) => s.apiEquivalentUsd)),
     actualUsd: usd(perAgent.map((s) => s.actualUsd)),
     reportedUsd: reportedTotal,
+    totalUsd: fusedTotal,
+    totalPartial: fusedPartial,
     apiEquivalentPartial: perAgent.some((s) => s.apiEquivalentUsd === null),
     actualPartial: perAgent.some((s) => s.actualUsd === null),
     unpricedAgents: perAgent.filter((s) => s.apiEquivalentUsd === null).map((s) => s.agentId),
     perAgent,
     basis:
-      'api-equivalent = tokens x price (cube, per-agent §18 fold); actual = billing mode applied to it (subscription/local real cash is 0); reported = the agent own cost field when it has one',
+      'cost_total (cube, §18 row 1) = agent-reported cost where the agent reported one + priced tokens for the never-reported part, NULL when neither; api-equivalent = all tokens x price (per-agent §18 fold), actual = billing mode applied to it (subscription/local real cash is 0)',
   }
 }
 

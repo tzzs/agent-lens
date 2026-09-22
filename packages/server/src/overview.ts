@@ -71,6 +71,8 @@ export function overview(ctx: ServerCtx, sp: URLSearchParams): OverviewResponse 
   const events = sumOf('events')
   const sessions = sumOf('sessions')
 
+  // Every call below is read for its rows; the grand-total fold above already covers the
+  // numbers this page prints, so a second one per call would double the route's cost.
   const trend = query(
     ctx.db,
     {
@@ -79,35 +81,36 @@ export function overview(ctx: ServerCtx, sp: URLSearchParams): OverviewResponse 
       filter: windowFilter,
       order: `dim:${granularity}:asc`,
       limit: 400,
+      totals: false,
     },
     ctx.cubeDeps,
   )
   const trendByHost = query(
     ctx.db,
-    { metrics: ['tokens_total', 'events'], dims: [granularity, 'host'], filter: windowFilter, order: `dim:${granularity}:asc`, limit: 1200 },
+    { metrics: ['tokens_total', 'events'], dims: [granularity, 'host'], filter: windowFilter, order: `dim:${granularity}:asc`, limit: 1200, totals: false },
     ctx.cubeDeps,
   )
   const agents = query(
     ctx.db,
-    { metrics: ['events', 'sessions', 'tokens_total', 'cost_api_equiv', 'duration'], dims: ['agent'], filter: windowFilter },
+    { metrics: ['events', 'sessions', 'tokens_total', 'cost_api_equiv', 'duration'], dims: ['agent'], filter: windowFilter, totals: false },
     ctx.cubeDeps,
   )
   const hosts = query(
     ctx.db,
-    { metrics: ['events', 'sessions', 'tokens_total', 'cost_api_equiv'], dims: ['agent', 'host'], filter: windowFilter },
+    { metrics: ['events', 'sessions', 'tokens_total', 'cost_api_equiv'], dims: ['agent', 'host'], filter: windowFilter, totals: false },
     ctx.cubeDeps,
   )
   const projects = query(
     ctx.db,
-    { metrics: ['sessions', 'events', 'tokens_total', 'cost_api_equiv'], dims: ['project'], filter: windowFilter, limit: 12 },
+    { metrics: ['sessions', 'events', 'tokens_total', 'cost_api_equiv'], dims: ['project'], filter: windowFilter, limit: 12, totals: false },
     ctx.cubeDeps,
   )
   const capabilities = query(
     ctx.db,
-    { metrics: ['events', 'duration', 'tokens_total'], dims: ['capability_type'], filter: windowFilter },
+    { metrics: ['events', 'duration', 'tokens_total'], dims: ['capability_type'], filter: windowFilter, totals: false },
     ctx.cubeDeps,
   )
-  const errored = query(ctx.db, { metrics: ['events'], dims: ['capability_type'], filter: { ...windowFilter, status: ['error'] } }, ctx.cubeDeps)
+  const errored = query(ctx.db, { metrics: ['events'], dims: ['capability_type'], filter: { ...windowFilter, status: ['error'] }, totals: false }, ctx.cubeDeps)
   const compacts = query(ctx.db, { metrics: ['events'], filter: { ...windowFilter, type: ['context.compact'] } }, ctx.cubeDeps)
 
   const byCap = new Map(capabilities.rows.map((r) => [String(r.capability_type), Number(r.events ?? 0)]))

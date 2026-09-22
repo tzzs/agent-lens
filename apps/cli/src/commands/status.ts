@@ -2,7 +2,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { query, resolveSince } from '@agentlens/query'
 import type { FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
-import { makeHostCtx, queryDeps, redactHome } from '../context.ts'
+import { makeHostCtx, machineIdentity, machineLines, queryDeps, redactHome } from '../context.ts'
 import { getAdapters } from '../adapters.ts'
 import { formatCount, formatTokens, formatUsd, table } from '../render.ts'
 import { rowsOf } from './shared.ts'
@@ -59,6 +59,10 @@ export async function cmdStatus(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbP
     `${formatCount(t.sessions ?? 0)} sessions · ${formatCount(t.events ?? 0)} events · ` +
       `${formatTokens(t.tokens_total)} tokens (deduped) · ${formatUsd(t.cost_api_equiv)} api-equiv`,
   )
+
+  // §2: top of the entity ladder — which install's store these numbers came from.
+  ctx.out('')
+  for (const line of machineLines(machineIdentity(db))) ctx.out(line)
   return 0
 }
 

@@ -25,6 +25,8 @@
       "@agentlens/adapter-qoder": ["./adapters/qoder/src/index.ts"],
       "@agentlens/adapter-opencode": ["./adapters/opencode/src/index.ts"],
       "@agentlens/adapter-workbuddy": ["./adapters/workbuddy/src/index.ts"],
+      "@agentlens/adapter-pi": ["./adapters/pi/src/index.ts"],
+      "@agentlens/adapter-zcode": ["./adapters/zcode/src/index.ts"],
       "@agentlens/cli": ["./apps/cli/src/index.ts"],
       "@agentlens/server": ["./packages/server/src/index.ts"],
       "@agentlens/web": ["./apps/web/src/lib/index.ts"]

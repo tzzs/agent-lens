@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { deriveSourceId, type ParseCtx, type SourceSpec } from '@agentlens/event-model'
 import { parse } from '../src/parse.ts'
 import { FIXTURES_DIR } from './helpers.ts'
-import { isParseErrorRecord, PARSE_ERROR_KEY } from '@agentlens/collector'
+import { isParseErrorRecord, PARSE_ERROR_KEY } from '@agentlens/event-model'
 
 function ctxFor(name: string): { source: SourceSpec; ctx: ParseCtx } {
   const path = `${FIXTURES_DIR}/${name}`

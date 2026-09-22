@@ -1,23 +1,30 @@
 /**
- * Doctor's Agents + Permissions blocks (§11): adapter detection when adapter
- * packages are installed, otherwise the ingested entity rows with an explicit
- * "adapter not in this build" note — never a silent zero.
+ * Doctor's Agents + Permissions blocks (§11): adapter detection over the adapter
+ * set the host injects (`ServerDeps.adapters`, §5.4), otherwise the ingested
+ * entity rows with an explicit "adapter not in this build" note — never a
+ * silent zero. Detection is read-only.
+ *
+ * §11's history.jsonl session-existence recovery is deliberately absent here: it needs the
+ * store's own index file, which only the CLI's adapter probe loop (its `probeAdapters`)
+ * locates and reads. Duplicating that scan in the server would be the copy-paste §14
+ * forbids, so the line stays CLI-side until the ids arrive through `ServerDeps`.
  */
+import type { AgentAdapter } from '@agentlens/event-model'
 import type { ServerCtx } from './types.ts'
 import type { DoctorAgentRow } from './doctor-types.ts'
-import { hostContext, isReadable, loadAdapters } from './adapters.ts'
+import { hostContext, isReadable } from './adapters.ts'
 import { redactHome, rowsOf } from './resolve.ts'
 
 function count(db: ServerCtx['db'], sql: string, ...params: unknown[]): number {
   return Number(rowsOf(db, sql, ...params)[0]?.n ?? 0)
 }
 
-export async function doctorAgents(ctx: ServerCtx): Promise<{
+/** The adapter set arrives injected (§5.4); Doctor's own route resolves it once for all blocks. */
+export async function doctorAgents(ctx: ServerCtx, adapters: readonly AgentAdapter[]): Promise<{
   rows: DoctorAgentRow[]
   permissions: { path: string; readable: boolean }[]
   adaptersInstalled: boolean
 }> {
-  const adapters = await loadAdapters()
   const ingested = rowsOf(ctx.db, 'SELECT id, display_name, detected_version, data_root FROM agents')
   const rows: DoctorAgentRow[] = []
   const permissions: { path: string; readable: boolean }[] = []

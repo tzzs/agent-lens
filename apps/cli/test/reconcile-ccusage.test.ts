@@ -190,15 +190,10 @@ describe.skipIf(SKIP_REASON !== null)(
         out: (l) => cliLines.push(l),
         err: (l) => cliLines.push(l),
         homedir: HOME,
-        // §5.1 defines `HostContext.dataRoot` as the AGENT's root ("e.g. ~/.claude"), and every
-        // adapter's `rootOf` honours that, but `makeHostCtx` seeds it with `ctx.homedir` — so a
-        // plain `agentlens scan` looks for ~/.claude/projects at ~/projects and detects nothing
-        // (evidence: detect() returns `no projects directory at /Users/.../projects`). The
-        // upstream switch the adapter itself documents as authoritative (paths.ts: "CLAUDE_-
-        // CONFIG_DIR wins over the host-supplied root") is used to point the SAME real store at
-        // ~/.claude without editing anyone's source. FIX IN PRODUCT CODE, not here: either
-        // makeHostCtx should pass the agent root, or runScan should detect against homedir.
-        env: { CLAUDE_CONFIG_DIR: join(HOME, '.claude') },
+        // No env override: this gate must drive the same default detection a user gets
+        // (`rootOf` falls back to ~/.claude, paths.ts:12), otherwise it would certify a
+        // path nobody walks. `corpusSkipReason` below checks that same directory.
+        env: {},
         now: () => Date.now(),
       }
     }

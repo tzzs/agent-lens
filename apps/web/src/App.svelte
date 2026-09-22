@@ -4,9 +4,13 @@
   import { live, options } from './lib/live.svelte.js'
   import { range, filterParams } from './lib/filter.svelte.js'
   import { loader } from './lib/pagestate.svelte.js'
+  import { initTheme } from './lib/theme.svelte.js'
   import { api } from './lib/api.ts'
   import { formatCompact, relativeTime } from './lib/format.ts'
 
+  import SidebarNav, { type NavGroup } from './components/ui/SidebarNav.svelte'
+  import Icon from './components/ui/Icon.svelte'
+  import Alert from './components/ui/Alert.svelte'
   import RangeControls from './components/RangeControls.svelte'
   import Overview from './pages/Overview.svelte'
   import Agents from './pages/Agents.svelte'
@@ -19,16 +23,32 @@
   import Doctor from './pages/Doctor.svelte'
   import Settings from './pages/Settings.svelte'
 
-  const NAV = [
-    { label: 'Overview', path: '/' },
-    { label: 'Agents', path: '/agents' },
-    { label: 'Projects', path: '/projects' },
-    { label: 'Sessions', path: '/sessions' },
-    { label: 'Usage', path: '/usage' },
-    { label: 'Capabilities', path: '/capabilities' },
-    { label: 'Models', path: '/models' },
-    { label: 'Doctor', path: '/doctor' },
-    { label: 'Settings', path: '/settings' },
+  // Grouped per plan-v2 §10's nav: overview, the entities, the analysis axes, system.
+  const NAV: NavGroup[] = [
+    { label: '', items: [{ label: 'Overview', path: '/', icon: 'overview' }] },
+    {
+      label: 'Explore',
+      items: [
+        { label: 'Sessions', path: '/sessions', icon: 'sessions' },
+        { label: 'Projects', path: '/projects', icon: 'projects' },
+        { label: 'Agents', path: '/agents', icon: 'agents' },
+      ],
+    },
+    {
+      label: 'Analyze',
+      items: [
+        { label: 'Capabilities', path: '/capabilities', icon: 'capabilities' },
+        { label: 'Usage', path: '/usage', icon: 'usage' },
+        { label: 'Models', path: '/models', icon: 'models' },
+      ],
+    },
+    {
+      label: 'System',
+      items: [
+        { label: 'Doctor', path: '/doctor', icon: 'doctor' },
+        { label: 'Settings', path: '/settings', icon: 'settings' },
+      ],
+    },
   ]
 
   // The overview feed also drives the two §14 header banners, so App owns it and
@@ -37,7 +57,11 @@
 
   // Filter options for the header selects: populated from the agent directory,
   // hosts folded from each agent's host breakdown.
+  // Single-flight like `loader`: a tick mid-request is dropped, not queued.
+  let optionsInFlight = false
   async function refreshOptions() {
+    if (optionsInFlight) return
+    optionsInFlight = true
     try {
       const a = await api.agents()
       options.agents = a.rows.map((r) => ({ agentId: r.agentId, displayName: r.displayName }))
@@ -46,17 +70,20 @@
       options.hosts = [...hosts].sort()
     } catch {
       /* options are best-effort; a failure just shrinks the filter dropdowns */
+    } finally {
+      optionsInFlight = false
     }
   }
 
   const parts = $derived(route.path.split('/').filter(Boolean))
   const page = $derived(parts[0] ?? '')
   const navActive = (p: string) => (p === '/' ? parts.length === 0 : '/' + parts[0] === p)
+  let navOpen = $state(false)
 
   let es: EventSource | null = null
   onMount(() => {
     const stop = initRouter()
-    refreshOptions()
+    const stopTheme = initTheme()
 
     // SSE drives the live indicator + tells every page to refetch. Relative URL:
     // same-origin only, per the local-first rule.
@@ -89,6 +116,7 @@
 
     return () => {
       stop?.()
+      stopTheme()
       es?.close()
     }
   })
@@ -100,73 +128,65 @@
     void range.host
     void live.lastTick
     ov.run()
+  })
+
+  // Filter options only change when new data lands, not when the user re-filters.
+  $effect(() => {
+    void live.lastTick
     refreshOptions()
   })
+
+  const banners = $derived(ov.state.data?.banners ?? null)
 </script>
 
-<div class="flex min-h-screen">
-  <aside class="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-line bg-ink-900/80">
-    <div class="flex items-center gap-2 px-5 py-5">
-      <div class="h-7 w-7 rounded-md bg-signal/20 ring-1 ring-signal/50 grid place-items-center">
-        <div class="h-2.5 w-2.5 rounded-full bg-signal"></div>
-      </div>
-      <div>
-        <div class="text-sm font-semibold tracking-tight">AgentLens</div>
-        <div class="text-[10px] text-mist-500">activity center</div>
-      </div>
-    </div>
-    <nav class="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
-      {#each NAV as n (n.path)}
-        <a
-          href={'#' + n.path}
-          class="block rounded-md px-3 py-1.5 text-sm transition-colors {navActive(n.path)
-            ? 'bg-ink-800 text-mist-100 font-medium'
-            : 'text-mist-400 hover:bg-ink-850 hover:text-mist-100'}"
-        >
-          {n.label}
-        </a>
-      {/each}
-    </nav>
-    <div class="border-t border-line px-5 py-3 text-[10px] text-mist-500">
-      loopback only · no telemetry
-    </div>
-  </aside>
+<a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-surface focus:px-3 focus:py-2 focus:shadow-overlay">Skip to content</a>
+
+<div class="flex min-h-screen bg-page">
+  <SidebarNav groups={NAV} isActive={navActive} bind:open={navOpen} />
 
   <div class="flex min-w-0 flex-1 flex-col">
-    <header class="sticky top-0 z-10 border-b border-line bg-ink-950/85 backdrop-blur">
-      <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-3">
-        <RangeControls />
-        <div class="flex items-center gap-2 text-[11px]">
-          <span
-            class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 {live.connected
-              ? 'border-ok/40 text-ok'
-              : 'border-line text-mist-500'}"
-            title={live.connected
-              ? `SSE connected · ${formatCompact(live.events)} events · last ${live.maxTimestamp ? relativeTime(live.maxTimestamp, Date.now()) : '—'}`
-              : 'SSE stream not connected'}
-          >
-            <span class="h-1.5 w-1.5 rounded-full {live.connected ? 'animate-pulse bg-ok' : 'bg-mist-500'}"></span>
-            {live.connected ? 'live' : 'offline'}
-          </span>
+    <header class="sticky top-0 z-20 border-b border-line bg-page/85 backdrop-blur-md">
+      <div class="flex h-14 items-center gap-3 px-4 sm:px-6">
+        <button
+          type="button"
+          class="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-2 hover:bg-hover-2 lg:hidden"
+          onclick={() => (navOpen = true)}
+          aria-label="Open navigation"
+        >
+          <Icon name="menu" size={18} />
+        </button>
+        <div class="no-scrollbar -my-2 min-w-0 flex-1 overflow-x-auto py-2">
+          <RangeControls />
         </div>
+        <span
+          class="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium {live.connected
+            ? 'bg-green-tint text-green'
+            : 'bg-hover-2/70 text-ink-3'}"
+          title={live.connected
+            ? `Streaming · ${formatCompact(live.events)} events · latest ${live.maxTimestamp ? relativeTime(live.maxTimestamp, Date.now()) : '—'}`
+            : 'Live stream not connected'}
+        >
+          <span class="relative flex h-1.5 w-1.5">
+            {#if live.connected}<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-green opacity-60"></span>{/if}
+            <span class="relative inline-flex h-1.5 w-1.5 rounded-full {live.connected ? 'bg-green' : 'bg-ink-3'}"></span>
+          </span>
+          {live.connected ? 'Live' : 'Offline'}
+        </span>
       </div>
-
-      {#if ov.state.status === 'ready' && ov.state.data}
-        {@const b = ov.state.data.banners}
-        {#if b.hostSplit}
-          <div class="border-t border-warn/25 bg-warn/5 px-6 py-1.5 text-xs text-warn">
-            <span class="font-semibold">host split.</span> {b.hostSplit.message}
-          </div>
-        {/if}
-        {#if b.coverage.banner}
-          <div class="border-t border-danger/25 bg-danger/5 px-6 py-1.5 text-xs text-danger">
-            <span class="font-semibold">history.</span> {b.coverage.banner}
-          </div>
-        {/if}
-      {/if}
     </header>
 
-    <main class="min-w-0 flex-1 px-6 py-6">
+    <main id="main" class="mx-auto w-full min-w-0 max-w-[1440px] flex-1 px-4 py-6 sm:px-6 lg:px-8">
+      {#if banners && (banners.hostSplit || banners.coverage.banner)}
+        <div class="mb-5 space-y-2">
+          {#if banners.hostSplit}
+            <Alert tone="orange" title="Host split." id="host-split">{banners.hostSplit.message}</Alert>
+          {/if}
+          {#if banners.coverage.banner}
+            <Alert tone="red" title="Incomplete history." id="coverage">{banners.coverage.banner}</Alert>
+          {/if}
+        </div>
+      {/if}
+
       {#if page === ''}
         <Overview {ov} />
       {:else if page === 'agents'}
@@ -175,7 +195,7 @@
         <Projects />
       {:else if page === 'sessions'}
         {#if parts[1]}
-          <SessionDetail id={decodeURIComponent(parts[1])} />
+          {#key parts[1]}<SessionDetail id={decodeURIComponent(parts[1])} />{/key}
         {:else}
           <Sessions />
         {/if}
@@ -190,8 +210,8 @@
       {:else if page === 'settings'}
         <Settings />
       {:else}
-        <div class="rounded-md border border-line bg-ink-900 p-6 text-sm text-mist-400">
-          Unknown page <span class="nums text-mist-100">/{page}</span>. Pick one from the left.
+        <div class="rounded-card bg-surface p-6 text-sm text-ink-2 shadow-card">
+          Unknown page <span class="nums text-ink">/{page}</span>. Pick one from the navigation.
         </div>
       {/if}
     </main>

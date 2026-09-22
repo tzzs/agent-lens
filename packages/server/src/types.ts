@@ -8,7 +8,7 @@
  * metadata) — never token/cost aggregations.
  */
 import type { DatabaseSync } from 'node:sqlite'
-import type { AggregationPolicy, CapabilityCatalog } from '@agentlens/event-model'
+import type { AgentAdapter, AggregationPolicy, CapabilityCatalog } from '@agentlens/event-model'
 import type { BillingMode, PriceEntry } from '@agentlens/pricing'
 import type { QueryDeps } from '@agentlens/query'
 
@@ -65,6 +65,13 @@ export interface ServerDeps {
   scan?: () => Promise<ScanSummary>
   /** Static capability catalogs (§5.1) powering "installed but never used". */
   capabilityCatalog?: () => Promise<CatalogEntry[]>
+  /**
+   * The adapter set, injected because the CLI owns adapter wiring (§5.4): the
+   * server declares no dependency on any adapter package, so an `import` here
+   * would silently resolve to nothing and Doctor would list every agent as
+   * ingested-only. Absent ⇒ Doctor reports only what is already in the DB.
+   */
+  adapters?: () => Promise<AgentAdapter[]>
   /** Transport plug point for GET /api/events; default polls `events` (M6 swaps in the watcher). */
   changeSource?: () => ChangeSource
   /** Home dir for read-only coverage probes; defaults to the ambient user. */
@@ -85,6 +92,7 @@ export interface ServerCtx {
   readonly staticDir?: string
   readonly scan?: () => Promise<ScanSummary>
   readonly capabilityCatalog?: () => Promise<CatalogEntry[]>
+  readonly adapters?: () => Promise<AgentAdapter[]>
   readonly changeSource: () => ChangeSource
   readonly homedir: string
   readonly dbPath?: string

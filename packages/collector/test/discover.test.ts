@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, symlink, utimes, writeFile } from 'node:fs/promises
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
-import { walkForFiles } from '../src/discover.ts'
+import { walkForFiles } from '@agentlens/event-model'
 
 let currentTmp: string | null = null
 

@@ -1,21 +1,15 @@
 /**
  * GET /api/doctor (§11) — the trust report `agl doctor` prints, as JSON.
  *
- * Numbers are re-derived from the rows the cube aggregates: the dedup line uses
- * event-model's `aggregateRequestTokens` over the same usage rows, so "raw sum →
- * deduped" cannot disagree with the dashboard. This diagnostic scans all usage
- * rows on purpose; the hot dashboard routes never do.
+ * The per-agent fold and the deeper checks come from the shared storage helpers the CLI calls
+ * too (§14: the two ends must not disagree), so every token total here is folded under the
+ * policy persisted with that agent's own rows (§18 row 2) — never one global rule. This route
+ * scans all usage rows on purpose; the hot dashboard routes never do.
  */
-import { aggregateRequestTokens } from '@agentlens/event-model'
-import { rowToEvent } from '@agentlens/storage'
-import { query, type QueryFilter } from '@agentlens/query'
-import type { ServerCtx } from './types.ts'
-import { costView, missingPriceModels } from './cost.ts'
+import type { AggregationMode } from '@agentlens/event-model'
+import type { AgentUsageQuality, ParserVersionDrift, RetentionCounts } from '@agentlens/storage'
+import { costView } from './cost.ts'
 import { coverageReport } from './coverage.ts'
-import { hostContext, isReadable, loadAdapters } from './adapters.ts'
-import { parseFilter } from './request-spec.ts'
-import { redactHome, rowsOf } from './resolve.ts'
-import type { Usage } from '@agentlens/event-model'
 
 export interface DoctorAgentRow {
   id: string
@@ -28,11 +22,42 @@ export interface DoctorAgentRow {
   note: string | null
 }
 
+/** One agent's Usage quality row, plus whether its cube total and event-model's fold agree. */
+export interface DoctorUsageAgentRow extends AgentUsageQuality {
+  agrees: boolean
+}
+
+export interface DoctorSubagentLinkage {
+  agentId: string
+  total: number
+  orphan: number
+  orphanPct: number
+}
+
+/** §5.2: events whose stored timestamp the source never stated, counted per agent. */
+export interface DoctorTimestampGuess {
+  agentId: string
+  events: number
+  guessed: number
+  guessedPct: number
+  /** The unbounded case (§19): dated by the instant the scan ran. */
+  fromIngestClock: number
+  /** Bounded by the source file's last write instead. */
+  fromFileMtime: number
+}
+
 export interface DoctorReport {
   generatedAt: number
   adaptersInstalled: boolean
   agents: DoctorAgentRow[]
-  parsing: { events: number; parseErrors: number; parseErrorPct: number; unknownTypes: number }
+  parsing: {
+    events: number
+    parseErrors: number
+    parseErrorPct: number
+    unknownTypes: number
+    /** §5.3: sources whose stored parser is older than the adapter's current one. */
+    parserDrift: ParserVersionDrift
+  }
   usageQuality: {
     reported: number
     estimated: number
@@ -42,8 +67,17 @@ export interface DoctorReport {
     dedupedTokens: number
     inflationAvoidedPct: number
     dedupActive: boolean
+    /** §18 row 2: more than one mode here is the mixed-fold case; no global rule fits it. */
+    modes: AggregationMode[]
+    perAgent: DoctorUsageAgentRow[]
   }
   coverage: ReturnType<typeof coverageReport>
+  /** §4.4 row 8: subagent events whose parent the time heuristic could not resolve. */
+  subagents: DoctorSubagentLinkage[]
+  /** §5.2: per-agent count of events whose time the source never stated. */
+  guessedTimestamps: DoctorTimestampGuess[]
+  /** §4.4 row 4: sources upstream deleted or rotated after they were read. */
+  retention: RetentionCounts
   capabilities: { type: string; events: number; errors: number }[]
   capabilitySupport: { agentId: string; recorded: string[] }[]
   catalog: { available: boolean; note: string; installed: number; neverUsed: number }
@@ -51,12 +85,4 @@ export interface DoctorReport {
   cost: ReturnType<typeof costView>
   permissions: { path: string; readable: boolean }[]
   content: { available: boolean; payloads: number; note: string }
-}
-
-const pctOf = (n: number, d: number): number => (d === 0 ? 0 : (n / d) * 100)
-const sumTokens = (u: Usage): number =>
-  u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens + u.reasoningTokens
-
-function count(db: ServerCtx['db'], sql: string, ...params: unknown[]): number {
-  return Number(rowsOf(db, sql, ...params)[0]?.n ?? 0)
 }

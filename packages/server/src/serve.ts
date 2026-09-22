@@ -12,7 +12,7 @@ import { serve, type ServerType } from '@hono/node-server'
 import { createApp, createContext } from './app.ts'
 import type { ServerCtx, ServerDeps } from './types.ts'
 import { migrate } from '@agentlens/storage'
-import { bundledSnapshot, PricingTable, readSnapshotFile, type PriceSnapshot } from '@agentlens/pricing'
+import { loadMergedPricing, type PricingTable, type PriceSnapshot } from '@agentlens/pricing'
 
 export const DEFAULT_PORT = 7317
 export const DEFAULT_HOST = '127.0.0.1'
@@ -51,13 +51,16 @@ export interface RunningServer {
   close: () => Promise<void>
 }
 
-/** Prices from `<db dir>/price-snapshot.json` when present, else the bundled snapshot (§8). */
-export function priceTableFor(dbPath?: string): { table: PricingTable; snapshot: PriceSnapshot | null } {
-  if (dbPath) {
-    const found = readSnapshotFile(`${dbPath.replace(/\/[^/]*$/, '')}/price-snapshot.json`)
-    if (found) return { table: PricingTable.fromSnapshot(found), snapshot: found }
-  }
-  return { table: PricingTable.fromSnapshot(bundledSnapshot()), snapshot: bundledSnapshot() }
+/**
+ * Prices for the store at `dbPath`: the snapshot file next to the DB (or the bundled
+ * snapshot) with the user's overrides jsonl merged on top — the exact table `agl doctor`
+ * counts, because both ends call `loadMergedPricing` in @agentlens/pricing (§14, §8:
+ * overrides always win). The merge used to be copied here line for line from the CLI
+ * and drifted once (§5.3); since then, the agreement test in
+ * packages/server/test/pricing-overrides.test.ts fails if either end grows its own.
+ */
+export function priceTableFor(dbPath?: string): { table: PricingTable; snapshot: PriceSnapshot } {
+  return loadMergedPricing(dbPath)
 }
 
 export function startServer(options: StartOptions = {}): RunningServer {
@@ -71,22 +74,39 @@ export function startServer(options: StartOptions = {}): RunningServer {
   if (options.runMigrations !== false) migrate(db)
 
   const pricing = dbPath ? priceTableFor(dbPath) : null
+  // Everything else on `options` is a `ServerDeps` field and travels as-is: listing them
+  // out one by one is how an injected dep (adapters, once) can go missing in silence.
+  const {
+    db: _db,
+    now: _now,
+    dbPath: _dbPath,
+    port: _port,
+    host: _host,
+    allowExternalBind: _external,
+    runMigrations: _migrations,
+    ...injected
+  } = options
   const ctx = createContext({
+    ...injected,
     db,
     now: options.now ?? Date.now,
     ...(options.priceResolver ? { priceResolver: options.priceResolver } : pricing ? { priceResolver: (p: string, m: string, t: number) => pricing.table.lookup(p, m, t) } : {}),
     ...(pricing ? { priceTableSize: () => pricing.table.size() } : {}),
-    ...(options.billingModeFor ? { billingModeFor: options.billingModeFor } : {}),
-    ...(options.aggregation ? { aggregation: options.aggregation } : {}),
-    ...(options.staticDir ? { staticDir: options.staticDir } : {}),
-    ...(options.scan ? { scan: options.scan } : {}),
-    ...(options.capabilityCatalog ? { capabilityCatalog: options.capabilityCatalog } : {}),
-    ...(options.changeSource ? { changeSource: options.changeSource } : {}),
-    ...(options.homedir ? { homedir: options.homedir } : {}),
     ...(dbPath ? { dbPath } : {}),
   })
 
   const server: ServerType = serve({ fetch: createApp(ctx).fetch, hostname: host, port })
+  // `serve()` returns before the socket is listening, and closing a server that never
+  // listened wedges it permanently (`Server is not running.` on every later close). A
+  // SIGINT in the first tick would take down `agl --serve` that way, so `close` waits
+  // for the bind — or for its error, which surfaces from `server.close` as usual.
+  const bound = new Promise<void>((resolve) => {
+    if (server.listening) resolve()
+    else {
+      server.once('listening', () => resolve())
+      server.once('error', () => resolve())
+    }
+  })
   const url = `http://${host}:${port}`
   return {
     port,
@@ -94,6 +114,7 @@ export function startServer(options: StartOptions = {}): RunningServer {
     url,
     ctx,
     close: async () => {
+      await bound
       await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())))
       if (ownsDb) db.close()
     },

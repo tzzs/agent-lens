@@ -6,7 +6,8 @@
 import { inflateSync } from 'node:zlib'
 import { Buffer } from 'node:buffer'
 import type { DatabaseSync } from 'node:sqlite'
-import { rowToEvent } from '@agentlens/storage'
+import { projectLabel } from '@agentlens/event-model'
+import { loadSessionEvents } from '@agentlens/storage'
 import type { FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
 import { queryDeps } from '../context.ts'
@@ -14,6 +15,35 @@ import { query } from '@agentlens/query'
 import { UsageError } from '../args.ts'
 import { formatCount, formatMs, formatTime, formatTokens, formatUsd, table } from '../render.ts'
 import { filter, rowsOf, shortId } from './shared.ts'
+
+/**
+ * §7 label precedence lives in exactly one function — `event-model/projectLabel` — and
+ * the cube's project dim renders through it, which is why `agl projects` and the Projects
+ * page print a word. A listing that reads `sessions.project_id` directly prints the digest
+ * instead, so `d42d99c330…` appeared where the same project read `picko` one command away
+ * (§14). Map the rows through the shared helper; nothing here re-decides the order.
+ */
+function projectLabels(db: DatabaseSync): Map<string, string> {
+  const labels = new Map<string, string>()
+  for (const r of rowsOf(db, 'SELECT id, display_name, canonical_root FROM projects')) {
+    labels.set(String(r.id), projectLabel({
+      id: String(r.id),
+      displayName: r.display_name ? String(r.display_name) : null,
+      canonicalRoot: r.canonical_root ? String(r.canonical_root) : null,
+    }))
+  }
+  return labels
+}
+
+/** The project cell for an id, or '' for none. A digest with nothing to label it by stays a prefix. */
+function projectCell(labels: Map<string, string>, rawId: unknown): string {
+  const id = rawId === null || rawId === undefined ? '' : String(rawId)
+  if (!id) return ''
+  const label = labels.get(id) ?? projectLabel({ id })
+  // projectLabel falls back to the id, which is 64 hex chars: unreadable, and it blows out
+  // the column. The web shortens it the same way (apps/web/src/lib/format.ts).
+  return label === id ? shortId(id) : label
+}
 
 export function cmdSessions(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath: string): number {
   const limit = flags.num('limit') ?? 20
@@ -23,9 +53,11 @@ export function cmdSessions(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath:
       metrics: ['events', 'duration', 'tokens_total', 'cost_api_equiv'],
       dims: ['session'],
       filter: filter(db, ctx, flags),
+      totals: false,
     },
     queryDeps(db, dbPath, ctx),
   )
+  const labels = projectLabels(db)
   const bySession = new Map(res.rows.map((r) => [String(r.session), r]))
   const meta = rowsOf(
     db,
@@ -40,7 +72,7 @@ export function cmdSessions(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath:
       shortId(id),
       String(m.agent_id ?? ''),
       String(m.host_id ?? ''),
-      m.project_id ? shortId(String(m.project_id)) : '',
+      projectCell(labels, m.project_id),
       m.first_timestamp !== null ? `${formatTime(Number(m.first_timestamp))}→${m.last_timestamp !== null ? formatTime(Number(m.last_timestamp)) : ''}` : '',
       (agg.events as number) ?? 0,
       formatTokens(agg.tokens_total as number),
@@ -76,25 +108,21 @@ export function cmdSession(db: DatabaseSync, words: string[], flags: FlagView, c
   const wanted = words[0]
   if (!wanted) throw new UsageError("usage: agentlens session <id>  (list ids with `agl sessions`)")
   const sessionId = resolveSessionId(db, wanted)
-  const rows = rowsOf(
-    db,
-    'SELECT * FROM events WHERE session_id = ? ORDER BY timestamp, raw_seq, id',
-    sessionId,
-  )
-  if (rows.length === 0) {
+  // Shared loader keeps this timeline identical to the server's (see §14).
+  const events = loadSessionEvents(db, sessionId)
+  if (events.length === 0) {
     ctx.out(`session ${sessionId} has no events (metrics layer empty)`)
     return 0
   }
-  const events = rows.map((r) => rowToEvent(r))
 
   const payloads = loadPayloads(db, events.map((e) => e.id))
   const contentOff = payloads.size === 0
 
   const meta = rowsOf(db, 'SELECT agent_id, host_id, project_id, title FROM sessions WHERE id = ?', sessionId)[0]
   ctx.out(`Session ${sessionId}`)
-  ctx.out(`  agent=${meta?.agent_id ?? '?'} host=${meta?.host_id ?? '?'} project=${meta?.project_id ? shortId(String(meta.project_id)) : '—'} events=${events.length}`)
+  ctx.out(`  agent=${meta?.agent_id ?? '?'} host=${meta?.host_id ?? '?'} project=${projectCell(projectLabels(db), meta?.project_id) || '—'} events=${events.length}`)
   if (contentOff) {
-    ctx.out('  (content layer off — showing the metrics-only timeline; re-scan without --no-content to capture message/tool text)')
+    ctx.out('  (content layer off — showing the metrics-only timeline; re-scan with --content to capture message/tool text)')
   }
   ctx.out('')
   for (const ev of events) {

@@ -56,20 +56,27 @@ export async function capabilities(ctx: ServerCtx, sp: URLSearchParams): Promise
   if (!Number.isInteger(nameLimit) || nameLimit < 0) throw ApiError.badRequest(`invalid names ${JSON.stringify(strParam(sp, 'names'))}`)
 
   const base = { metrics: ['events', 'duration', 'tokens_total', 'cost_api_equiv'] as const, filter }
-  const perType = query(ctx.db, { metrics: [...base.metrics], dims: ['capability_type'], filter }, ctx.cubeDeps)
-  const typeErrors = query(ctx.db, { metrics: ['events'], dims: ['capability_type'], filter: { ...filter, status: ['error'] } }, ctx.cubeDeps)
-  const agentMix = query(ctx.db, { metrics: ['events', 'sessions'], dims: ['capability_type', 'agent'], filter }, ctx.cubeDeps)
+  const perType = query(ctx.db, { metrics: [...base.metrics], dims: ['capability_type'], filter, totals: false }, ctx.cubeDeps)
+  const typeErrors = query(ctx.db, { metrics: ['events'], dims: ['capability_type'], filter: { ...filter, status: ['error'] }, totals: false }, ctx.cubeDeps)
+  const agentMix = query(ctx.db, { metrics: ['events', 'sessions'], dims: ['capability_type', 'agent'], filter, totals: false }, ctx.cubeDeps)
   const nameMix = query(
     ctx.db,
-    { metrics: [...base.metrics], dims: ['capability_type', 'capability_name'], filter, order: 'metric:events:desc', limit: nameLimit * 4 },
+    {
+      metrics: [...base.metrics],
+      dims: ['capability_type', 'capability_name'],
+      filter,
+      order: 'metric:events:desc',
+      limit: nameLimit * 4,
+      totals: false,
+    },
     ctx.cubeDeps,
   )
   const nameErrors = query(
     ctx.db,
-    { metrics: ['events'], dims: ['capability_type', 'capability_name'], filter: { ...filter, status: ['error'] } },
+    { metrics: ['events'], dims: ['capability_type', 'capability_name'], filter: { ...filter, status: ['error'] }, totals: false },
     ctx.cubeDeps,
   )
-  const supportsRows = query(ctx.db, { metrics: ['events'], dims: ['agent', 'capability_type'], filter }, ctx.cubeDeps)
+  const supportsRows = query(ctx.db, { metrics: ['events'], dims: ['agent', 'capability_type'], filter, totals: false }, ctx.cubeDeps)
 
   const errByType = new Map(typeErrors.rows.map((r) => [String(r.capability_type), Number(r.events ?? 0)]))
   const errByName = new Map(
@@ -176,9 +183,11 @@ async function buildCatalogView(ctx: ServerCtx, used: Set<string>): Promise<Cata
 export async function catalogSummary(ctx: ServerCtx, filter: QueryFilter): Promise<CatalogView> {
   if (!ctx.capabilityCatalog) return buildCatalogView(ctx, new Set())
   const used = new Set(
-    query(ctx.db, { metrics: ['events'], dims: ['capability_type', 'capability_name'], filter, limit: 5000 }, ctx.cubeDeps).rows.map(
-      (r) => `${String(r.capability_type)}::${String(r.capability_name)}`,
-    ),
+    query(
+      ctx.db,
+      { metrics: ['events'], dims: ['capability_type', 'capability_name'], filter, limit: 5000, totals: false },
+      ctx.cubeDeps,
+    ).rows.map((r) => `${String(r.capability_type)}::${String(r.capability_name)}`),
   )
   return buildCatalogView(ctx, used)
 }

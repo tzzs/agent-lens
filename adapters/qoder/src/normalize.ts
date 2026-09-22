@@ -10,10 +10,13 @@
 import {
   deriveErrorFingerprint,
   deriveEventId,
-  deriveProjectId,
   deriveSessionId,
   deriveSessionIdFromSource,
+  eventTimestamp,
   SCHEMA_VERSION,
+  timestampGuess,
+  TIMESTAMP_GUESS_KEY,
+  UNATTRIBUTED_PROJECT_ID,
   type AgentEvent,
   type CapabilityRef,
   type EventType,
@@ -23,6 +26,7 @@ import {
   type ParseFailure,
   type PayloadDraft,
   type RawRecord,
+  type TimestampOrigin,
   type Usage,
   type UsageSource,
 } from '@agentlens/event-model'
@@ -60,7 +64,7 @@ import { ScanState, stateFor } from './state.ts'
  * §4.1 rule 5 (inherited): `cwd` is absent on host-metadata records, so an
  * unattributable cwd is reported, never guessed.
  */
-export const UNATTRIBUTED_PROJECT_ID = deriveProjectId('unattributed')
+export { UNATTRIBUTED_PROJECT_ID }
 
 /**
  * §5.3 whitelist — the record types the Qoder census measured besides the
@@ -117,6 +121,8 @@ interface Scope {
   projectSource: 'cwd' | 'unattributed'
   requestId: string | null
   timestamp: number
+  /** §5.2: whether that timestamp is the record's own time or something standing in for it. */
+  timestampOrigin: TimestampOrigin
   rawSeq: number
   rawOffset: number
   model: ModelRef | null
@@ -206,6 +212,7 @@ function buildScope(record: RawRecord, ctx: NormalizeCtx, state: ScanState): Sco
   const resolved = ctx.resolveProject(cwd)
   const diagnostics: string[] = diagnostic ? [diagnostic] : []
   const usage = usageOf(rec)
+  const stamp = eventTimestamp(record, timestampMs(rec), ctx.now())
 
   return {
     rec,
@@ -217,7 +224,8 @@ function buildScope(record: RawRecord, ctx: NormalizeCtx, state: ScanState): Sco
     projectId: resolved ?? UNATTRIBUTED_PROJECT_ID,
     projectSource: resolved ? 'cwd' : 'unattributed',
     requestId: resolveRequestId(rec, usage),
-    timestamp: timestampMs(rec, record.occurredAt || ctx.now()),
+    timestamp: stamp.timestamp,
+    timestampOrigin: stamp.origin,
     rawSeq: record.seq,
     rawOffset: record.offset,
     model: modelRef(modelOf(rec)),
@@ -232,6 +240,9 @@ function buildScope(record: RawRecord, ctx: NormalizeCtx, state: ScanState): Sco
 function event(s: Scope, init: EventInit): AgentEvent {
   const usage = init.usage ?? null
   const metadata: Record<string, unknown> = { ...(init.metadata ?? {}) }
+  // §5.2: an invented timestamp must not pose as a fact — `--since` counts these rows either way.
+  const guess = timestampGuess(s.timestampOrigin)
+  if (guess !== null) metadata[TIMESTAMP_GUESS_KEY] = guess
   if (s.diagnostics.length > 0) metadata.host_diagnostics = s.diagnostics.slice()
   if (s.projectSource === 'unattributed') metadata.project_unattributed = true
   if (s.isSidechain && s.agentId) metadata.agent_id = s.agentId

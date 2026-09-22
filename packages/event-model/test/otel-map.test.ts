@@ -61,6 +61,68 @@ describe('toOtelAttributes', () => {
     expect('gen_ai.provider.name' in attrs).toBe(false)
     expect(Object.keys(attrs).every((k) => k.startsWith('agentlens.'))).toBe(true)
   })
+
+  // §18 fields the unified model carries and the export contract used to drop.
+  it('exports thread_id and the reported-cost pair instead of losing them', () => {
+    const attrs = toOtelAttributes(
+      makeEvent({ type: 'generation.end', threadId: 'thread-7', costReported: 0.125, costSource: 'reported' }),
+    )
+    expect(attrs['agentlens.thread_id']).toBe('thread-7')
+    expect(attrs['agentlens.cost_reported']).toBe(0.125)
+    expect(attrs['agentlens.cost_source']).toBe('reported')
+  })
+
+  it('keeps a zero cost rather than treating it as absent', () => {
+    const attrs = toOtelAttributes(makeEvent({ costReported: 0, costSource: 'none' }))
+    expect(attrs['agentlens.cost_reported']).toBe(0)
+    expect(attrs['agentlens.cost_source']).toBe('none')
+  })
+
+  it('omits the cost and thread keys when the source carries neither', () => {
+    const attrs = toOtelAttributes(makeEvent({ threadId: null, costReported: null, costSource: undefined }))
+    expect('agentlens.thread_id' in attrs).toBe(false)
+    expect('agentlens.cost_reported' in attrs).toBe(false)
+    expect('agentlens.cost_source' in attrs).toBe(false)
+  })
+
+  // §12: outside tools parse these names, so a rename is a break. Adding a key is allowed —
+  // this list is the whole emitted surface, frozen.
+  it('emits exactly the frozen attribute-name set for a fully populated event', () => {
+    const attrs = toOtelAttributes(
+      makeEvent({
+        type: 'generation.end',
+        requestId: 'req-42',
+        threadId: 'thread-7',
+        model: { provider: 'anthropic', name: 'claude-sonnet-4-5' },
+        capability: { type: 'tool', name: 'Bash', provider: 'builtin' },
+        usage: usage({ inputTokens: 1, outputTokens: 2, cacheReadTokens: 3, cacheWriteTokens: 4 }),
+        costReported: 0.125,
+        costSource: 'computed',
+      }),
+    )
+    expect(Object.keys(attrs).sort()).toEqual([
+      'agentlens.capability.name',
+      'agentlens.capability.provider',
+      'agentlens.capability.type',
+      'agentlens.cost_reported',
+      'agentlens.cost_source',
+      'agentlens.event.type',
+      'agentlens.host_id',
+      'agentlens.project_id',
+      'agentlens.raw_seq',
+      'agentlens.request_id',
+      'agentlens.source_id',
+      'agentlens.thread_id',
+      'gen_ai.operation.name',
+      'gen_ai.provider.name',
+      'gen_ai.request.model',
+      'gen_ai.response.model',
+      'gen_ai.usage.cache_creation.input_tokens',
+      'gen_ai.usage.cache_read.input_tokens',
+      'gen_ai.usage.input_tokens',
+      'gen_ai.usage.output_tokens',
+    ])
+  })
 })
 
 describe('otelSpanName', () => {
@@ -85,5 +147,12 @@ describe('OTEL_ATTRIBUTE_MAP', () => {
       source: 'usage.inputTokens',
       attribute: 'gen_ai.usage.input_tokens',
     })
+    expect(OTEL_ATTRIBUTE_MAP.attributes).toEqual(
+      expect.arrayContaining([
+        { source: 'threadId', attribute: 'agentlens.thread_id' },
+        { source: 'costReported', attribute: 'agentlens.cost_reported' },
+        { source: 'costSource', attribute: 'agentlens.cost_source' },
+      ]),
+    )
   })
 })

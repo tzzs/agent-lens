@@ -1,0 +1,438 @@
+[
+  {
+    "id": "75c34654aa63c83efc8aabe3f9bda25c7868b6daf50df181d9acfcbfb3fb874c",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "fc7f4c1d4f5809faf6e8fe346ef261f34e08d59afdfd8403ea1d4296c645acc7",
+    "sessionId": "619ae0af81663dd40625f85cb0ae2b7507beef0008bba375662f65805471f67b",
+    "projectId": "project:alpha",
+    "parentEventId": null,
+    "requestId": null,
+    "timestamp": 1789894800000,
+    "ingestedAt": 1760000000000,
+    "type": "session.start",
+    "subtype": null,
+    "model": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 1,
+    "rawOffset": 0,
+    "payload": null,
+    "metadata": {
+      "mapped": true,
+      "session_scoped": true,
+      "record_id": "9e1c0000-0000-4000-8000-0000000000aa",
+      "upstream_version": 3,
+      "measured_version": 3,
+      "cwd": "/work/alpha",
+      "timestamp_raw": "2026-09-20T09:00:00.000Z"
+    }
+  },
+  {
+    "id": "be0a27180753a5ed9dc20ffc2ca1a7fc8c2cb2ad8dba27c3c8c9c92abcf7b131",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "fc7f4c1d4f5809faf6e8fe346ef261f34e08d59afdfd8403ea1d4296c645acc7",
+    "sessionId": "619ae0af81663dd40625f85cb0ae2b7507beef0008bba375662f65805471f67b",
+    "projectId": "project:alpha",
+    "parentEventId": null,
+    "requestId": null,
+    "timestamp": 1789894802000,
+    "ingestedAt": 1760000000000,
+    "type": "unknown",
+    "subtype": "model_change",
+    "model": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 2,
+    "rawOffset": 134,
+    "payload": null,
+    "metadata": {
+      "mapped": true,
+      "session_scoped": true,
+      "upstream_type": "model_change",
+      "value": {
+        "model": "claude-sonnet-4-5"
+      },
+      "record_id": "a1b2c3d4",
+      "parent_id": "9e1c0000-0000-4000-8000-0000000000aa"
+    }
+  },
+  {
+    "id": "f1a0abedccbfa72d92127fbcb3b11732ecb03d65873b1d9cebc0cb12687fb4e7",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "fc7f4c1d4f5809faf6e8fe346ef261f34e08d59afdfd8403ea1d4296c645acc7",
+    "sessionId": "619ae0af81663dd40625f85cb0ae2b7507beef0008bba375662f65805471f67b",
+    "projectId": "project:alpha",
+    "parentEventId": "be0a27180753a5ed9dc20ffc2ca1a7fc8c2cb2ad8dba27c3c8c9c92abcf7b131",
+    "requestId": null,
+    "timestamp": 1789894805000,
+    "ingestedAt": 1760000000000,
+    "type": "message.user",
+    "subtype": null,
+    "model": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 3,
+    "rawOffset": 291,
+    "payload": {
+      "kind": "user_message",
+      "role": "user",
+      "text": "为什么重试逻辑没有生效？"
+    },
+    "metadata": {
+      "mapped": true,
+      "role_raw": "user",
+      "parent_id": "a1b2c3d4",
+      "content_chars": 12
+    }
+  },
+  {
+    "id": "85064f77880b0b01910509b2f0e0ab14e946cf9e60ea38b864816d6d89711252",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "fc7f4c1d4f5809faf6e8fe346ef261f34e08d59afdfd8403ea1d4296c645acc7",
+    "sessionId": "619ae0af81663dd40625f85cb0ae2b7507beef0008bba375662f65805471f67b",
+    "projectId": "project:alpha",
+    "parentEventId": "f1a0abedccbfa72d92127fbcb3b11732ecb03d65873b1d9cebc0cb12687fb4e7",
+    "requestId": null,
+    "timestamp": 1789894811000,
+    "ingestedAt": 1760000000000,
+    "type": "message.assistant",
+    "subtype": "toolUse",
+    "model": {
+      "provider": "anthropic",
+      "name": "claude-sonnet-4-5"
+    },
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 4,
+    "rawOffset": 481,
+    "payload": {
+      "kind": "assistant_message",
+      "role": "assistant",
+      "text": "我先找一下重试相关的文件。"
+    },
+    "metadata": {
+      "mapped": true,
+      "role_raw": "assistant",
+      "api": "anthropic-messages",
+      "stop_reason": "toolUse",
+      "error_message_present": false,
+      "record_id": "as1",
+      "parent_id": "u1",
+      "content_chars": 13
+    }
+  },
+  {
+    "id": "2b06954864e41c1f95423eaa00921289d3b1724701d9c3da509bbc2dac1a330d",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "fc7f4c1d4f5809faf6e8fe346ef261f34e08d59afdfd8403ea1d4296c645acc7",
+    "sessionId": "619ae0af81663dd40625f85cb0ae2b7507beef0008bba375662f65805471f67b",
+    "projectId": "project:alpha",
+    "parentEventId": "85064f77880b0b01910509b2f0e0ab14e946cf9e60ea38b864816d6d89711252",
+    "requestId": null,
+    "timestamp": 1789894811000,
+    "ingestedAt": 1760000000000,
+    "type": "message.assistant",
+    "subtype": "reasoning",
+    "model": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 4,
+    "rawOffset": 481,
+    "payload": {
+      "kind": "reasoning",
+      "role": "assistant",
+      "text": "我需要先看看重试代码在哪里。"
+    },
+    "metadata": {
+      "mapped": true,
+      "content_chars": 14
+    }
+  },
+  {
+    "id": "3026362105cd40d299cd0740c31057258612d508b1298dda2c988873f72e7175",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "fc7f4c1d4f5809faf6e8fe346ef261f34e08d59afdfd8403ea1d4296c645acc7",
+    "sessionId": "619ae0af81663dd40625f85cb0ae2b7507beef0008bba375662f65805471f67b",
+    "projectId": "project:alpha",
+    "parentEventId": "85064f77880b0b01910509b2f0e0ab14e946cf9e60ea38b864816d6d89711252",
+    "requestId": null,
+    "timestamp": 1789894811000,
+    "ingestedAt": 1760000000000,
+    "type": "tool.start",
+    "subtype": null,
+    "model": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": {
+      "type": "tool",
+      "name": "read",
+      "provider": null
+    },
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 4,
+    "rawOffset": 481,
+    "payload": {
+      "kind": "tool_input",
+      "role": "assistant",
+      "text": "{\"path\":\"src/retry.ts\"}"
+    },
+    "metadata": {
+      "mapped": true,
+      "call_id": "call-01",
+      "argument_keys": [
+        "path"
+      ]
+    }
+  },
+  {
+    "id": "9a2a3dccdcdb70110316488365460387dc55ad1a535990b73afb4f909b92bcbd",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "fc7f4c1d4f5809faf6e8fe346ef261f34e08d59afdfd8403ea1d4296c645acc7",
+    "sessionId": "619ae0af81663dd40625f85cb0ae2b7507beef0008bba375662f65805471f67b",
+    "projectId": "project:alpha",
+    "parentEventId": null,
+    "requestId": "resp-01",
+    "timestamp": 1789894811000,
+    "ingestedAt": 1760000000000,
+    "type": "generation.end",
+    "subtype": "usage:assistant",
+    "model": {
+      "provider": "anthropic",
+      "name": "claude-sonnet-4-5"
+    },
+    "usage": {
+      "inputTokens": 120,
+      "outputTokens": 2048,
+      "cacheReadTokens": 18000,
+      "cacheWriteTokens": 0,
+      "reasoningTokens": 0
+    },
+    "usageSource": "reported",
+    "costReported": 0.0215,
+    "costSource": "reported",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 4,
+    "rawOffset": 481,
+    "payload": null,
+    "metadata": {
+      "mapped": true,
+      "reported_fields": [
+        "cacheRead",
+        "cacheWrite",
+        "input",
+        "output"
+      ],
+      "unmapped_fields": [
+        "totalTokens"
+      ],
+      "reasoning_tokens_absent": true,
+      "cache_write_reported": true,
+      "input_includes_cache_read": false,
+      "cost_breakdown": {
+        "input": 0.001,
+        "output": 0.02,
+        "cacheRead": 0.0005,
+        "cacheWrite": 0,
+        "total": 0.0215
+      },
+      "provider_request_id": "resp-01"
+    }
+  },
+  {
+    "id": "e04f9d73b8ea31f0023c7e5ade83c57887edb44021de57d50b2ce348b4d22afd",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "fc7f4c1d4f5809faf6e8fe346ef261f34e08d59afdfd8403ea1d4296c645acc7",
+    "sessionId": "619ae0af81663dd40625f85cb0ae2b7507beef0008bba375662f65805471f67b",
+    "projectId": "project:alpha",
+    "parentEventId": "3026362105cd40d299cd0740c31057258612d508b1298dda2c988873f72e7175",
+    "requestId": null,
+    "timestamp": 1789894812000,
+    "ingestedAt": 1760000000000,
+    "type": "tool.result",
+    "subtype": null,
+    "model": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": {
+      "type": "tool",
+      "name": "read",
+      "provider": null
+    },
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 5,
+    "rawOffset": 1174,
+    "payload": {
+      "kind": "tool_output",
+      "role": "user",
+      "text": "export function retry(fn) { /* 只有注释里没有退避 */ }"
+    },
+    "metadata": {
+      "mapped": true,
+      "call_id": "call-01",
+      "tool_name_raw": "read",
+      "is_error_raw": false,
+      "has_details": false,
+      "output_chars": 45
+    }
+  },
+  {
+    "id": "67130a149ae5739798e4f294a10e34b55c55329ed081e8dda659c3c74ef7b1bc",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "fc7f4c1d4f5809faf6e8fe346ef261f34e08d59afdfd8403ea1d4296c645acc7",
+    "sessionId": "619ae0af81663dd40625f85cb0ae2b7507beef0008bba375662f65805471f67b",
+    "projectId": "project:alpha",
+    "parentEventId": "e04f9d73b8ea31f0023c7e5ade83c57887edb44021de57d50b2ce348b4d22afd",
+    "requestId": null,
+    "timestamp": 1789894819000,
+    "ingestedAt": 1760000000000,
+    "type": "message.assistant",
+    "subtype": "stop",
+    "model": {
+      "provider": "anthropic",
+      "name": "claude-sonnet-4-5"
+    },
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 6,
+    "rawOffset": 1450,
+    "payload": {
+      "kind": "assistant_message",
+      "role": "assistant",
+      "text": "重试缺少退避逻辑，这就是它没生效的原因。"
+    },
+    "metadata": {
+      "mapped": true,
+      "role_raw": "assistant",
+      "api": "anthropic-messages",
+      "stop_reason": "stop",
+      "error_message_present": false,
+      "record_id": "as2",
+      "parent_id": "tr1",
+      "content_chars": 20
+    }
+  },
+  {
+    "id": "ddb38d3986fb169af9f1c6dee2b9280b13a55306ec3b6889d1be602f37678a32",
+    "schemaVersion": 1,
+    "agentId": "pi",
+    "hostId": "pi",
+    "sourceId": "fc7f4c1d4f5809faf6e8fe346ef261f34e08d59afdfd8403ea1d4296c645acc7",
+    "sessionId": "619ae0af81663dd40625f85cb0ae2b7507beef0008bba375662f65805471f67b",
+    "projectId": "project:alpha",
+    "parentEventId": null,
+    "requestId": "resp-02",
+    "timestamp": 1789894819000,
+    "ingestedAt": 1760000000000,
+    "type": "generation.end",
+    "subtype": "usage:assistant",
+    "model": {
+      "provider": "anthropic",
+      "name": "claude-sonnet-4-5"
+    },
+    "usage": {
+      "inputTokens": 600,
+      "outputTokens": 80,
+      "cacheReadTokens": 20000,
+      "cacheWriteTokens": 0,
+      "reasoningTokens": 0
+    },
+    "usageSource": "reported",
+    "costReported": 0.0015,
+    "costSource": "reported",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "errorFingerprint": null,
+    "rawSeq": 6,
+    "rawOffset": 1450,
+    "payload": null,
+    "metadata": {
+      "mapped": true,
+      "reported_fields": [
+        "cacheRead",
+        "cacheWrite",
+        "input",
+        "output"
+      ],
+      "unmapped_fields": [
+        "totalTokens"
+      ],
+      "reasoning_tokens_absent": true,
+      "cache_write_reported": true,
+      "input_includes_cache_read": false,
+      "cost_breakdown": {
+        "input": 0.0001,
+        "output": 0.0012,
+        "cacheRead": 0.0002,
+        "cacheWrite": 0,
+        "total": 0.0015
+      },
+      "provider_request_id": "resp-02"
+    }
+  }
+]

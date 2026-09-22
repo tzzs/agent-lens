@@ -17,6 +17,9 @@ export interface UnreachableSource {
   id: string
   agentId: string
   path: string | null
+  kind: string
+  /** For a `sqlite` source, the table its untouched `last_offset` high-water indexes (§4.3); null otherwise. */
+  sqliteTable: string | null
   status: string
   lastError: string | null
   filePresent: boolean
@@ -48,7 +51,7 @@ export function coverageReport(ctx: ServerCtx): CoverageReport {
   const home = ctx.homedir
   const sources = rowsOf(
     ctx.db,
-    'SELECT id, agent_id, path, status, last_error FROM sources ORDER BY agent_id, path',
+    'SELECT id, agent_id, path, kind, sqlite_table, status, last_error FROM sources ORDER BY agent_id, path',
   )
   const unreachable: UnreachableSource[] = []
   const byDir = new Map<string, EmptyDir>()
@@ -63,6 +66,8 @@ export function coverageReport(ctx: ServerCtx): CoverageReport {
         id: String(s.id),
         agentId: String(s.agent_id ?? ''),
         path: path === null ? null : redactHome(path, home),
+        kind: String(s.kind ?? ''),
+        sqliteTable: s.sqlite_table === null || s.sqlite_table === undefined ? null : String(s.sqlite_table),
         status: String(s.status ?? ''),
         lastError: s.last_error === null || s.last_error === undefined ? null : redactHome(String(s.last_error), home),
         filePresent,

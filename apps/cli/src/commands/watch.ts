@@ -5,7 +5,7 @@
  * so `watch` and `scan` can never disagree about what a byte of history costs.
  */
 import { basename } from 'node:path'
-import { projectIdForCwd, type AgentAdapter, type SourceSpec } from '@agentlens/event-model'
+import { type AgentAdapter, type SourceSpec } from '@agentlens/event-model'
 import {
   createWatcher,
   scanSource,
@@ -26,7 +26,7 @@ import type { Ctx } from '../context.ts'
 import { makeHostCtx } from '../context.ts'
 import { getAdapters } from '../adapters.ts'
 import { formatCount, formatTime } from '../render.ts'
-import { cmdScan } from './scan.ts'
+import { cmdScan, contentWanted, makeProjectResolver, recordProjectRoots } from './scan.ts'
 
 function savedState(db: DatabaseSync, sourceId: string): SavedSourceState {
   const row = db.prepare(
@@ -39,6 +39,7 @@ function savedState(db: DatabaseSync, sourceId: string): SavedSourceState {
     mtimeMs: Number(row?.mtime_ms ?? 0),
     parserVersion: Number(row?.parser_version ?? 0),
     linesConsumed: Number(row?.rows_ingested ?? 0),
+    seen: row !== undefined,
   }
 }
 
@@ -74,6 +75,7 @@ function makeSink(
         lastOffset: p.lastOffset,
         parserVersion: p.parserVersion,
         sessionIdHint: source.sessionHint ?? null,
+        sqliteTable: p.sqliteTable ?? null,
         status: p.status,
         rowsIngested: (prev?.rows_ingested ?? 0) + p.rowsIngested,
         scanStartedAt: p.scanStartedAt,
@@ -87,6 +89,7 @@ function makeSink(
 }
 
 function makeTarget(db: DatabaseSync, ctx: Ctx, adapter: AgentAdapter, source: SourceSpec, contentEnabled: boolean): WatchTarget {
+  const projects = makeProjectResolver(ctx.homedir)
   const target: WatchTarget = {
     id: source.id,
     agentId: adapter.id,
@@ -95,7 +98,7 @@ function makeTarget(db: DatabaseSync, ctx: Ctx, adapter: AgentAdapter, source: S
     saved: positionOf(savedState(db, source.id)),
     scan: async () => {
       const state = savedState(db, source.id)
-      return scanSource(adapter, source, {
+      const result = await scanSource(adapter, source, {
         sink: makeSink(db, source, adapter.id, contentEnabled, (p) => {
           // §4.2: only a committed batch advances the in-memory resume position.
           target.saved = { inode: p.inode, size: p.size, mtimeMs: p.mtimeMs, lastOffset: p.lastOffset }
@@ -103,9 +106,12 @@ function makeTarget(db: DatabaseSync, ctx: Ctx, adapter: AgentAdapter, source: S
         saved: state,
         agentId: adapter.id,
         hostId: adapter.id,
-        resolveProject: (cwd) => (cwd ? projectIdForCwd(cwd) : null),
+        resolveProject: projects.resolveProject,
         now: ctx.now,
+        snapshotDir: ctx.snapshotDir,
       })
+      recordProjectRoots(db, projects.roots)
+      return result
     },
   }
   return target
@@ -119,7 +125,7 @@ async function buildTargets(
   adapters: AgentAdapter[],
 ): Promise<WatchTarget[]> {
   const only = flags.list('agent')
-  const contentEnabled = !flags.bool('no-content')
+  const contentEnabled = contentWanted(flags)
   const known = new Set<string>()
   const targets: WatchTarget[] = []
 

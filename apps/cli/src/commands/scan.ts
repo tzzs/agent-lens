@@ -2,16 +2,24 @@
  * `scan` (§9) — the ONLY CLI path that writes events; every read command goes
  * through the cube so numbers cannot drift between commands.
  */
-import { basename } from 'node:path'
-import { projectIdForCwd, type AgentAdapter, type SourceSpec } from '@agentlens/event-model'
+import { basename, dirname, join } from 'node:path'
+import { deriveProjectId, projectRootForCwd, type AgentAdapter, type SourceSpec } from '@agentlens/event-model'
 import { scanSource, type EventSink, type SavedSourceState, type SourceCommit } from '@agentlens/collector'
-import { insertEvents, recordParseFailure, setAgentAggregations, updateSourceProgress, type SourceProgress } from '@agentlens/storage'
+import {
+  insertEvents,
+  recordParseFailure,
+  setAgentAggregations,
+  updateSourceProgress,
+  upsertProject,
+  type SourceProgress,
+} from '@agentlens/storage'
 import type { DatabaseSync } from 'node:sqlite'
 import type { FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
 import { makeHostCtx, redactHome } from '../context.ts'
 import { adapterAggregations, getAdapters } from '../adapters.ts'
 import { table } from '../render.ts'
+import { repairProjectRoots } from './projects.ts'
 
 export interface ScanOutcome {
   adaptersFound: number
@@ -25,6 +33,12 @@ export interface ScanOutcome {
    * separately for `scan`, `watch` and `--serve` to report.
    */
   refusals: SourceRefusal[]
+  /**
+   * Project rows that had no `canonical_root` and were repaired once this scan ended
+   * (§4.1, `commands/projects.ts`). Optional because synthetic outcomes (rendering
+   * tests) never touch a database; `runScan` always fills it.
+   */
+  projectsRepaired?: number
 }
 
 export interface SourceRefusal {
@@ -44,6 +58,7 @@ function savedState(db: DatabaseSync, sourceId: string): SavedSourceState {
     mtimeMs: Number(row?.mtime_ms ?? 0),
     parserVersion: Number(row?.parser_version ?? 0),
     linesConsumed: Number(row?.rows_ingested ?? 0),
+    seen: row !== undefined,
   }
 }
 
@@ -68,6 +83,7 @@ function makeSink(db: DatabaseSync, source: SourceSpec, agentId: string, content
         lastOffset: p.lastOffset,
         parserVersion: p.parserVersion,
         sessionIdHint: source.sessionHint ?? null,
+        sqliteTable: p.sqliteTable ?? null,
         status: p.status,
         rowsIngested: (prev?.rows_ingested ?? 0) + p.rowsIngested,
         scanStartedAt: p.scanStartedAt,
@@ -79,6 +95,44 @@ function makeSink(db: DatabaseSync, source: SourceSpec, agentId: string, content
   }
 }
 
+/**
+ * A project id is a digest, and `insertEvents` can only mint the row from the event —
+ * so without this the whole product would label projects by hash. The collector is the
+ * one place that has seen the cwd, so it hands the canonical root to `projects` here.
+ */
+export function makeProjectResolver(homedir?: string): {
+  resolveProject(cwd: string | null | undefined): string | null
+  roots: Map<string, string>
+} {
+  const roots = new Map<string, string>()
+  const opts = homedir ? { homedir } : {}
+  return {
+    roots,
+    resolveProject(cwd) {
+      if (!cwd) return null
+      // One canonicalization per cwd: the id and the label must come off the same root.
+      const root = projectRootForCwd(cwd, opts)
+      const id = deriveProjectId(root)
+      roots.set(id, root)
+      return id
+    },
+  }
+}
+
+export function recordProjectRoots(db: DatabaseSync, roots: Map<string, string>): void {
+  for (const [id, root] of roots) upsertProject(db, { id, canonicalRoot: root })
+  roots.clear()
+}
+
+/**
+ * §6's risk table: the content layer copies private message/tool text into this
+ * database, so it is off by default and a run opts in with `--content`.
+ * `--no-content` is the plan's global switch and outranks it.
+ */
+export function contentWanted(flags: FlagView): boolean {
+  return flags.bool('content') && !flags.bool('no-content')
+}
+
 export async function runScan(
   db: DatabaseSync,
   flags: FlagView,
@@ -86,9 +140,10 @@ export async function runScan(
   onSource?: (agentId: string, source: SourceSpec, events: number, failures: number, action: string) => void,
 ): Promise<ScanOutcome> {
   const only = flags.list('agent')
-  const contentEnabled = !flags.bool('no-content')
+  const contentEnabled = contentWanted(flags)
   const adapters = await getAdapters()
   const outcome: ScanOutcome = { adaptersFound: 0, sourcesScanned: 0, events: 0, failures: 0, notDetected: [], refusals: [] }
+  const projects = makeProjectResolver(ctx.homedir)
   for (const adapter of adapters) {
     if (only.length > 0 && !only.includes(adapter.id)) continue
     const hostCtx = makeHostCtx(ctx)
@@ -114,9 +169,13 @@ export async function runScan(
         saved,
         agentId: adapter.id,
         hostId: adapter.id,
-        resolveProject: (cwd) => (cwd ? projectIdForCwd(cwd) : null),
+        resolveProject: projects.resolveProject,
         now: ctx.now,
+        snapshotDir: ctx.snapshotDir,
       })
+      // After every source rather than at the end: the ids are already durably referenced
+      // by the events, and a scan that dies mid-run must not leave them unlabelled.
+      recordProjectRoots(db, projects.roots)
       outcome.sourcesScanned++
       outcome.events += result.events
       outcome.failures += result.failures
@@ -124,6 +183,11 @@ export async function runScan(
       onSource?.(adapter.id, source, result.events, result.failures, result.action)
     }
   }
+  // §4.1 attribution repair for rows that predate project naming: `skip`ped sources
+  // never re-ingest, so their project rows are given the root back from the evidence
+  // still in the store (persisted cwds, decodable `sources.path`). Idempotent, and a
+  // no-op once every row has a root.
+  outcome.projectsRepaired = repairProjectRoots(db, { homedir: ctx.homedir }).repaired.length
   return outcome
 }
 
@@ -145,8 +209,16 @@ export async function cmdScan(db: DatabaseSync, flags: FlagView, ctx: Ctx): Prom
     ctx.out('✓ up to date — no new rows since last scan')
   }
   ctx.out(`${outcome.sourcesScanned} sources scanned · ${outcome.events} events ingested · ${outcome.failures} parse failures`)
+  if (outcome.projectsRepaired) {
+    ctx.out(`+ ${outcome.projectsRepaired} existing project ${outcome.projectsRepaired === 1 ? 'row' : 'rows'} attributed to a directory (§4.1)`)
+  }
   for (const line of refusalLines(outcome, ctx)) ctx.out(line)
   return 0
+}
+
+/** §18 row 7: WAL stores are read through a copy that lives in our own data directory. */
+export function snapshotsDirFor(dbPath: string): string {
+  return join(dirname(dbPath), 'snapshots')
 }
 
 /** §18 row 7 stores left alone on purpose, spelled out rather than folded into "failures". */

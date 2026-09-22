@@ -3,7 +3,7 @@
  * to the data root (§5.2 rule 3) and without throwing on unreadable directories.
  */
 import { join } from 'node:path'
-import { walkForFiles } from '@agentlens/collector'
+import { walkForFiles } from '@agentlens/event-model'
 import type { Detection, HostContext } from '@agentlens/event-model'
 import { asRecord, str } from './record.ts'
 import { projectsDirOf, rootOf } from './paths.ts'

@@ -1,0 +1,4 @@
+{"id":"p1","type":"message","timestamp":"2026-09-20T16:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"第一条完好"}]}}
+{"id":"p2" broken json
+42
+{"id":"p3","type":"message","timestamp":"2026-09-20T16:00:02.000Z","message":{"role":"user","content":[{"type":"text","text":"最后一条完好"}]}}
