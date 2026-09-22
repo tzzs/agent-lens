@@ -4,11 +4,11 @@
   // "inflation avoided" number is the same one the dashboard's tokens rest on.
   // Parsing, usage quality, coverage and pricing read the whole store; capabilities
   // and cost follow the header's window (the route applies the filter to those only).
-  import { api, type DoctorAgentRow } from '../lib/api.ts'
+  import { api, type DoctorAgentRow, type StageOneCode } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
   import { range, filterParams } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
-  import { agentNote, catalogNote, contentNote, costBasis } from '../lib/notes.ts'
+  import { agentNote, catalogNote, contentNote, costBasis, stageOneNote } from '../lib/notes.ts'
   import { t } from '../lib/lang.js'
   import { coverageText } from '../lib/banners.ts'
   import { formatCompact, formatDateTime, formatInt } from '../lib/format.ts'
@@ -67,6 +67,8 @@
     subagents?: { agentId: string; total: number; orphan: number; orphanPct: number }[]
     guessedTimestamps?: { agentId: string; events: number; guessed: number; guessedPct: number; fromIngestClock: number; fromFileMtime: number }[]
     retention?: { gone: number; rotated: number; active: number }
+    /** §11/§19: the stage-1 verdict and its counts; the sentence is the viewer's. */
+    stageOneFold?: { ok: boolean; code: StageOneCode; rows: number; members: number; events: number }
   }
   const depth = $derived(d as unknown as DoctorDepth | undefined)
   const perAgent = $derived(depth?.usageQuality.perAgent ?? [])
@@ -78,6 +80,7 @@
   // The §14 coverage banner, worded here from the same structured fields the
   // overview header uses — the server's `coverage.banner` is one English sentence.
   const coverageLine = $derived(d ? coverageText(d.coverage) : '')
+  const stageOne = $derived(depth?.stageOneFold ?? null)
   const share = (n: number, total: number): string => (total === 0 ? '0.0%' : `${((n / total) * 100).toFixed(1)}%`)
   /** The CLI's own wording for the fold rule, so both reports say the same thing (§14). */
   function foldSentence(a: PerAgentQuality): string {
@@ -429,6 +432,22 @@
             {$t('doctor.orphansCounted')}
           </p>
         {/if}
+      {/if}
+    </Surface>
+
+    <Surface
+      title={$t('doctor.stageOneTitle')}
+      info={$t('doctor.stageOneInfo')}
+    >
+      {#if stageOne}
+        <p class="text-[13px] {stageOne.ok ? 'text-ink' : 'text-orange'}">{stageOneNote(stageOne.code, stageOne)}</p>
+        {#if !stageOne.ok}
+          <p class="mt-2 text-xs text-ink-3">
+            {$t('doctor.stageOneDeclinedLead')}<code>events</code>{$t('doctor.stageOneDeclinedTail')}
+          </p>
+        {/if}
+      {:else}
+        <p class="text-[13px] text-ink-3">{$t('doctor.stageOneNoReport')}</p>
       {/if}
     </Surface>
 

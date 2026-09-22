@@ -65,6 +65,10 @@ export const SNAPSHOT_TABLES = [
   'sources',
   'sessions',
   'events',
+  // §19's materialised stage 1 rides along, so every existing idempotency assertion in this
+  // directory is also asserting that a replay leaves the derived table byte-identical.
+  'requests',
+  'requests_state',
   'payloads',
   'parse_errors',
   'machine',

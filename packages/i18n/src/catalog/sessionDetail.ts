@@ -38,7 +38,8 @@ const en = {
   tileStarted: 'Started (UTC)',
   tileEvents: 'Events',
   tileTokens: 'Tokens',
-  tileDuration: 'Duration',
+  tileActive: 'Active',
+  activeWithSpan: '{metric} Wall clock, first event to last: {span}.',
   metricsOnly: 'Metrics-only timeline.',
 
   /* the filter row */
@@ -84,7 +85,8 @@ const zh = matches(en)({
   tileStarted: '开始时间（UTC）',
   tileEvents: '事件',
   tileTokens: 'token 用量',
-  tileDuration: '时长',
+  tileActive: '活跃时长',
+  activeWithSpan: '{metric}挂钟时间为 {span}（从首条事件到最后一条）。',
   metricsOnly: '仅有指标的时间线。',
 
   filterByKind: '按事件类型筛选',

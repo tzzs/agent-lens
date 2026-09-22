@@ -93,7 +93,12 @@ describe('machine identity (§2)', () => {
     db.close()
 
     const reopened = openDatabase(path)
-    expect(migrate(reopened)).toEqual(['005_machine.sql', '006_measured_read_paths.sql'])
+    expect(migrate(reopened)).toEqual([
+      '005_machine.sql',
+      '006_measured_read_paths.sql',
+      '007_session_title_index.sql',
+      '008_persisted_request_fold.sql',
+    ])
     expect(existsSync(`${path}.pre-migration-005_machine.bak`)).toBe(true) // §6: backup before migrating real data
     const after = {
       events: (reopened.prepare('SELECT COUNT(*) AS n FROM events').get() as { n: number }).n,

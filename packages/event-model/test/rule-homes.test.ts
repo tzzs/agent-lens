@@ -143,6 +143,21 @@ const RULES: Rule[] = [
     ],
     calls: [{ file: 'packages/server/src/cost.ts', symbol: 'actualUsdFor(' }],
   },
+  {
+    what: 'whether the materialised stage 1 still describes `events`, and what that costs (§11/§19)',
+    home: '@agentlens/storage → requestFoldHealth / requestFoldVerdict / requestFoldSentence',
+    forbidden: [
+      { re: /SUM\(member_count\)/, why: 'the certificate is one query; a surface that re-reads it can disagree with the reader that declines on it' },
+      { re: /FROM (main\.)?requests\b/, why: 'the folded table is storage\'s; reading it from a surface bypasses the decline rule as well as the counts' },
+      { re: /policy_fingerprint/, why: 'comparing the grouping on disk to the stored policies is the fold owner\'s check (§18 row 2)' },
+    ],
+    calls: [
+      { file: 'apps/cli/src/commands/doctor.ts', symbol: 'requestFoldSentence' },
+      // The API serves the verdict and its counts; the dashboard words them, so the
+      // server must call the decision, not the sentence the terminal prints.
+      { file: 'packages/server/src/doctor.ts', symbol: 'requestFoldVerdict' },
+    ],
+  },
 ]
 
 const ALL_FILES = SURFACES.flatMap((s) => s.files)

@@ -9,7 +9,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AgentEvent } from '@agentlens/event-model'
-import { insertEvents, setAgentAggregations, updateSourceProgress } from '@agentlens/storage'
+import { insertEvents, requestFoldHealth, requestFoldVerdict, setAgentAggregations, updateSourceProgress } from '@agentlens/storage'
 import { harness } from './helpers.ts'
 
 const HOME = '/home/tester'
@@ -138,6 +138,16 @@ describe('GET /api/doctor checks the web used to lack (§11)', () => {
     expect(body.parsing.parserDrift).toMatchObject({ checked: 1, drifted: 1, unmapped: 0, stale: [{ agentId: 'claude-code', parserVersion: 5, sources: 1 }] })
     expect(body.retention).toMatchObject({ gone: 1, rotated: 0 })
     expect(body.subagents).toEqual([{ agentId: 'claude-code', total: 1, orphan: 0, orphanPct: 0 }])
+  })
+
+  it('serves the stage-1 verdict from storage\'s own decision, not a re-derivation (§14)', async () => {
+    h = harness({ homedir: HOME })
+    const { body } = await h.get('/api/doctor')
+    // The same verdict `agl doctor` prints a sentence from, because the route calls the
+    // same owner; only the wording diverges, and it belongs to the viewer.
+    const health = requestFoldHealth(h.seeded.db)
+    expect(body.stageOneFold).toEqual({ ...requestFoldVerdict(health), rows: health.rows, members: health.members, events: health.events })
+    expect(body.stageOneFold.ok).toBe(true)
   })
 
   it('says drift cannot be evaluated when no adapter is installed in this build', async () => {

@@ -162,6 +162,15 @@ const en = {
   orphansCounted: "Their tokens and cost ARE counted; only the timeline's tree placement is unknown.",
 
   /* invented timestamps */
+  stageOneTitle: 'Materialised stage 1',
+  stageOneInfo:
+    '§19: the per-request fold is stored in its own table so the cube stops folding every event on each read. No foreign key ties that table to `events`, so whether it still agrees is a fact worth printing.',
+  // Split around the inline <code>events</code> the report keeps in its markup, so the
+  // spaces that sentence needs live in the message rather than in the template.
+  stageOneDeclinedLead:
+    'The figures stay right either way: a table that drifted or was folded under another policy is declined, and the read folds from ',
+  stageOneDeclinedTail: ' again — this costs speed, not correctness.',
+  stageOneNoReport: 'This server build reported no stage-1 health.',
   inventedTimestamps: 'Invented timestamps',
   inventedTimestampsInfo:
     "§5.2: an event whose source stated no time gets one anyway — the source file's last write, or the instant the scan ran. The rows are real activity; only their date is a stand-in.",
@@ -232,11 +241,11 @@ const zh = matches(en)({
   tokensAfterFold: 'tokens，按各 agent 自身的折叠规则',
   noDuplication: '未观察到 request_id 重复',
   missingPriceTile: '缺少定价的模型',
-  missingPriceTileInfo: '没有定价的模型，其成本显示为 n/a，绝不会是 $0（§8）。',
+  missingPriceTileInfo: '没有定价的模型，其成本显示为 未定价，绝不会是 $0（§8）。',
   allModels: '全部',
-  noPriceTableDetail: '未注入价格表 —— 所有成本均为 n/a',
+  noPriceTableDetail: '未注入价格表 —— 所有成本均为 未定价',
   modelsSeenLead: '共',
-  modelsSeenTail: '个出现过的模型没有定价 —— 其成本为 n/a',
+  modelsSeenTail: '个出现过的模型没有定价 —— 其成本为 未定价',
   everyModelPriced: '出现过的模型都有定价',
 
   statusOk: '正常',
@@ -333,6 +342,12 @@ const zh = matches(en)({
   orphanOf: '{orphan} 个未挂接，共 {total} 个',
   orphansCounted: '它们的 token 与成本确实已被计入；无法确定的只是时间轴上的树位置。',
 
+  stageOneTitle: '已实体化的 stage 1',
+  stageOneInfo:
+    '§19：按请求折叠的结果存在它自己的表里，立方体因此不必每次读取都重新折叠全部事件。这张表与 `events` 之间没有外键约束，所以它是否仍然一致，是一个值得打印出来的事实。',
+  stageOneDeclinedLead: '两边的数字都仍然正确：脱节过、或按别的策略折叠过的表会被弃用，读取会现场从 ',
+  stageOneDeclinedTail: ' 重新折叠 —— 损失的是速度，不是正确性。',
+  stageOneNoReport: '这个服务端构建没有上报 stage 1 的健康状况。',
   inventedTimestamps: '被造出的时间戳',
   inventedTimestampsInfo:
     '§5.2：源本身没给时间的事件也会被安上一个 —— 源文件的最后写入时间，或扫描运行的那一刻。这些行是真实活动，只有日期是替身。',
@@ -349,12 +364,12 @@ const zh = matches(en)({
   errorsWord: '个出错',
   catalogLabel: '能力目录：',
   pricing: '定价',
-  pricingInfo: '成本按注入的价格表计算。没有定价的模型，其成本显示为 n/a，绝不会是 $0（§8）。',
+  pricingInfo: '成本按注入的价格表计算。没有定价的模型，其成本显示为 未定价，绝不会是 $0（§8）。',
   modelsPriced: '已定价模型',
   modelsSeen: '出现过的模型',
-  missingPriceAlert: '有 {n} 个缺少定价 —— 成本为 n/a：',
+  missingPriceAlert: '有 {n} 个缺少定价 —— 成本为 未定价：',
   noPriceTableTitle: '未注入价格表 ——',
-  allCostNa: '所有成本都是 n/a，绝不会显示为 $0。',
+  allCostNa: '所有成本都是 未定价，绝不会显示为 $0。',
   cost: '成本',
   costActual: '实际花费，已知的按上报值',
   costApiEquiv: 'API 等价估算',

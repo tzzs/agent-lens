@@ -37,6 +37,19 @@ interface TitleRow {
   subtype: string
 }
 
+/**
+ * The host-metadata subtypes whose `metadata.value.title` names a session. One list, because a
+ * caller that decides whether to run this projection at all has to agree with the SQL below about
+ * what counts as evidence — and the projection is a full scan of `events` (no index reaches this
+ * predicate; measured 1.16s over a 400k-row store), so `watch` cannot afford to ask blindly.
+ */
+export const TITLE_EVIDENCE_SUBTYPES: readonly string[] = ['custom-title', 'ai-title']
+
+/** Does this row carry title evidence? Cheap enough to run over every event in a batch. */
+export function carriesTitleEvidence(event: { type?: string | null; subtype?: string | null }): boolean {
+  return event.type === 'unknown' && TITLE_EVIDENCE_SUBTYPES.includes(event.subtype ?? '')
+}
+
 export function selectSessionTitle(rows: readonly TitleRow[]): string | null {
   // Ordered by the caller as (timestamp, raw_seq, id) ascending, so the LAST matching row is the
   // newest. A human title outranks the generated one even if the generator wrote later.
@@ -55,7 +68,7 @@ const TITLE_ROWS_SQL = `
   SELECT session_id, subtype, json_extract(metadata, '$.value.title') AS title
   FROM events
   WHERE type = 'unknown'
-    AND subtype IN ('custom-title', 'ai-title')
+    AND subtype IN (${TITLE_EVIDENCE_SUBTYPES.map((s) => `'${s}'`).join(', ')})
     AND session_id IS NOT NULL
     AND TRIM(COALESCE(json_extract(metadata, '$.value.title'), '')) <> ''
   ORDER BY session_id, timestamp, raw_seq IS NULL, raw_seq, id`

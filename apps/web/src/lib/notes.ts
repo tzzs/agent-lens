@@ -12,6 +12,7 @@
  * which is what keeps a note from outliving the language it was drawn in.
  */
 import { msg, type MessageKey } from '@agentlens/i18n'
+import { formatInt } from './format.ts'
 import type {
   AgentNoteCode,
   CatalogNoteCode,
@@ -19,6 +20,7 @@ import type {
   CostBasisCode,
   ModelNoteCode,
   ProjectNoteCode,
+  StageOneCode,
   TokenBasisCode,
 } from './api.ts'
 
@@ -44,6 +46,12 @@ const CONTENT_NOTE: Record<ContentNoteCode, MessageKey> = {
 }
 const PROJECT_NOTE: Record<ProjectNoteCode, MessageKey> = { canonicalRootFold: 'notes.canonicalRootFold' }
 const MODEL_NOTE: Record<ModelNoteCode, MessageKey> = { naMeansUnpriced: 'notes.naMeansUnpriced' }
+const STAGE_ONE: Record<StageOneCode, MessageKey> = {
+  absent: 'notes.absent',
+  drifted: 'notes.drifted',
+  policyMismatch: 'notes.policyMismatch',
+  materialised: 'notes.materialised',
+}
 
 export function tokenBasis(code: TokenBasisCode): string {
   return msg(TOKEN_BASIS[code])
@@ -68,6 +76,12 @@ export function catalogNote(code: CatalogNoteCode, counts: { installed: number; 
 
 export function contentNote(code: ContentNoteCode): string {
   return msg(CONTENT_NOTE[code])
+}
+
+/** §11's stage-1 health: the counts arrive from the store, the sentence is the viewer's. */
+export function stageOneNote(code: StageOneCode, counts: { rows: number; members: number; events: number }): string {
+  // Grouped, exactly as storage groups them for the terminal's line (§14).
+  return msg(STAGE_ONE[code], { rows: formatInt(counts.rows), members: formatInt(counts.members), events: formatInt(counts.events) })
 }
 
 export function projectNote(code: ProjectNoteCode): string {

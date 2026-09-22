@@ -36,6 +36,12 @@ const en = {
   canonicalRootFold:
     'One row per canonical repo root (§4.1): worktrees and subdirectories fold into the parent project, so a row can cover several paths',
   naMeansUnpriced: 'cost shown as n/a when a model has no price: §8 forbids reading an unknown price as $0',
+  // §11's stage-1 fold health. The English is `requestFoldSentence`'s, unchanged, and
+  // apps/web/test/server-notes.test.ts pins that against storage's own rendering.
+  absent: 'no materialised stage 1 (migration 008) — every cube read folds events live',
+  drifted: 'stage 1 accounts for {members} of {events} events — it drifted from `events`, so reads fold live again until the next scan (§11)',
+  policyMismatch: 'stage 1 holds {rows} request rows for {events} events, but under a different §18 grouping than the stored policies — reads fold live until a re-scan',
+  materialised: 'stage 1 materialised: {rows} request rows over {events} events',
 }
 
 const zh = matches(en)({
@@ -58,6 +64,10 @@ const zh = matches(en)({
   contentMissing: '内容层已关闭或过期（payload TTL）——时间线只有指标；用 --content 重新扫描才能采集消息/工具文本',
   canonicalRootFold: '一行对应一个规范化的仓库根目录（§4.1）：worktree 与子目录都会折叠进父项目，所以一行可能覆盖多个路径',
   naMeansUnpriced: '模型没有价格时费用显示为未定价：§8 禁止把未知价格读成 $0',
+  absent: '没有实体化的 stage 1（迁移 008）—— 每次立方体读取都现场折叠 events',
+  drifted: 'stage 1 只解释了 {events} 个事件中的 {members} 个 —— 它已经和 `events` 脱节，因此在下次扫描前读取会退回现场折叠（§11）',
+  policyMismatch: 'stage 1 为 {events} 个事件存了 {rows} 条 request 行，但分组方式与已保存的 §18 策略不一致 —— 重新扫描前读取退回现场折叠',
+  materialised: 'stage 1 已实体化：{rows} 条 request 行覆盖 {events} 个事件',
 })
 
 export default { en, zh }

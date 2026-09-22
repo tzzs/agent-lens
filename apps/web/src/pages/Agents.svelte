@@ -8,7 +8,7 @@
   import { loader } from '../lib/pagestate.svelte.js'
   import { range, filterParams } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
-  import { formatCompact, formatInt, formatMs } from '../lib/format.ts'
+  import { activeMetricInfo, formatCompact, formatInt, formatMs } from '../lib/format.ts'
   import { SERIES, eventKind } from '../lib/eventKinds.ts'
   import { t } from '../lib/lang.js'
   import Surface from '../components/ui/Surface.svelte'
@@ -48,8 +48,6 @@
     local: { label: $t('agents.billingLocal'), note: $t('agents.billingLocalNote') },
   })
   const billing = (mode: string) => BILLING[mode] ?? { label: mode, note: $t('agents.billingFallbackNote') }
-
-  const DURATION_INFO = $derived($t('agents.durationInfo'))
 
   /** Capability type as one word; an unknown type keeps the id the server sent. */
   const WORDS: Record<string, string> = $derived({
@@ -146,9 +144,9 @@
                 </div>
               </dl>
               <p class="mt-3 flex items-center gap-1.5 text-xs text-ink-3">
-                {$t('agents.duration')}
+                {$t('agents.active')}
                 <span class="nums text-ink-2" title={duration > 0 ? undefined : $t('agents.noDurations')}>{duration > 0 ? formatMs(duration) : '—'}</span>
-                <InfoTip text={DURATION_INFO} />
+                <InfoTip text={activeMetricInfo()} />
               </p>
             </div>
 

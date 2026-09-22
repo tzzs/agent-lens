@@ -9,7 +9,7 @@
   import { live } from '../lib/live.svelte.js'
   import { contentNote } from '../lib/notes.ts'
   import { t } from '../lib/lang.js'
-  import { formatCompact, formatInt, formatMs, formatDateTime, projectLabel, shortId } from '../lib/format.ts'
+  import { activeMetricInfo, formatCompact, formatInt, formatMs, formatDateTime, projectLabel, shortId } from '../lib/format.ts'
   import { eventGroups, eventKind, type EventGroup } from '../lib/eventKinds.ts'
   import { buildForest, parentIds, sessionSpan, visibleRows } from '../lib/timeline.ts'
   import Surface from '../components/ui/Surface.svelte'
@@ -173,16 +173,18 @@
 
   <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
     {#each [
-      [$t('sessionDetail.tileAgent'), `${d.session.agentId} · ${d.session.hostId}`],
-      [$t('sessionDetail.tileProject'), projectLabel(d.session.project)],
-      [$t('sessionDetail.tileStarted'), formatDateTime(d.session.firstTimestamp).slice(0, 16)],
-      [$t('sessionDetail.tileEvents'), formatInt(d.session.eventCount)],
-      [$t('sessionDetail.tileTokens'), formatCompact(Number(d.totals.tokens_total ?? 0))],
-      [$t('sessionDetail.tileDuration'), formatMs(Number(d.totals.duration ?? 0))],
-    ] as [k, v] (k)}
+      [$t('sessionDetail.tileAgent'), `${d.session.agentId} · ${d.session.hostId}`, null],
+      [$t('sessionDetail.tileProject'), projectLabel(d.session.project), d.session.project ?? ''],
+      [$t('sessionDetail.tileStarted'), formatDateTime(d.session.firstTimestamp).slice(0, 16), null],
+      [$t('sessionDetail.tileEvents'), formatInt(d.session.eventCount), null],
+      [$t('sessionDetail.tileTokens'), formatCompact(Number(d.totals.tokens_total ?? 0)), null],
+      // The metric is machine time; the wall clock it gets mistaken for is one hover away.
+      [$t('sessionDetail.tileActive'), formatMs(Number(d.totals.duration ?? 0)),
+        span === null ? activeMetricInfo() : $t('sessionDetail.activeWithSpan', { values: { metric: activeMetricInfo(), span: formatMs(span.end - span.start) } })],
+    ] as [k, v, hint] (k)}
       <div class="min-w-0 rounded-[10px] bg-surface px-3 py-2 shadow-card">
         <div class="text-xs text-ink-3">{k}</div>
-        <div class="nums truncate text-[13px] text-ink" title={k === $t('sessionDetail.tileProject') ? (d.session.project ?? '') : v}>{v}</div>
+        <div class="nums truncate text-[13px] text-ink" title={hint ?? v}>{v}</div>
       </div>
     {/each}
   </div>

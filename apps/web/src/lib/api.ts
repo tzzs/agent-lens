@@ -194,6 +194,8 @@ export type CatalogNoteCode = 'noCatalogInjected' | 'catalogUnreadable' | 'catal
 export type ContentNoteCode = 'contentOn' | 'contentOff' | 'contentPresent' | 'contentWithheldByParam' | 'contentMissing'
 export type ProjectNoteCode = 'canonicalRootFold'
 export type ModelNoteCode = 'naMeansUnpriced'
+/** §11's stage-1 fold state; mirrors `RequestFoldCode` in @agentlens/storage. */
+export type StageOneCode = 'absent' | 'drifted' | 'policyMismatch' | 'materialised'
 
 /** A cost figure as the server emits it: null means "no basis", never $0. */
 export interface CostView {

@@ -170,14 +170,14 @@ const zh = matches(en)({
   statusError: '错误',
 
   pricing: '定价',
-  pricingInfo: '成本按注入的价格表计算。价格未知时显示为 n/a，绝不会是 $0（§8）。',
+  pricingInfo: '成本按注入的价格表计算。价格未知时显示为 未定价，绝不会是 $0（§8）。',
   priceTable: '价格表',
   priceConfigured: '已配置',
   priceNotInjected: '未注入',
   modelsPriced: '已定价模型',
   modelsSeen: '出现过的模型',
   missingAPrice: '缺少定价',
-  allUnpriced: '全部 —— 成本为 n/a',
+  allUnpriced: '全部 —— 成本为 未定价',
   none: '无',
 
   billing: '计费方式',
@@ -197,7 +197,7 @@ const zh = matches(en)({
   noAgentsYet: '还没有已知的 agent —— 一次扫描会先把它们登记，之后才能在这里声明计费方式。',
   savedInLead: '已保存到',
   savedInMid: '，这个文件正是',
-  savedInTail: '读取的同一份，因此终端与本页面不可能不一致。没有定价的模型仍然显示 n/a，绝不会是 $0 —— 计费方式说的是现金，不是价格（§8）。',
+  savedInTail: '读取的同一份，因此终端与本页面不可能不一致。没有定价的模型仍然显示 未定价，绝不会是 $0 —— 计费方式说的是现金，不是价格（§8）。',
   noDbLead: '这台服务器启动时没有指定数据库文件，因此它没有地方保存声明。请改用',
   noDbTail: '来声明计费方式。',
 

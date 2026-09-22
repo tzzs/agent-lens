@@ -64,6 +64,7 @@ import {
 } from './spec.ts'
 import { resolveSince } from './time.ts'
 import { foldKey, type FoldCache } from './fold-cache.ts'
+import { persistedFold } from './persisted-fold.ts'
 
 const DAY_MS = 86_400_000
 
@@ -165,10 +166,16 @@ interface Prepared {
   params: unknown[]
 }
 
+/** `buildWhere` plus the window it resolved, which is what the persisted read path asks about. */
+interface WhereClause extends Prepared {
+  sinceTs: number | undefined
+  untilTs: number | undefined
+}
+
 interface Reqs {
   metrics: Metric[]
   dims: Dim[]
-  where: Prepared
+  where: WhereClause
   /** Stage-1 fold: request-key expression + its bound agent ids (§18 per-adapter policy). */
   fold: Prepared
   /**
@@ -178,10 +185,14 @@ interface Reqs {
    */
   joinsModels: boolean
   /**
-   * Name of the temp table holding a materialised stage 1, when this request has one.
-   * Stage 2 then reads that relation instead of re-running the fold.
+   * Relation stage 2 reads its folded rows from: either the name of a temp table holding a
+   * materialised stage 1 (§19's per-request reuse) or the persisted `requests` table narrowed
+   * by a WHERE (§19's stage-1 materialisation). Both already carry the representative row's
+   * columns, so stage 2 never joins back to `events`.
    */
-  foldTable?: string
+  foldRelation?: string
+  /** Values bound INSIDE that relation; a materialised temp table has already absorbed them. */
+  foldParams?: unknown[]
 }
 
 /** Stage-1 request key per §18 mode. `e` is the events alias. */
@@ -246,6 +257,13 @@ export interface QueryDeps {
    */
   foldCache?: FoldCache
   /**
+   * §19: read stage 2 off the persisted `requests` table when the filter cannot split a
+   * group. Default true; `false` forces the inline fold, which is what every caller's numbers
+   * were measured against — the equivalence tests hold the two against each other, and a
+   * surface has no way to opt out, so CLI and Web still share one answer path (§14).
+   */
+  persistedFold?: boolean
+  /**
    * The clock a relative `since`/`until` (`'30d'`) is measured against. Defaults to
    * `Date.now()` per call, which means each cube call in one request resolves a window a
    * few milliseconds apart from its siblings — the numbers still agree to within noise, but
@@ -276,7 +294,7 @@ function toTs(v: string | number, label: string, now?: () => number): number {
   }
 }
 
-function buildWhere(filter: QueryFilter | undefined, now?: () => number): Prepared {
+function buildWhere(filter: QueryFilter | undefined, now?: () => number): WhereClause {
   const parts: string[] = []
   const params: unknown[] = []
   const inList = (col: string, values: string[] | undefined) => {
@@ -284,13 +302,17 @@ function buildWhere(filter: QueryFilter | undefined, now?: () => number): Prepar
     parts.push(`${col} IN (${values.map(() => '?').join(', ')})`)
     params.push(...values)
   }
-  if (filter?.since !== undefined) {
+  // Resolved once and reported: the persisted read path asks the same window question the
+  // events filter does, and `toTs` is pure, so the two cannot disagree (§19).
+  const sinceTs = filter?.since !== undefined ? toTs(filter.since, 'since', now) : undefined
+  const untilTs = filter?.until !== undefined ? toTs(filter.until, 'until', now) : undefined
+  if (sinceTs !== undefined) {
     parts.push('e.timestamp >= ?')
-    params.push(toTs(filter.since, 'since', now))
+    params.push(sinceTs)
   }
-  if (filter?.until !== undefined) {
+  if (untilTs !== undefined) {
     parts.push('e.timestamp <= ?')
-    params.push(toTs(filter.until, 'until', now))
+    params.push(untilTs)
   }
   inList('e.agent_id', filter?.agent)
   inList('e.host_id', filter?.host)
@@ -307,7 +329,12 @@ function buildWhere(filter: QueryFilter | undefined, now?: () => number): Prepar
     // NULL metadata / missing key / explicit false all read as "not a subagent thread".
     parts.push("json_extract(e.metadata, '$.subagentThread') IS NOT 1")
   }
-  return { sql: parts.length ? `WHERE ${parts.join(' AND ')}` : '', params }
+  return {
+    sql: parts.length ? `WHERE ${parts.join(' AND ')}` : '',
+    params,
+    sinceTs,
+    untilTs,
+  }
 }
 
 /** Stage 1's projected columns. `duration` and `rep_cost` are always kept in a materialised
@@ -365,9 +392,12 @@ function materialiseFoldSql(reqs: Reqs, table: string): Prepared {
   }
 }
 
-/** Params for a stage-2 statement: a materialised fold has already absorbed them all. */
+/**
+ * Params for a stage-2 statement. A materialised temp fold has already absorbed its filter
+ * into the table; a read straight off the persisted `requests` table binds its narrowing here.
+ */
 function stageParams(reqs: Reqs): unknown[] {
-  return reqs.foldTable ? [] : [...reqs.fold.params, ...reqs.where.params]
+  return reqs.foldRelation ? (reqs.foldParams ?? []) : [...reqs.fold.params, ...reqs.where.params]
 }
 
 /** Whether a statement's dim list needs `models`, which is only ever joined through. */
@@ -387,8 +417,8 @@ function dimsNeedModels(dims: Dim[]): boolean {
  * even with no dims, so they always ask for it.
  */
 function stage2From(reqs: Reqs, needsRepRow: boolean, needsModels: boolean): string {
-  if (reqs.foldTable) {
-    return `FROM ${reqs.foldTable} r${needsModels ? ' LEFT JOIN models m ON m.rowid = r.model_rowid' : ''}`
+  if (reqs.foldRelation) {
+    return `FROM ${reqs.foldRelation} r${needsModels ? ' LEFT JOIN models m ON m.rowid = r.model_rowid' : ''}`
   }
   return `FROM req r${needsRepRow ? ' JOIN events e ON e.id = r.rep_id' : ''}${
     needsModels && needsRepRow ? ' LEFT JOIN models m ON m.rowid = e.model_rowid' : ''
@@ -399,10 +429,10 @@ function stage2From(reqs: Reqs, needsRepRow: boolean, needsModels: boolean): str
  * Where stage 2 reads the representative row from: the materialised fold carries the
  * columns itself, the inline CTE has to join back to `events`. Stage 1 (`eventQuery`) reads
  * raw events and never has either, so it always passes `CTE_SOURCE` explicitly — deriving the
- * source from `reqs.foldTable` there would emit `r.` columns against an `events e` FROM.
+ * source from `reqs.foldRelation` there would emit `r.` columns against an `events e` FROM.
  */
 function stageSource(reqs: Reqs): ReadSource {
-  return reqs.foldTable ? FOLD_TABLE_SOURCE : CTE_SOURCE
+  return reqs.foldRelation ? FOLD_TABLE_SOURCE : CTE_SOURCE
 }
 
 /** The dim expressions for one read source. */
@@ -458,7 +488,7 @@ function requestStageQuery(reqs: Reqs): Prepared | null {
   const { selects, groupBy } = selectClause(reqs, metricSqls, stageSource(reqs))
   const needsModels = dimsNeedModels(reqs.dims)
   return {
-    sql: `${reqs.foldTable ? '' : `WITH ${dedupStage(reqs, reqs.metrics.includes('duration'), reqs.metrics.includes('cost_total'))}`}
+    sql: `${reqs.foldRelation ? '' : `WITH ${dedupStage(reqs, reqs.metrics.includes('duration'), reqs.metrics.includes('cost_total'))}`}
       SELECT ${selects}
       ${stage2From(reqs, reqs.dims.length > 0, needsModels)}
       ${groupBy}`,
@@ -490,7 +520,7 @@ function costBucketsQuery(reqs: Reqs, unreportedOnly = false): Prepared | null {
   const groupStart = reqs.dims.length
   const bucketGroup = bucketNames.map((_, i) => groupStart + i + 1).join(', ')
   return {
-    sql: `${reqs.foldTable ? '' : `WITH ${dedupStage(reqs, reqs.metrics.includes('duration'), unreportedOnly)}`}
+    sql: `${reqs.foldRelation ? '' : `WITH ${dedupStage(reqs, reqs.metrics.includes('duration'), unreportedOnly)}`}
       SELECT ${dimPart}${bucketSqls.join(', ')}, ${tokenSums}
       ${stage2From(reqs, true, true)}
       ${unreportedOnly ? 'WHERE r.rep_cost IS NULL' : ''}
@@ -499,7 +529,9 @@ function costBucketsQuery(reqs: Reqs, unreportedOnly = false): Prepared | null {
   }
 }
 
+/** One pass over `events` per statement that still carries a compiled stage-1 fold (§19). */
 function runPrepared(db: DatabaseSync, p: Prepared): Row[] {
+  if (p.sql.includes('req AS (')) foldServed.inline++
   const stmt = db.prepare(p.sql)
   const rows = p.params.length ? stmt.all(...(p.params as never[])) : stmt.all()
   return (rows as Record<string, unknown>[]).map((r) => ({ ...r }))
@@ -651,6 +683,34 @@ function usesFold(metrics: Metric[]): boolean {
   )
 }
 
+/**
+ * Fold passes since the last reset, by kind. Diagnostics only — no number reads them — but
+ * §19's whole claim is a pass count ("一次全历史 /api/projects 至少 4 遍折叠"), so the cube has to
+ * be able to say what it stopped doing. `inline` is counted where it happens: a statement
+ * carrying a compiled `req AS (…)` stage-1 fold is one pass over `events`, and the grouped
+ * query, the totals query and each cost-bucket variant bring one of their own.
+ */
+export interface FoldPassCounters {
+  /** Stage-1 folds compiled into the statement and run against `events`. */
+  inline: number
+  /** Temp tables materialised once per read scope (`fold-cache.ts`). */
+  materialised: number
+  /** Cube calls answered from the persisted `requests` table (§19). */
+  persisted: number
+}
+
+const foldServed: FoldPassCounters = { inline: 0, materialised: 0, persisted: 0 }
+
+export function foldPasses(): FoldPassCounters {
+  return { ...foldServed }
+}
+
+export function resetFoldPasses(): void {
+  foldServed.inline = 0
+  foldServed.materialised = 0
+  foldServed.persisted = 0
+}
+
 export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): QueryResult {
   if (spec.metrics !== undefined && spec.metrics.length === 0) throw new Error('query: metrics must not be empty')
   const metrics = (spec.metrics ?? ['events']).map(assertMetric)
@@ -668,11 +728,32 @@ export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): Quer
   // One materialisation per distinct (fold key, filter) inside the scope: the four stage-2
   // statements below (grouped, totals, and their two cost-bucket variants) otherwise each
   // re-run the fold, and a whole dashboard page re-runs it ~14 times over.
-  if (deps?.foldCache && usesFold(metrics)) {
-    const draft: Reqs = { ...reqs }
-    reqs.foldTable = deps.foldCache.ensure(foldKey([fold.sql, where.sql, where.params, reqs.joinsModels]), (table) =>
-      materialiseFoldSql(draft, table),
-    )
+  if (usesFold(metrics)) {
+    // §19, first choice: the persisted stage 1. Zero folds, because the grouping already
+    // happened on the write path. `persistedFold` is the only thing deciding that a filter
+    // cannot split a group, and it declines — never approximates — when it is not sure.
+    const persisted =
+      deps?.persistedFold === false
+        ? null
+        : persistedFold(db, {
+            filter: spec.filter,
+            sinceTs: where.sinceTs,
+            untilTs: where.untilTs,
+            aggregation: deps?.aggregation,
+            ...(deps?.foldCache ? { scope: deps.foldCache } : {}),
+          })
+    if (persisted) {
+      reqs.foldRelation = persisted.relation
+      reqs.foldParams = persisted.params
+      foldServed.persisted++
+    } else if (deps?.foldCache) {
+      const draft: Reqs = { ...reqs }
+      reqs.foldRelation = deps.foldCache.ensure(foldKey([fold.sql, where.sql, where.params, reqs.joinsModels]), (table) =>
+        materialiseFoldSql(draft, table),
+      )
+      reqs.foldParams = [] // the temp table absorbed the filter
+      foldServed.materialised++
+    }
   }
 
   const eventRows = runPrepared(db, eventQuery(reqs))

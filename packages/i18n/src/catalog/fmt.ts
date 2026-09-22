@@ -25,6 +25,9 @@ const en = {
   costPartial: 'at least this much: some agents have no price and are excluded (§8)',
   costEstimate: 'computed from tokens × price (estimate)',
   costReported: 'the agent reported this figure itself (§8)',
+  // What the session-level duration metric measures; Sessions, Agents and the session
+  // page all quote it, so the explanation exists once.
+  activeMetric: 'Summed time of recorded events (model calls, tool runs), each request counted once — not wall-clock time.',
 }
 
 const zh = matches(en)({
@@ -44,6 +47,7 @@ const zh = matches(en)({
   costPartial: '至少这么多：部分 agent 没有价格，已从合计中排除（§8）',
   costEstimate: '由 tokens × 单价计算（估算）',
   costReported: '这是 agent 自己上报的数字（§8）',
+  activeMetric: '已记录事件的时长合计（模型调用、工具运行），每个请求只计一次——不是挂钟时间。',
 })
 
 export default { en, zh }

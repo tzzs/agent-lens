@@ -3,7 +3,7 @@
   import { loader } from '../lib/pagestate.svelte.js'
   import { range, filterParams } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
-  import { formatCompact, formatInt, formatMs, relativeTime, projectLabel, shortId } from '../lib/format.ts'
+  import { activeMetricInfo, formatCompact, formatInt, formatMs, relativeTime, projectLabel, shortId, spanMs } from '../lib/format.ts'
   import { SERIES } from '../lib/eventKinds.ts'
   import { t } from '../lib/lang.js'
   import Surface from '../components/ui/Surface.svelte'
@@ -44,14 +44,14 @@
   })
 
   // Derived, not const: the column heads are the viewer's language, and a
-  // re-render is what turns "Duration" into "时长" without a reload.
+  // re-render is what turns "Active" into "活跃时长" without a reload.
   const columns = $derived([
     { key: 'session', label: $t('sessions.colSession'), width: '31%' },
     { key: 'agent', label: $t('sessions.colAgent'), width: '14%' },
     { key: 'project', label: $t('sessions.colProject'), width: '14%' },
     { key: 'events', label: $t('sessions.colEvents'), align: 'right' as const, width: '8%' },
     { key: 'tokens', label: $t('sessions.colTokens'), align: 'right' as const, width: '8%' },
-    { key: 'duration', label: $t('sessions.colDuration'), align: 'right' as const, width: '8%' },
+    { key: 'duration', label: $t('sessions.colActive'), align: 'right' as const, width: '8%', info: activeMetricInfo() },
     { key: 'cost', label: $t('sessions.colCost'), align: 'right' as const, width: '12%', info: $t('sessions.colCostInfo', { values: { na: $t('common.na') } }) },
     { key: 'last', label: $t('sessions.colLast'), align: 'right' as const, width: '9%' },
   ])
@@ -90,6 +90,7 @@
       empty={d.rows.length ? $t('sessions.emptyFiltered') : $t('sessions.emptyWindow')}
     >
       {#snippet row(r: SessionRow)}
+        {@const span = spanMs(r.firstTimestamp, r.lastTimestamp)}
         <td>
           <a href="#/sessions/{encodeURIComponent(r.sessionId)}" class="block truncate font-medium text-ink hover:text-accent" title={r.title ?? r.sessionId}>
             {r.title || $t('sessions.untitled', { values: { agent: r.agentId } })}
@@ -106,7 +107,10 @@
         <td class="text-ink-2" title={r.project}><span class={projectLabel(r.project) !== r.project ? 'nums' : ''}>{projectLabel(r.project)}</span></td>
         <td class="nums text-right">{formatInt(r.events)}</td>
         <td class="nums text-right">{formatCompact(r.tokensTotal)}</td>
-        <td class="nums text-right text-ink-2" title={r.durationMs > 0 ? '' : $t('sessions.noDurations')}>{r.durationMs > 0 ? formatMs(r.durationMs) : $t('common.dash')}</td>
+        <td class="nums text-right text-ink-2" title={r.durationMs > 0 ? activeMetricInfo() : $t('sessions.noDurations')}>
+          {r.durationMs > 0 ? formatMs(r.durationMs) : $t('common.dash')}
+          {#if span !== null}<div class="text-[11px] text-ink-3" title={$t('sessions.wallClockTitle')}>{formatMs(span)}</div>{/if}
+        </td>
         <td class="text-right"><CostFigure value={r.costApiEquiv} basis="est" showLabel={false} /></td>
         <td class="nums text-right text-ink-3" title={r.lastTimestamp ? new Date(r.lastTimestamp).toISOString() : ''}>{relativeTime(r.lastTimestamp, now)}</td>
       {/snippet}
