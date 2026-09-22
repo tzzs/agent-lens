@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { AgentEvent } from '@agentlens/event-model'
-import { insertEvents, migrate, openDatabase } from '@agentlens/storage'
+import { insertEvents, loadSessionEvents, migrate, openDatabase } from '@agentlens/storage'
 import { runCli } from '../src/index.ts'
 import type { Ctx } from '../src/context.ts'
 
@@ -325,5 +325,40 @@ describe('export --push (OTLP/HTTP ingest)', () => {
     const scheme = await run(dbPath, 'export', '--format', 'otel', '--push', 'file:///tmp/otel.json')
     expect(scheme.code).toBe(2)
     expect(seen).toHaveLength(0)
+  })
+})
+
+/**
+ * §14: `agl export` ships events in the order the timeline reads them, which for a row with no
+ * `raw_seq` is NOT the order a hand-written `ORDER BY timestamp, raw_seq, id` produces — SQLite
+ * sorts NULL first, the canonical order parks it last. This is the divergence §19 recorded as
+ * "导出不影响读图，未动"; it is now closed by one shared ORDER BY in storage.
+ */
+describe('export ships the canonical event order (§14)', () => {
+  const orderPath = join(tmp, 'order.db')
+  seedDb(orderPath, [
+    ev('o-first', { rawSeq: 1 }),
+    ev('o-second', { rawSeq: 2 }),
+    ev('o-noseq', { rawSeq: 3 }),
+  ])
+  {
+    const db = openDatabase(orderPath)
+    db.prepare("UPDATE events SET raw_seq = NULL WHERE id = 'o-noseq'").run()
+    db.close()
+  }
+
+  it('puts the row with no raw_seq last, where the timeline puts it', async () => {
+    const { out } = await run(orderPath, 'export', '--format', 'jsonl')
+    expect(out.map((l) => JSON.parse(l).id)).toEqual(['o-first', 'o-second', 'o-noseq'])
+
+    const db = openDatabase(orderPath)
+    const timeline = loadSessionEvents(db, 'sess-synthetic').map((e) => e.id)
+    db.close()
+    expect(out.map((l) => JSON.parse(l).id)).toEqual(timeline)
+  })
+
+  it('and the cap cuts the same first N rows it would have exported', async () => {
+    const { out } = await run(orderPath, 'export', '--format', 'jsonl', '--limit', '2')
+    expect(out.map((l) => JSON.parse(l).id)).toEqual(['o-first', 'o-second'])
   })
 })

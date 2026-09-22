@@ -89,11 +89,16 @@ export function rowToEvent(row: Row): AgentEvent {
 }
 
 /**
- * The one canonical session-timeline order (§14: CLI and Web can never
- * disagree). Chronological timestamp is primary so sessions whose events come
- * from several sources still read like the log; raw_seq (per-source, NULLs
- * last) breaks ties inside equal timestamps, id keeps it deterministic.
+ * The one canonical event order (§14: nothing that lists events may reorder them).
+ * Chronological timestamp is primary so a set whose events come from several sources still
+ * reads like the log; `raw_seq` (per-source) breaks ties inside one source with NULLs last —
+ * SQLite sorts NULL first, so the flag has to be written, not assumed — and `id` keeps the
+ * whole thing deterministic. Its own export because `agl export` selects a store-wide set
+ * rather than one session and cannot use the select below; a second hand-written `ORDER BY`
+ * is exactly how the two came to disagree about rows with no `raw_seq`.
  */
+export const CANONICAL_EVENT_ORDER = 'e.timestamp, e.raw_seq IS NULL, e.raw_seq, e.id'
+
 /**
  * The canonical session-timeline select: the canonical order plus the `models` join that
  * `rowToEvent` needs to fill `model`. Exported because anything rendering a timeline must ask the
@@ -105,7 +110,7 @@ export const SESSION_EVENT_SQL = `
   SELECT e.*, m.provider AS model_provider, m.name AS model_name, m.tier AS model_tier
   FROM events e LEFT JOIN models m ON m.rowid = e.model_rowid
   WHERE e.session_id = ?
-  ORDER BY e.timestamp, e.raw_seq IS NULL, e.raw_seq, e.id`
+  ORDER BY ${CANONICAL_EVENT_ORDER}`
 
 export function loadSessionEvents(db: DatabaseSync, sessionId: string): AgentEvent[] {
   const rows = db.prepare(SESSION_EVENT_SQL).all(sessionId) as Row[]

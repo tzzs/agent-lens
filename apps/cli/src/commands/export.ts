@@ -8,7 +8,7 @@
 import { createHash } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import { otelSpanName, toOtelAttributes, type AgentEvent } from '@agentlens/event-model'
-import { rowToEvent } from '@agentlens/storage'
+import { CANONICAL_EVENT_ORDER, rowToEvent } from '@agentlens/storage'
 import { resolveSince } from '@agentlens/query'
 import { UsageError, type FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
@@ -216,7 +216,9 @@ export async function cmdExport(db: DatabaseSync, flags: FlagView, ctx: Ctx): Pr
   // a `--limit 5` push sent 370,493 spans. The cap goes into the SQL (not a post-filter slice)
   // so every format, and the OTLP batches, read the same first N rows in the same order.
   const limit = flags.num('limit')
-  const order = 'ORDER BY e.timestamp, e.raw_seq, e.id'
+  // §14: the same order the timeline reads in, from the same owner. Written out here it used to
+  // differ for a row with no `raw_seq` — SQLite puts NULL first, the canonical order puts it last.
+  const order = `ORDER BY ${CANONICAL_EVENT_ORDER}`
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
   const cap = limit === undefined ? '' : ' LIMIT ?'
   const capRows = limit === undefined ? [] : [Math.trunc(limit)]

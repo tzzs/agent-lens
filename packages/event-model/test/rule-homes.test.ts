@@ -95,9 +95,15 @@ const RULES: Rule[] = [
   },
   {
     what: 'the order a session timeline is read in',
-    home: '@agentlens/storage → loadSessionEvents / SESSION_EVENT_SQL',
+    home: '@agentlens/storage → loadSessionEvents / SESSION_EVENT_SQL / CANONICAL_EVENT_ORDER',
     forbidden: [
       { re: /raw_seq IS NULL/, why: 're-sorting per surface is exactly the drift §19 records for Web vs CLI session order' },
+      { re: /ORDER BY [^\n]*raw_seq[^\n]*, *e?\.?id/, why: 'a hand-written copy of the canonical order forgets the NULL-last flag, which is how `agl export` came to disagree with the timeline' },
+    ],
+    calls: [
+      { file: 'apps/cli/src/commands/sessions.ts', symbol: 'loadSessionEvents' },
+      { file: 'packages/server/src/sessions.ts', symbol: 'loadSessionEvents' },
+      { file: 'apps/cli/src/commands/export.ts', symbol: 'CANONICAL_EVENT_ORDER' },
     ],
   },
   {
