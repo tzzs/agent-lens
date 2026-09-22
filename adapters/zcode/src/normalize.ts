@@ -1,7 +1,8 @@
 /**
- * §5.1 `normalize` — ZCode row → unified events, following docs/research/zcode.md §七.
+ * §5.1 `normalize` — ZCode row (or subagent run document) → unified events, following
+ * docs/research/zcode.md §七 and §八·5.
  *
- * The four measurement-forced decisions this file exists to make:
+ * The five measurement-forced decisions this file exists to make:
  *  - §三 — the same API call's tokens are stored FIVE times (`model_usage`,
  *    `part.step-finish`, `message.data.tokens`, `turn_usage`, `session_target`). Usage is
  *    read from `model_usage` alone and lands on `generation.end` alone; the other copies
@@ -15,7 +16,13 @@
  *    2.12× (and, measured the same way, would inflate them again through the 100 `text`
  *    parts those injected rows carry);
  *  - §18 row 1 — `cost` columns are uniformly 0 under a coding plan, so the event builder
- *    structurally cannot emit a reported cost.
+ *    structurally cannot emit a reported cost;
+ *  - §八·5 — the subagent parent link is a two-row contract, not one: the `Agent` call becomes
+ *    a `tool.start` under a `subagent` capability (the shape the shared linker's candidate
+ *    pool queries) while the chain marker stays the child session's own `subagent.start`, and
+ *    the `cli/agents/<parentSession>/agent_<id>/metadata.json` document closes it naming that
+ *    call's raw tool-use id.
+ *    The same document is §三's fifth usage copy, so its numbers go to `metadata.rollup` only.
  */
 import {
   deriveErrorFingerprint,
@@ -60,6 +67,7 @@ import {
   bodyExcluded,
   bool,
   costCopy,
+  iso,
   jsonPayload,
   mcpOf,
   modelRefOf,
@@ -74,6 +82,7 @@ import {
   truncate,
   usageFromModelUsage,
   type UnknownRecord,
+  TABLE_AGENT_METADATA,
 } from './record.ts'
 import { stateFor } from './state.ts'
 
@@ -124,6 +133,9 @@ export async function normalize(record: RawRecord, ctx: NormalizeCtx): Promise<N
       break
     case TABLE_TOOL_USAGE:
       events = fromToolUsage(scope)
+      break
+    case TABLE_AGENT_METADATA:
+      events = fromAgentsMetadata(scope)
       break
     default:
       events = [fromUnknown(scope, `table:${scope.table}`, false)]
@@ -430,8 +442,9 @@ function fromSession(s: Scope): AgentEvent[] {
 /**
  * `session` has no `cost`/`tokens` rollup columns (contrast OpenCode), so the only numbers
  * here are the diff summaries. §三's session-grain token rollups (copy #5) are
- * `session_target.tokens_used` and the per-agent `metadata.json.totalTokens` files — neither
- * is a source, so nothing in this object can reach `usage`.
+ * `session_target.tokens_used` — not a source, and the other half of that copy, the per-agent
+ * `metadata.json` totals, keeps its numbers in `rollup` for the same reason (§八·5a). Nothing
+ * in this object can reach `usage`.
  */
 function sessionRollup(row: UnknownRecord): Record<string, unknown> {
   return {
@@ -647,14 +660,16 @@ function fromToolStart(s: Scope): AgentEvent {
   const inputText = inputExcluded ? null : jsonPayload(state?.input)
   const output = str(state?.output)
   return event(s, {
-    type:
-      capability.type === 'mcp'
-        ? 'mcp.invoke'
-        : capability.type === 'subagent'
-          ? 'subagent.start'
-          : capability.type === 'skill'
-            ? 'skill.invoke'
-            : 'tool.start',
+    // §八·5b: the spawn is a `tool.start` under a `subagent` capability, NOT a
+    // `subagent.start`. The shared parent-link pass resolves `subagent.start` rows against a
+    // candidate pool queried as `type = 'tool.start' AND capability_type = 'subagent'` —
+    // exactly how claude-code's spawn rows are shaped — so naming this row anything else keeps
+    // the pool empty and the chain's parent NULL even though the foreign key is on disk.
+    // `metadata.call_id` below is the key that pass binds its proof to. The chain marker stays
+    // the child session's own `subagent.start` from the `session` source, so the Timeline
+    // still sees a subagent beginning; it just no longer competes with the spawn for the same
+    // event type. `mcp__*` and `Skill` keep their own mappings.
+    type: capability.type === 'mcp' ? 'mcp.invoke' : capability.type === 'skill' ? 'skill.invoke' : 'tool.start',
     discriminator: `tool-start:${callId ?? s.rowid}`,
     capability,
     metadata: {
@@ -875,6 +890,109 @@ function fromToolUsage(s: Scope): AgentEvent[] {
         error_type: errorType,
         error_code: errorCode,
         ...(errorMessage !== null ? { error_message: truncate(errorMessage, 500) } : {}),
+      },
+    }),
+  ]
+}
+
+// ------------------------------------------------------- agents metadata (§八·5)
+
+/**
+ * The subagent run statuses measured in `cli/agents/…/metadata.json`: `completed` 20 /
+ * `failed` 8. `failed` is this document's own word for a run that did not finish, so it reads
+ * as an error; it is NOT one of the SQLite CHECK vocabulary's values, which is why the store's
+ * `statusOf` is not reused here.
+ */
+function agentsStatusOf(value: string | null): AgentEvent['status'] {
+  if (value === 'completed') return 'ok'
+  if (value === 'failed' || value === 'error' || value === 'cancelled') return 'error'
+  return 'unknown'
+}
+
+/**
+ * §八·5a — the closing row of one subagent chain.
+ *
+ * WHY a row in ANOTHER source can prove this one: `deriveEventId` needs the spawn's `rawSeq`,
+ * which is the `part` table's rowid, and this document holds neither that nor the `part`
+ * source's id. So the proof names the spawn's raw `parentToolUseId` and the shared linker
+ * resolves it against the pool of stored spawns (`SubagentLinkVocabulary.proofNames:
+ * 'tool-use-id'`), which is a fact about the store rather than a guess by this adapter (§5.2
+ * forbids the query that would be needed to settle it here).
+ *
+ * WHY the ids line up at all: `sessionId` here is derived from the root the framing read off
+ * the directory, which is the same root `parse`'s `parent_id` walk gives the child session's
+ * own `subagent.start` — and `threadId`/`native_session_id` stay the child's own id, so the
+ * closing row lands in the same session bucket as the chain it closes.
+ *
+ * WHAT does not come out of this document: §三's fifth usage copy. `totalTokens`, `usage` and
+ * their friends go to `metadata.rollup` and nowhere near `usage` or `costReported`, because
+ * the chain's model calls were already billed row-by-row by `model_usage`. And `prompt` /
+ * `profileSnapshot` were dropped during framing (§八·5a's privacy rule), so this function
+ * cannot emit them even by accident. The document's `error` line is unread for the same
+ * reason §五 fingerprints a class rather than a message.
+ */
+function fromAgentsMetadata(s: Scope): AgentEvent[] {
+  const doc = s.data ?? {}
+  const childSessionId = str(doc.childSessionId)
+  const parentToolUseId = str(doc.parentToolUseId)
+  const status = str(doc.status)
+  const spawnDir = s.parentSessionId
+
+  const declaredParent = str(doc.parentSessionId)
+  if (declaredParent !== null && spawnDir !== null && declaredParent !== spawnDir) {
+    // Measured 28/28 agreement between the containing directory and this key. A disagreement is
+    // a shape this mapping has not settled, and `sessionId` below comes from the directory —
+    // so say so in the row instead of letting one of the two win silently.
+    s.diagnostics.push('spawn_dir_disagrees_with_parent_session_id')
+  }
+
+  if (childSessionId === null || parentToolUseId === null) {
+    // §八·5a: no key, no link. The row is still reported (§5.2 rule 1) as drift naming the
+    // absent key, and it carries NO `parent_source`, so the shared pass cannot mistake it for
+    // a proof.
+    const absent: string[] = []
+    if (childSessionId === null) absent.push('child-session-id')
+    if (parentToolUseId === null) absent.push('parent-tool-use-id')
+    return [
+      fromUnknown(s, `metadata-missing-${absent.join('-and-')}`, false, {
+        link_keys_absent: absent,
+        status,
+      }),
+    ]
+  }
+
+  const createdAt = iso(doc.createdAt)
+  const completedAt = iso(doc.completedAt)
+  const durationMs =
+    createdAt !== null && completedAt !== null && completedAt >= createdAt ? completedAt - createdAt : null
+
+  return [
+    event(s, {
+      type: 'subagent.end',
+      discriminator: `metadata:${childSessionId}`,
+      // The document names no model, and a close that invented one would attribute a
+      // generation the chain's own `generation.end` rows already state.
+      model: null,
+      // §三 copy #5: evidence only, never `usage` and never a reported cost.
+      usage: null,
+      durationMs,
+      status: agentsStatusOf(status),
+      // A subagent's close is a subagent fact whatever the directory said, and the flag is
+      // what keeps this row in its chain's thread tree for the cube's subagent switch.
+      subagentThread: true,
+      metadata: {
+        native_session_id: childSessionId,
+        parent_source: 'foreign-key',
+        linked_parent: parentToolUseId,
+        agent_id: str(doc.agentId),
+        status,
+        ...(spawnDir !== null ? { spawn_dir: spawnDir } : {}),
+        rollup: {
+          totalTokens: num(doc.totalTokens),
+          totalDurationMs: num(doc.totalDurationMs),
+          totalToolUseCount: num(doc.totalToolUseCount),
+          usage: redact(asRecord(doc.usage) ?? null),
+        },
       },
     }),
   ]

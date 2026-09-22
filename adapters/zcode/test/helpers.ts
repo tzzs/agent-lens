@@ -16,8 +16,9 @@ import {
   type RawRecord,
   type SourceSpec,
 } from '@agentlens/event-model'
+import { discoverAgentsSources } from '../src/agents.ts'
 import { zcodeAdapter } from '../src/index.ts'
-import { AGENT_ID } from '../src/record.ts'
+import { AGENT_ID, TABLE_AGENT_METADATA } from '../src/record.ts'
 
 export const FIXTURES_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../fixtures')
 export const EXPECTED_DIR = join(FIXTURES_DIR, 'expected')
@@ -106,9 +107,18 @@ export async function scanSource(
   options: { stableIds?: boolean; storePath?: string } = {},
 ): Promise<ScannedSource> {
   const source = options.stableIds ? snapshotSourceFor(table, dbPath) : sourceFor(dbPath, table)
-  const ctx = ctxFor(source, null, options.storePath)
+  return frameAndNormalize(source, fromRowid, options.storePath)
+}
+
+/** One source, end to end: `parse` to exhaustion, then `normalize` every record it framed. */
+export async function frameAndNormalize(
+  source: SourceSpec,
+  fromOffset = 0,
+  storePath?: string,
+): Promise<ScannedSource> {
+  const ctx = ctxFor(source, null, storePath)
   const records: RawRecord[] = []
-  const stream = zcodeAdapter.parse(source, { offset: fromRowid }, ctx)
+  const stream = zcodeAdapter.parse(source, { offset: fromOffset }, ctx)
   while (true) {
     const next = await stream.next()
     if (next.done) {
@@ -125,10 +135,43 @@ export async function scanSource(
   }
 }
 
-/** All five sources in discovery order — the shape one collector pass produces. */
+/**
+ * The agents tree, enumerated exactly the way `discover` yields it (§八·5a) — these are file
+ * sources, so they cannot be reached through `sourceFor`, and building the specs by hand would
+ * let a test pass against a layout the adapter never actually discovers.
+ *
+ * `stableIds` swaps the random `mkdtemp` prefix for a fixed one, for the same reason
+ * `snapshotSourceFor` exists: the ids are derived from the source id, and a snapshot must not
+ * depend on this machine's temp directory.
+ */
+export const SNAPSHOT_AGENTS_PREFIX = '/agentlens-zcode-fixture/'
+
+export async function scanAgentsSources(
+  dataRoot: string,
+  options: { stableIds?: boolean } = {},
+): Promise<{ events: AgentEvent[]; failures: number; bySource: Map<string, AgentEvent[]> }> {
+  const bySource = new Map<string, AgentEvent[]>()
+  const events: AgentEvent[] = []
+  let failures = 0
+  for await (const source of discoverAgentsSources(hostCtx(dataRoot))) {
+    const label = source.path.slice(dataRoot.length).replace(/^\/+/, '')
+    const spec = options.stableIds ? { ...source, id: deriveSourceId(AGENT_ID, SNAPSHOT_AGENTS_PREFIX + label) } : source
+    const scanned = await frameAndNormalize(spec)
+    bySource.set(label, scanned.events)
+    events.push(...scanned.events)
+    failures += scanned.failures
+  }
+  return { events, failures, bySource }
+}
+
+/**
+ * Everything one collector pass produces: the five store tables, plus the agents tree when the
+ * caller says where the host root is. Without `dataRoot` the file sources are simply not part of
+ * the run — several tests scan a bare store on purpose.
+ */
 export async function scanAll(
   dbPath: string,
-  options: { stableIds?: boolean } = {},
+  options: { stableIds?: boolean; dataRoot?: string } = {},
 ): Promise<{ events: AgentEvent[]; failures: number; byTable: Map<string, AgentEvent[]> }> {
   const events: AgentEvent[] = []
   const byTable = new Map<string, AgentEvent[]>()
@@ -138,6 +181,12 @@ export async function scanAll(
     byTable.set(table, scanned.events)
     events.push(...scanned.events)
     failures += scanned.failures
+  }
+  if (options.dataRoot !== undefined) {
+    const agents = await scanAgentsSources(options.dataRoot, options)
+    byTable.set(TABLE_AGENT_METADATA, agents.events)
+    events.push(...agents.events)
+    failures += agents.failures
   }
   return { events, failures, byTable }
 }

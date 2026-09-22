@@ -1,7 +1,8 @@
 /**
- * §5.1 `parse` — row framing for a ZCode SQLite source.
+ * §5.1 `parse` — row framing for a ZCode source: a SQLite table, or one whole
+ * `cli/agents/…/agent_…/metadata.json` document (§八·5a).
  *
- * Three things differ from the JSONL path and all three are deliberate:
+ * Three things differ from the JSONL path other adapters take and all three are deliberate:
  *  - `from.offset` / `nextOffset` carry a **rowid high-water mark**, not a byte position
  *    (§4.3: byte offsets are meaningless inside a b-tree), and `seq === offset === rowid`;
  *  - the SELECT joins the relational keys a row does not carry (`part` needs its message's
@@ -11,10 +12,15 @@
  *  - the store opened is `ctx.storePath ?? source.path`. `source.path` is the app's own
  *    file, which §18 row 7 keeps refusing; when the collector copied a WAL store and folded
  *    it, `storePath` is that rollback-mode copy in our directory.
+ *
+ * The agents document is the exception on all three counts, and `agents.ts` owns why: it is
+ * pretty-printed JSON (no line to frame), it joins nothing (its keys are the document), and
+ * it is read straight from `source.path` because reading a file is not opening a database.
  */
 import { PARSE_ERROR_KEY, truncate } from '@agentlens/event-model'
 import type { DatabaseSync } from 'node:sqlite'
 import type { ByteOffset, ParseCtx, ParseTail, RecordStream, SourceSpec } from '@agentlens/event-model'
+import { isAgentsMetadataSource, parseAgentsSource } from './agents.ts'
 import {
   ms,
   parseJson,
@@ -139,6 +145,9 @@ function dataOf(row: UnknownRecord): { data: UnknownRecord | null; raw: string |
 }
 
 export async function* parse(source: SourceSpec, from: ByteOffset, ctx: ParseCtx): RecordStream {
+  // §八·5a: one pretty-printed document, so there is no line to resume into — `agents.ts`
+  // reads it whole and says why the offered `from.offset` must be ignored rather than honoured.
+  if (isAgentsMetadataSource(source)) return yield* parseAgentsSource(source, ctx)
   const table = (source.sqliteTable ?? '') as ZcodeTable
   // A WAL store reaches us as a rollback-mode copy in our own directory (§18 row 7);
   // `source.path` is the app's file, which this guard must keep refusing.

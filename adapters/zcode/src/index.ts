@@ -19,10 +19,14 @@ import { parse } from './parse.ts'
 import { AGENT_ID, HOST_ID } from './record.ts'
 
 /** Bump when the mapping rules change: a mismatch forces a full rescan (§5.3). */
-// v3: `session.time_compacting` became a `context.compact` event instead of a field hidden in
-// one row's metadata, so a store that compacts must be replayed for the dimension to appear.
-// (v2 was the ingest-wide identity/provenance bump, §4.1/§5.2.)
-export const PARSER_VERSION = 3
+// v4: §八·5b — an `Agent`/`Task` part row is now a `tool.start` under a `subagent` capability
+// instead of a `subagent.start`, which changes that row's event id, and the new
+// `cli/agents/…/metadata.json` source supplies the closing `subagent.end` whose proof the
+// shared linker binds to it. Both stored Agent rows and the subagent parent links built from
+// them must be replayed for the tree edge to appear.
+// (v3 was `session.time_compacting` becoming a `context.compact` event; v2 the ingest-wide
+// identity/provenance bump, §4.1/§5.2.)
+export const PARSER_VERSION = 4
 
 /**
  * §18 row 2 — the fold ZCode's rows are honest about.
@@ -63,7 +67,16 @@ export { detect } from './detect.ts'
 export { discover } from './discover.ts'
 export { UNATTRIBUTED_PROJECT_ID, normalize } from './normalize.ts'
 export { parse } from './parse.ts'
-export { DB_RELATIVE_PATH, dbPathOf, pluginDataDirOf, pluginsDirOf, rootOf } from './paths.ts'
+export {
+  AGENTS_METADATA_FILE,
+  AGENTS_RELATIVE_DIR,
+  DB_RELATIVE_PATH,
+  agentsDirOf,
+  dbPathOf,
+  pluginDataDirOf,
+  pluginsDirOf,
+  rootOf,
+} from './paths.ts'
 export {
   AGENT_ID,
   COST_REASON,
@@ -71,6 +84,7 @@ export {
   KNOWN_PART_TYPES,
   NON_SOURCE_TABLES,
   TABLES,
+  TABLE_AGENT_METADATA,
   TABLE_MESSAGE,
   TABLE_MODEL_USAGE,
   TABLE_PART,

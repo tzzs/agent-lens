@@ -248,7 +248,7 @@ describe('adapter surface', () => {
     ])
     expect(zcodeAdapter.id).toBe('zcode')
     expect(zcodeAdapter.displayName).toBe('ZCode')
-    expect(zcodeAdapter.parserVersion).toBe(3)
+    expect(zcodeAdapter.parserVersion).toBe(4)
   })
 
   it('exports the default the CLI’s pickAdapter prefers', async () => {

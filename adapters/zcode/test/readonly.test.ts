@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest'
 import { sourceFor } from './helpers.ts'
 import { zcodeAdapter } from '../src/index.ts'
 import { WAL_REASON, readJournalMode, sidecarPaths } from '../src/safety.ts'
+import { TABLES } from '../src/record.ts'
 import { buildHost, writePluginCatalog } from '../fixtures/build-host.ts'
 import { ctxFor, hostCtx, scanAll } from './helpers.ts'
 
@@ -58,7 +59,9 @@ describe('read-only guarantee (§5.2 rule 3)', () => {
       expect(detection.present).toBe(true)
       for await (const spec of zcodeAdapter.discover(hostCtx(host.dir))) {
         await scanAll(host.dbPath)
-        expect(spec.path).toBe(host.dbPath)
+        // File sources point at their own document; the point here is that reading them adds
+        // nothing to the store's directory.
+        if (spec.kind === 'sqlite') expect(spec.path).toBe(host.dbPath)
       }
       const { events } = await scanAll(host.dbPath)
       expect(events.length).toBeGreaterThan(30)
@@ -96,8 +99,11 @@ describe('read-only guarantee (§5.2 rule 3)', () => {
       // The five sources are still listed, so the agent stays visible and the refusal is a
       // reported fact per source rather than a silent zero (§5.2 rule 1).
       const tables: string[] = []
-      for await (const spec of zcodeAdapter.discover(hostCtx(host.dir))) tables.push(spec.sqliteTable ?? '')
-      expect(tables).toEqual(['session', 'message', 'part', 'model_usage', 'tool_usage'])
+      for await (const spec of zcodeAdapter.discover(hostCtx(host.dir))) if (spec.sqliteTable) tables.push(spec.sqliteTable)
+      // Every collected table stays advertised despite the refusal — the agent must not look
+      // simply absent (§5.2 rule 1). The agents documents are discovered alongside them and are
+      // read regardless, which is the point of §八·5a.
+      expect(tables).toEqual([...TABLES])
 
       // `parse` keeps refusing, and the refusal is an error rather than an empty read.
       const source = sourceFor(host.dbPath, 'model_usage')
@@ -125,14 +131,21 @@ describe('read-only guarantee (§5.2 rule 3)', () => {
     expect(detection.present).toBe(true)
     expect(detection.reason).toBe(WAL_REASON)
 
-    let discovered = 0
+    let storeSources = 0
+    let fileSources = 0
     for await (const spec of zcodeAdapter.discover(hostCtx(dirRoot))) {
-      discovered++
-      expect(spec.kind).toBe('sqlite')
+      if (spec.kind !== 'sqlite') {
+        // §八·5a: refusing the WAL store must not also hide the one document tree that turns
+        // the subagent chains from NULL parents into proved ones.
+        fileSources++
+        continue
+      }
+      storeSources++
       const source = sourceFor(dbPath, spec.sqliteTable ?? '')
       await expect(zcodeAdapter.parse(source, { offset: 0 }, ctxFor(source)).next()).rejects.toThrow(/WAL/)
     }
-    expect(discovered).toBe(5)
+    expect(storeSources).toBe(5)
+    expect(fileSources).toBe(host.agentRunPaths.length)
     // The refusal is real: nothing appeared next to the database.
     expect(await exists(`${dbPath}-wal`)).toBe(false)
     expect(await exists(`${dbPath}-shm`)).toBe(false)

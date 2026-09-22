@@ -317,6 +317,52 @@
     }
   },
   {
+    "id": "4ea1c6e7df62afb762149a9384f44039c244de6c4723d7d03e38283cf4e9a515",
+    "type": "tool.start",
+    "subtype": null,
+    "sessionId": "f9f2c59f6aebd8d85ed7ad03c70a1a400eb8908c212bdd08de4cbc35faf6915e",
+    "threadId": "sess_fixture_root_0000000001",
+    "projectId": "project:zroot",
+    "hostId": "zcode",
+    "timestamp": 1760000000510,
+    "rawSeq": 7,
+    "rawOffset": 7,
+    "requestId": null,
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": {
+      "type": "subagent",
+      "name": "general-purpose",
+      "provider": "Agent"
+    },
+    "durationMs": null,
+    "status": "ok",
+    "model": {
+      "provider": "builtin:bigmodel-plan-demo",
+      "name": "Demo-Model-Pro",
+      "tier": "max"
+    },
+    "payloadKind": "tool_input",
+    "payloadChars": 111,
+    "metadata": {
+      "table": "part",
+      "rowid": 7,
+      "message_id": "msg_fixture_assistant_0001",
+      "part_id": "part_fixture_tool_agent_0001",
+      "call_id": "call_fixture_agent_1",
+      "tool": "Agent",
+      "observed_state_status": "completed",
+      "input_chars": 111,
+      "input_excluded": false,
+      "observed_output_chars": 4,
+      "observed_output_excluded": false,
+      "state_title_present": true
+    }
+  },
+  {
     "id": "74edefe34e98ece39d0a5a22ad24303e65f83a855ae4c1ae3f7abb186d26ebae",
     "type": "tool.start",
     "subtype": null,
@@ -644,52 +690,6 @@
       "input_chars": 16,
       "input_excluded": false,
       "observed_output_chars": 2,
-      "observed_output_excluded": false,
-      "state_title_present": true
-    }
-  },
-  {
-    "id": "b97726763064cb3437f7f4dfb20a8f960f035461251e599dcec5cb9571a30466",
-    "type": "subagent.start",
-    "subtype": null,
-    "sessionId": "f9f2c59f6aebd8d85ed7ad03c70a1a400eb8908c212bdd08de4cbc35faf6915e",
-    "threadId": "sess_fixture_root_0000000001",
-    "projectId": "project:zroot",
-    "hostId": "zcode",
-    "timestamp": 1760000000510,
-    "rawSeq": 7,
-    "rawOffset": 7,
-    "requestId": null,
-    "parentEventId": null,
-    "usage": null,
-    "usageSource": "missing",
-    "costReported": null,
-    "costSource": "none",
-    "capability": {
-      "type": "subagent",
-      "name": "general-purpose",
-      "provider": "Agent"
-    },
-    "durationMs": null,
-    "status": "ok",
-    "model": {
-      "provider": "builtin:bigmodel-plan-demo",
-      "name": "Demo-Model-Pro",
-      "tier": "max"
-    },
-    "payloadKind": "tool_input",
-    "payloadChars": 111,
-    "metadata": {
-      "table": "part",
-      "rowid": 7,
-      "message_id": "msg_fixture_assistant_0001",
-      "part_id": "part_fixture_tool_agent_0001",
-      "call_id": "call_fixture_agent_1",
-      "tool": "Agent",
-      "observed_state_status": "completed",
-      "input_chars": 111,
-      "input_excluded": false,
-      "observed_output_chars": 4,
       "observed_output_excluded": false,
       "state_title_present": true
     }

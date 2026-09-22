@@ -321,6 +321,10 @@ export interface HostSeed {
   turnUsage?: TurnUsageSeed[]
   /** Build the store at `<tmp>/<subdir>/db.sqlite`; the real layout is `cli/db`. */
   subdir?: string
+  /** Seed the agents tree with these documents instead of `FIXTURE_AGENT_RUNS`. */
+  agentRuns?: Record<string, unknown>[]
+  /** Skip the agents tree entirely — for a host where ZCode never spawned. */
+  noAgents?: boolean
   /** WAL + no `-wal`/`-shm` siblings: the case §18 row 7 says must be refused. */
   wal?: boolean
   /** Keep a write connection open so the WAL sidecars really exist on disk. */
@@ -332,6 +336,10 @@ export interface BuiltHost {
   /** Directory holding `db.sqlite` (equals `dir` unless `subdir` was used). */
   root: string
   dbPath: string
+  /** `<host>/cli/agents` — the sixth source's root (§八·5a), present even when the store is not. */
+  agentsDir: string
+  /** Absolute path of every seeded run document, in the order written. */
+  agentRunPaths: string[]
   /** Close our connections but KEEP the files, for after-the-fact sidecar checks. */
   closeConnections(): void
   close(): Promise<void>
@@ -1082,6 +1090,64 @@ export const FIXTURE_SESSION_TARGET: { sessionId: string; tokensUsed: number }[]
   { sessionId: CHILD_SESSION, tokensUsed: 5_200 },
 ]
 
+// ---------------------------------------------------------------- the agents tree
+
+/** The `Agent` call the child session was opened by; `FIXTURE_PARTS` carries its part row. */
+export const AGENT_SPAWN_CALL_ID = 'call_fixture_agent_1'
+export const AGENT_ID_RUN = 'agent_fixture_child_0001'
+/** §八·5a privacy canaries: neither string may appear in any emitted event. */
+export const PROMPT_CANARY = 'CANARY-subagent-prompt-must-never-be-ingested'
+export const SYSTEM_PROMPT_CANARY = 'CANARY-profile-snapshot-system-prompt-must-never-be-ingested'
+
+/**
+ * `cli/agents/<parentSessionId>/agent_<agentId>/metadata.json` — §八·5's foreign key, and the
+ * fifth usage copy at the same time. Key names and the ISO-8601 timestamp dialect are the real
+ * document's (`docs/research/zcode.md` §一); the values are invented.
+ *
+ * The second row is the drift case the mapping must refuse rather than guess: a document with no
+ * `parentToolUseId` names no spawn, so it may not carry a `parent_source`.
+ */
+export const FIXTURE_AGENT_RUNS: Record<string, unknown>[] = [
+  {
+    agentId: AGENT_ID_RUN,
+    childSessionId: CHILD_SESSION,
+    parentSessionId: ROOT_SESSION,
+    parentToolUseId: AGENT_SPAWN_CALL_ID,
+    cwd: '/work/zroot',
+    workspaceRoot: '/work/zroot',
+    description: 'synthetic delegation',
+    prompt: PROMPT_CANARY,
+    profileSnapshot: { systemPrompt: SYSTEM_PROMPT_CANARY, tools: ['Read', 'Bash'] },
+    metadataFile: '/Users/whoever/.zcode/cli/agents/…/metadata.json',
+    outputFile: '/Users/whoever/.zcode/cli/agents/…/output.txt',
+    taskOutputFile: '/Users/whoever/.zcode/cli/agents/…/task.output',
+    status: 'completed',
+    createdAt: new Date(T0 + 510_000).toISOString(),
+    updatedAt: new Date(T0 + 890_000).toISOString(),
+    completedAt: new Date(T0 + 900_000).toISOString(),
+    totalDurationMs: 390_000,
+    totalTokens: 5_200,
+    totalToolUseCount: 3,
+    usage: { inputTokens: 1_000, outputTokens: 200, cacheReadTokens: 4_000 },
+  },
+  {
+    agentId: 'agent_fixture_orphan_0002',
+    childSessionId: ARCHIVED_SESSION,
+    parentSessionId: ROOT_SESSION,
+    status: 'failed',
+    createdAt: new Date(T0 + 1_000_000).toISOString(),
+    completedAt: new Date(T0 + 1_000_500).toISOString(),
+    totalDurationMs: 500,
+    totalTokens: 0,
+    totalToolUseCount: 0,
+  },
+]
+
+/** Where a run document sits, given the host root — one place so tests and the builder agree. */
+export function agentRunPath(hostDir: string, run: Record<string, unknown>): string {
+  return join(hostDir, 'cli', 'agents', String(run.parentSessionId), `agent_${run.agentId}`, 'metadata.json')
+}
+
 // ------------------------------------------------------------------ builder
 
 export async function buildHost(seed: HostSeed = {}): Promise<BuiltHost> {
@@ -1260,6 +1326,16 @@ export async function buildHost(seed: HostSeed = {}): Promise<BuiltHost> {
     insertTarget.run(target.sessionId, `target-${target.sessionId}`, 'synthetic objective', 'complete', target.tokensUsed, 60, T0, T0 + 7_000)
   }
 
+  // §八·5a's sixth source: the tree is plain JSON, so it exists whether or not the store is
+  // reachable — which is exactly the property the discovery test pins.
+  const agentsRoot = join(dir, 'cli', 'agents')
+  const agentRuns = seed.noAgents ? [] : (seed.agentRuns ?? FIXTURE_AGENT_RUNS)
+  for (const run of agentRuns) {
+    const path = agentRunPath(dir, run)
+    await mkdir(join(path, '..'), { recursive: true })
+    await writeFile(path, `${JSON.stringify(run, null, 2)}\n`, 'utf8')
+  }
+
   // A retained writer keeps `-wal`/`-shm` on disk, which is the state ZCode's own process
   // leaves behind and the only WAL state a fixture can honestly present as "live".
   const writer: DatabaseSync | null = seed.retainWriter ? new DatabaseSync(dbPath) : null
@@ -1268,6 +1344,8 @@ export async function buildHost(seed: HostSeed = {}): Promise<BuiltHost> {
     dir,
     root,
     dbPath,
+    agentsDir: agentsRoot,
+    agentRunPaths: agentRuns.map((run) => agentRunPath(dir, run)),
     closeConnections() {
       writer?.close()
       db.close()

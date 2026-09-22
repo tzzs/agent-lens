@@ -31,6 +31,7 @@ import { query } from '@agentlens/query'
 import { loadAgentAggregations, migrate, openDatabase } from '@agentlens/storage'
 import {
   buildHost,
+  FIXTURE_AGENT_RUNS,
   FIXTURE_MODEL_USAGE,
   modelUsageColumnTotals,
   type BuiltHost,
@@ -153,12 +154,20 @@ function usageRows(s: Scanned): number {
   return Number(s.db.prepare(`SELECT COUNT(*) n FROM events WHERE agent_id = 'zcode' AND input_tokens IS NOT NULL`).get().n)
 }
 
+/** The store tables that became sources (§4.3 names them per row); file sources carry none. */
 function sourceTables(s: Scanned): string[] {
   return (
-    s.db.prepare(`SELECT sqlite_table FROM sources WHERE agent_id = 'zcode' ORDER BY sqlite_table`).all() as {
-      sqlite_table: string | null
-    }[]
-  ).map((r) => String(r.sqlite_table))
+    s.db
+      .prepare(`SELECT sqlite_table FROM sources WHERE agent_id = 'zcode' AND sqlite_table IS NOT NULL ORDER BY sqlite_table`)
+      .all() as { sqlite_table: string }[]
+  ).map((r) => r.sqlite_table)
+}
+
+/** How many sources came from the agents document tree rather than from the store (§八·5a). */
+function fileSourceCount(s: Scanned): number {
+  return Number(
+    s.db.prepare(`SELECT COUNT(*) n FROM sources WHERE agent_id = 'zcode' AND sqlite_table IS NULL`).get().n,
+  )
 }
 
 // ------------------------------------------------------------------ fixture corpus
@@ -185,7 +194,8 @@ describe('zcode shipped-pipeline reconciliation · synthetic store (always runs)
     expect(scanned.adaptersFound, scanned.lines.join('\n')).toBe(1)
     // snapshotDir was supplied, so the WAL store is read through a copy — not refused (§18 row 7).
     expect(scanned.refusals).toBe(0)
-    expect(scanned.sources).toBe(5)
+    // Five store tables plus one source per seeded run document (§八·5a).
+    expect(scanned.sources).toBe(5 + FIXTURE_AGENT_RUNS.length)
     expect(scanned.events).toBeGreaterThan(50)
     // The one seeded undecodable `part.data` blob is a counted failure, never a dropped row.
     expect(scanned.failures).toBe(1)
@@ -193,6 +203,7 @@ describe('zcode shipped-pipeline reconciliation · synthetic store (always runs)
 
   it('names exactly the five tables as sources, and no rollup table', () => {
     expect(sourceTables(scanned)).toEqual(['message', 'model_usage', 'part', 'session', 'tool_usage'])
+    expect(fileSourceCount(scanned)).toBe(FIXTURE_AGENT_RUNS.length)
     // §三: five copies of one call's tokens exist in this store. Ingesting a rollup as a sixth
     // source would double the bill, so "which tables became sources" is itself the assertion.
     for (const rollup of ['turn_usage', 'session_target', 'session_entry', 'input_history', 'todo']) {
@@ -287,7 +298,9 @@ describe.skipIf(SKIP_REASON !== null)(
       scanned = await scan({})
       expect(scanned.adaptersFound, scanned.lines.join('\n')).toBe(1)
       expect(scanned.refusals, 'the live store stayed refused; the gate proves nothing').toBe(0)
-      expect(scanned.sources).toBe(5)
+      // The live corpus: five tables, plus one document per subagent run it ever spawned.
+      expect(sourceTables(scanned)).toEqual(['message', 'model_usage', 'part', 'session', 'tool_usage'])
+      expect(fileSourceCount(scanned)).toBeGreaterThan(0)
       expect(scanned.events).toBeGreaterThan(10_000)
       console.warn(
         `[reconcile-zcode] scanned (read-only) ${redactHome(LIVE_DB, HOME)}: ${scanned.events} events over ${scanned.sources} tables, ${scanned.failures} parse failures`,

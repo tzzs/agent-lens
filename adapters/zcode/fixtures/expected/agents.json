@@ -1,0 +1,96 @@
+[
+  {
+    "id": "c2471f4a08a172b7d1992a3f9e119f7fbe6ab3232a65b75efdd22e0b3d7044cf",
+    "type": "subagent.end",
+    "subtype": null,
+    "sessionId": "f9f2c59f6aebd8d85ed7ad03c70a1a400eb8908c212bdd08de4cbc35faf6915e",
+    "threadId": "sess_fixture_child_0000000002",
+    "projectId": "project:zroot",
+    "hostId": "zcode",
+    "timestamp": 1760000900000,
+    "rawSeq": 1,
+    "rawOffset": 1,
+    "requestId": null,
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": 390000,
+    "status": "ok",
+    "model": null,
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "agents_metadata",
+      "rowid": 1,
+      "native_session_id": "sess_fixture_child_0000000002",
+      "parent_source": "foreign-key",
+      "linked_parent": "call_fixture_agent_1",
+      "agent_id": "agent_fixture_child_0001",
+      "status": "completed",
+      "spawn_dir": "sess_fixture_root_0000000001",
+      "rollup": {
+        "totalTokens": 5200,
+        "totalDurationMs": 390000,
+        "totalToolUseCount": 3,
+        "usage": {
+          "inputTokens": 1000,
+          "outputTokens": 200,
+          "cacheReadTokens": 4000
+        }
+      },
+      "subagentThread": true
+    }
+  },
+  {
+    "id": "d3af742f789c183c32ca33675680a2f48d3aa338fc865fa7da8f11c102e6f0a3",
+    "type": "unknown",
+    "subtype": "metadata-missing-parent-tool-use-id",
+    "sessionId": "f9f2c59f6aebd8d85ed7ad03c70a1a400eb8908c212bdd08de4cbc35faf6915e",
+    "threadId": "sess_fixture_archived_0003",
+    "projectId": "d42d99c3305e156cfed44f339624e342a662ead29b44e32be9d357d4575fd1b3",
+    "hostId": "zcode",
+    "timestamp": 1760001000500,
+    "rawSeq": 1,
+    "rawOffset": 1,
+    "requestId": null,
+    "parentEventId": null,
+    "usage": null,
+    "usageSource": "missing",
+    "costReported": null,
+    "costSource": "none",
+    "capability": null,
+    "durationMs": null,
+    "status": "ok",
+    "model": null,
+    "payloadKind": null,
+    "payloadChars": 0,
+    "metadata": {
+      "table": "agents_metadata",
+      "rowid": 1,
+      "upstream_type": "metadata-missing-parent-tool-use-id",
+      "mapped": false,
+      "raw": {
+        "agentId": "agent_fixture_orphan_0002",
+        "childSessionId": "sess_fixture_archived_0003",
+        "parentSessionId": "sess_fixture_root_0000000001",
+        "status": "failed",
+        "createdAt": "2025-10-09T09:10:00.000Z",
+        "completedAt": "2025-10-09T09:10:00.500Z",
+        "totalTokens": 0,
+        "totalDurationMs": 500,
+        "totalToolUseCount": 0
+      },
+      "link_keys_absent": [
+        "parent-tool-use-id"
+      ],
+      "status": "failed",
+      "diagnostics": [
+        "project_unattributed"
+      ],
+      "subagentThread": true
+    }
+  }
+]

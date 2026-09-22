@@ -32,19 +32,29 @@ describe('zcode adapter · detect + discover (§5.1)', () => {
     })
   })
 
-  it('yields exactly five sqlite sources, one per collected table', async () => {
+  it('yields five sqlite sources plus one per agents document (§5.1)', async () => {
     await withHost(async (host) => {
-      const seen: string[] = []
+      const sqlite: string[] = []
+      const files: string[] = []
       const ids = new Set<string>()
       for await (const spec of zcodeAdapter.discover(hostCtx(host.dir))) {
-        seen.push(`${spec.kind}:${spec.sqliteTable}`)
         ids.add(spec.id)
-        expect(spec.path).toBe(host.dbPath)
         expect(spec.sessionHint).toBeNull()
+        if (spec.kind === 'sqlite') {
+          sqlite.push(`${spec.kind}:${spec.sqliteTable}`)
+          expect(spec.path).toBe(host.dbPath)
+        } else {
+          // A file source must not carry a `sqliteTable`: that is what makes the collector take
+          // the rowid framing path instead of handing the document to `parse` (§4.3).
+          files.push(spec.path)
+          expect(spec.sqliteTable ?? null).toBeNull()
+        }
       }
-      expect(seen).toEqual(SOURCE_TABLES.map((t) => `sqlite:${t}`))
-      // The id salts the table, so five sources over one file stay five distinct rows.
-      expect(ids.size).toBe(5)
+      expect(sqlite).toEqual(SOURCE_TABLES.map((t) => `sqlite:${t}`))
+      expect(files).toEqual([...host.agentRunPaths].sort())
+      // The id salts the table, so five sources over one file stay five distinct rows; the file
+      // sources are one per document, sorted, so a rescan enumerates the same ids in the same order.
+      expect(ids.size).toBe(5 + host.agentRunPaths.length)
     })
   })
 
@@ -74,12 +84,19 @@ describe('zcode adapter · detect + discover (§5.1)', () => {
       const detection = await zcodeAdapter.detect(ctx)
       expect(detection.present).toBe(true)
       expect(detection.dataRoot).toBe(host.dir)
-      let sources = 0
+      let storeSources = 0
+      let fileSources = 0
       for await (const spec of zcodeAdapter.discover(ctx)) {
-        sources++
-        expect(spec.path).toBe(host.dbPath)
+        if (spec.kind === 'sqlite') {
+          storeSources++
+          expect(spec.path).toBe(host.dbPath)
+        } else fileSources++
       }
-      expect(sources).toBe(5)
+      expect(storeSources).toBe(5)
+      // The agents tree is reached through the same root resolution, and does not depend on the
+      // store being openable (§八·5a: it is the one piece of evidence a refused store must not
+      // hide).
+      expect(fileSources).toBe(host.agentRunPaths.length)
     } finally {
       await host.close()
     }
@@ -108,16 +125,21 @@ describe('zcode adapter · the §七 mapping census', () => {
    *  - `message` 10 rows → 1 `message.user` (the only `real_user` prompt), 3
    *    `message.assistant`, 1 `error`, 6 `unknown` (four injected kinds + an unseen kind + a
    *    row with no `semantics` at all);
-   *  - `part` 20 readable rows → 1 `generation.start`, 5 `tool.start`, 2 `mcp.invoke`,
-   *    1 `skill.invoke`, 1 `subagent.start` (the `Agent` call), 4 content events
-   *    (3 assistant + 1 user), 6 `unknown` (2 `step-finish` duplicates, the injected text
-   *    part, `timeline`, `file`, an unseen type);
+   *  - `part` 20 readable rows → 1 `generation.start`, 6 `tool.start` (5 plain + the `Agent`
+   *    call, which is a spawn the shared linker can only find as a `tool.start` — §八·5b),
+   *    2 `mcp.invoke`, 1 `skill.invoke`, 4 content events (3 assistant + 1 user), 6 `unknown`
+   *    (2 `step-finish` duplicates, the injected text part, `timeline`, `file`, an unseen type);
    *  - `model_usage` 6 rows → 6 `generation.end`, the only usage carriers;
-   *  - `tool_usage` 8 rows → 8 `tool.end`.
+   *  - `tool_usage` 8 rows → 8 `tool.end`;
+   *  - the agents tree, 2 documents → 1 `subagent.end` (the one that names both a child session
+   *    and its `Agent` call) and 1 `unknown` (the document with no `parentToolUseId`: no key,
+   *    no link, and deliberately no `parent_source` for the linker to mistake for proof).
+   * The child session's own `subagent.start` stays 1 of the 3 (the other two are the cycle rows,
+   * which do have a `parent_id`) — the chain marker and the spawn are different facts.
    */
   it('produces exactly the event types the mapping table names', async () => {
     await withHost(async (host) => {
-      const { events } = await scanAll(host.dbPath)
+      const { events } = await scanAll(host.dbPath, { dataRoot: host.dir })
       const byType = new Map<string, number>()
       for (const e of events) byType.set(e.type, (byType.get(e.type) ?? 0) + 1)
       expect(Object.fromEntries([...byType.entries()].sort())).toEqual({
@@ -131,10 +153,11 @@ describe('zcode adapter · the §七 mapping census', () => {
         'session.end': 1,
         'session.start': 6,
         'skill.invoke': 1,
-        'subagent.start': 4,
+        'subagent.end': 1,
+        'subagent.start': 3,
         'tool.end': 8,
-        'tool.start': 5,
-        unknown: 12,
+        'tool.start': 6,
+        unknown: 13,
       })
     })
   })

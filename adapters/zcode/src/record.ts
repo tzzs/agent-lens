@@ -56,6 +56,14 @@ export const TABLES = [
 export type ZcodeTable = (typeof TABLES)[number]
 
 /**
+ * The row-kind label the sixth source's records carry in `__table` / `metadata.table`
+ * (§八·5a). It is NOT a SQLite table and NOT in `TABLES`: `cli/agents/…/metadata.json` is a
+ * file tree, and putting its name in the table list would hand `detect`'s required-tables
+ * check and the collector's rowid framing something the store does not have.
+ */
+export const TABLE_AGENT_METADATA = 'agents_metadata'
+
+/**
  * §三/§七: present in the store, never a source. Each is a rollup or rollup-ish table
  * whose numbers are restatements of what `model_usage`/`tool_usage` already say, so
  * reading one as a source would double count. Anything they carry that is worth keeping
@@ -99,13 +107,27 @@ export function bool(value: unknown): boolean | null {
 /**
  * ZCode stores **epoch ms** in its time columns (measured: `started_at` 1789244988278).
  * The sub-1e11 branch is a guard, not the expected path: it is what keeps an upstream
- * switch to seconds from silently producing 1970 timestamps. ISO strings (the
- * `cli/rollout/` JSONL dialect, §六) are not a source here.
+ * switch to seconds from silently producing 1970 timestamps.
  */
 export function ms(value: unknown): number | null {
   const n = num(value)
   if (n === null || n <= 0) return null
   return n < 1e11 ? Math.round(n * 1000) : Math.round(n)
+}
+
+/**
+ * The one ISO-8601 dialect this adapter reads (§八·5a): `cli/agents/…/metadata.json` writes
+ * `createdAt`/`completedAt` as `"2026-09-13T12:35:47.705Z"` while every SQLite column is
+ * epoch ms, so the two readers are separate by name — confusing them puts a subagent's close
+ * 55 years off. `cli/rollout/` is ISO too and stays unread (§六).
+ */
+export function iso(value: unknown): number | null {
+  const text = str(value)
+  if (text === null || text === '') return null
+  const n = Date.parse(text)
+  // An unparseable date stays NULL rather than becoming 0: 1970 would answer a question the
+  // document never asked, and NaN would poison the timestamp.
+  return Number.isFinite(n) && n > 0 ? n : null
 }
 
 export function parseJson(value: unknown): UnknownRecord | null {
