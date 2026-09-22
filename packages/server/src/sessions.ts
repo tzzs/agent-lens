@@ -15,7 +15,7 @@ import type { ServerCtx } from './types.ts'
 import { ApiError } from './errors.ts'
 import { contentLayerPresent, loadPayloads, payloadCountByEvent, payloadCountBySession, chunk, type PayloadView } from './content.ts'
 import { parseFilter, strParam } from './request-spec.ts'
-import { projectLabelMap, rowsOf } from './resolve.ts'
+import { projectLabelMap, rowsOf, redactMetadata } from './resolve.ts'
 
 export interface SessionRow {
   sessionId: string
@@ -247,7 +247,7 @@ export function sessionDetail(ctx: ServerCtx, wanted: string, opts: SessionDetai
     durationMs: e.durationMs ?? null,
     status: e.status,
     errorFingerprint: e.errorFingerprint ?? null,
-    metadata: e.metadata ?? null,
+    metadata: redactMetadata(e.metadata ?? null, ctx.homedir),
     payloads: includePayloads ? (contentAvailable ? (payloads.get(e.id) ?? []) : []) : [],
     payloadCount: counts.get(e.id) ?? 0,
   }))

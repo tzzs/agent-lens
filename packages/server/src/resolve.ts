@@ -83,6 +83,43 @@ export function projectLabelMap(db: DatabaseSync): Map<string, string> {
 }
 
 /** Redact the home dir out of anything the API echoes: this tool reads private logs. */
+/**
+ * Paint the home directory out of an event's metadata before it crosses the wire.
+ *
+ * `cwd`, `project_hint` and friends are metric-layer fields — they ship with the content layer
+ * OFF, which is the posture §16 promises: "no message bodies, no prompts, no file contents".
+ * A raw `/Users/<name>/…` still names the person, so the same helper that paints paths in
+ * `coverage` and `dbPath` has to apply here too, or the privacy claim holds for every screen
+ * except the one that shows an event's own provenance.
+ *
+ * Bounded walk, failing closed: adapter metadata is shallow (a handful of scalars per row), so
+ * anything deeper than this is not a shape we know how to read, and a value we cannot inspect is
+ * dropped rather than served — a depth cap that returns the original object would leak exactly
+ * the path the walk exists to paint out.
+ */
+const METADATA_DEPTH_LIMIT = 3
+
+export function redactMetadata(
+  meta: Record<string, unknown> | null,
+  home: string,
+  depth = 0,
+): Record<string, unknown> | null {
+  if (meta === null || !home) return meta
+  if (depth > METADATA_DEPTH_LIMIT) return null
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(meta)) {
+    if (typeof value === 'string') out[key] = redactHome(value, home)
+    else if (Array.isArray(value))
+      out[key] = value.map((v) =>
+        typeof v === 'string' ? redactHome(v, home) : v && typeof v === 'object' ? redactMetadata(v as Record<string, unknown>, home, depth + 1) : v,
+      )
+    else if (value && typeof value === 'object')
+      out[key] = redactMetadata(value as Record<string, unknown>, home, depth + 1)
+    else out[key] = value
+  }
+  return out
+}
+
 export function redactHome(text: string, home: string): string {
   if (!home) return text
   return text.split(home).join('~')
