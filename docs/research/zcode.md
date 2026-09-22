@@ -159,12 +159,13 @@ v2/tasks-index.sqlite.tasks.task_id  →  cli/db/db.sqlite.session.id     10/10 
    **⇒ 对 ZCode+GLM，"思考量"只能用字符与时长度量，不能用 token**；适配器把 `reasoningTokens` 映射为 0 是诚实的（`computed == input+output` 全表成立，没有把思考算两遍），但 UI/doctor 若按"reasoning token = 0 即没思考"呈现就会说谎——这正是 §18 row 5 要求"测不出来的一态不印 0"的那一类。
 3. ✅ **`cost` 会不会变非零——已用引擎代码定论：不会，它是恒 0 的死字段**。`/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs`（11,227,632 B）里 `cost:0` 字面量赋值恰 **7 处**（step-finish、assistant message 的 `data` 构造器、session_fork、timeline_event、history import 等），**没有任何按套餐/按量分叉的写入者**；schema 侧 `cost` 是 `number().nonnegative()` **必填**，所以引擎每次必须交出一个数，它交出的就是 `0`。全库 `payg` / `pay_as_you_go` / `perToken` / `inputPrice` **0 命中**，真实计费模式枚举只有 `accountType ∈ {zai, bigmodel}` × `mode ∈ {start-plan, individual-coding-plan, team-coding-plan, off-peak}`（无按量档）。⇒ **原来这条待测项"换按量账号会不会非零"根本不成立：换了账号也还是 0**。钱在 ZCode 里只活在另一条网络通道（`/v1/credits`、`/v1/report`、`zcode-plan/billing/current`，以及 OpenRouter 形状的 Gateway 客户端自带 `total_cost/market_cost/pricing`），本地 `message`/`part`/`model_usage` 三张表没有任何一列镜像它（`model_usage` 的建表 DDL 里 cost/price 列数为 0）。**决定**：适配器**不加** `cost_source='reported'` 分支——那是没有证据的死代码。仍未验证的只剩 `off-peak` 与 Gateway provider 是否用户可选、`/v1/report` 对套餐账号是否可达，都不影响"本地恒 0"的结论。
 4. `session_task_link`/`workflow_*`/`dwf_*` 五张表本机全空（自动化/off-peak 功能），启用后是不是第 6 份用量口径；`off_peak_tasks` 在桌面库里已有表结构。
-5. ✅🟡 **子代理父链：证据已量清，实现卡在一个跨包的口径决定上**。仓库那条 `packages/storage/src/subagent-parent-links.ts` 已提交（`7ba33b0`），所以这条不再是"别压在流沙上"。重测的结论是**真外键在盘上现成，一条启发式都不需要**：`cli/agents/<父会话>/agent_*/metadata.json` 共 28 个文件，28/28 的 `childSessionId` 能在 `session` 表里找到（表内子会话恰好 28 个），28/28 的 `parentToolUseId` 同时命中 `tool_usage.tool_call_id` 与 `part.data.callID`，而 `part` 表里 `Agent` 调用的 callID 恰好也是 28 个 —— 这是一个**双射**，不是概率匹配。要吃到它需要三处协同改动：
-   - (a) **zcode 加第 6 个源**：`cli/agents/*/metadata.json`（`ndir`），只取 `{childSessionId, parentToolUseId, status, createdAt/completedAt}` 产出闭合的 `subagent.end`。同文件里的 `prompt` 是完整子代理提示词（隐私面），`totalTokens`/`usage` 是 §三 的第 5 份 rollup —— 两者都**不得**进 `usage` 或 payload。
-   - (b) **zcode 的 `Agent` 部件改映射**：现在是 `subagent.start`，而那条 pass 的候选池查的是 `type='tool.start' AND capability_type='subagent' AND metadata[spawnToolUseKey]`（claude-code 正是这个形状）。spawnToolUseKey 用现成的 `metadata.call_id` 即可。这要动 `PARSER_VERSION` 与 fixtures 快照。
-   - (c) **共享模块要放宽证明的形态**（真正的决定点）：`proofAt` 目前要求闭合行直接点名**父事件的 id**，而适配器算不出它 —— `deriveEventId` 需要父 part 行的 `rawSeq`/`time_created`，`metadata.json` 里都没有。所以要么让词表声明"证明是一个 tool-use id，请用池里的 `spawnToolUseKey` 解析"（改动落在别人刚落地的模块里），要么退化成启发式（在有真外键的数据上做启发式，是 §5.2 意义上的向下猜测）。
-   
-   **建议取 (c) 的第一种**：它是词表机制的自然延长，且让 claude-code 未来的 FK 证明也能按 `tool_use_id` 表达；但它跨包、且改的是刚提交的模块，所以留到这里等定夺，而不是顺手改掉。当前状态：链在**会话粒度是对的**（`session_id` 折到根会话、28 条 `subagent.start` 都在），空着的只有 `parent_event_id` 这一条树边；而 `agl doctor` 对此套用的通用文案"没有外键可退"对 ZCode 恰好说反了——它有外键，只是还没接上。
+5. ✅ **子代理父链已接通（2026-09-23，`54b0476` + `ffed341` + `639851e`）**。当时记的"卡在跨包决定上"三处都已落地：
+   - 共享模块接受**以原始 call id 表达证明**（`SubagentLinkVocabulary.proofNames:'tool-use-id'`），由本会话的候选池解析，且要求唯一命中——一个 raw id 指向两个 spawn 时按"无证明"作废，而不是挑一个；默认值 `'event-id'` 保持 claude-code 逐字不变。
+   - `Agent` 部件从 `subagent.start` 改判为 **`tool.start` + capability `subagent`**（那正是候选池的查询形状），链的标记仍是子会话自己的 `subagent.start`——spawn 与 chain 是两个事实，不再抢同一个事件类型。
+   - 第 6 个源 `cli/agents/<父会话>/agent_<id>/metadata.json` 产出闭合的 `subagent.end`：整文档读取（pretty-printed JSON 没有行边界，`from.offset` 被有意忽略、`nextOffset` 是实际消费字节数），**只取白名单字段**——同一份文件带着完整子代理提示词与 `profileSnapshot`，隐私测试用金丝雀钉住"任何一行事件里都不许出现"；它的 `totalTokens`/`usage` 是 §三 的第 5 份副本，只进 `metadata.rollup`，事件自身 `usage` 为 null。
+   - **真库复测**：33 个源（5 张表 + 28 份文档）、11,519 事件、**28 条链全部按 `foreign-key` 接通，0 条靠启发式、0 条未决**，`doctor` 那句对 ZCode 说反了的"没有外键可退"随之消失；对账总量仍是 167,593,984 一位不差（新增源没带进任何 token）。
+   仍开着的只有一件：`off-peak` / 自动化启用后会不会出现别的父子形态（§八·4）。
+
 6. ✅ **对账回归已进 CI**：`apps/cli/test/reconcile-zcode.test.ts` 把 §15 M3 那条"产品路径自己复现 ccusage"升成回归项，走 `runScan` → WAL 快照 → `insertEvents` → 持久化 `aggregation_policy` → §7 立方体，**不重实现任何分帧/折叠/计价**。两个语料同一条路：**fixture 用例恒跑**（合成 WAL 库 + 常驻写连接，托管 CI 也能跑，并自带独立 oracle——用 JS 直接加总夹具的原始列，验证立方体等于 `input+output` 而"逐字段照搬"会多出缓存那一整份）；**live 用例**在 `~/.zcode` 存在时比对基线的四字段与**逐日**拆分、`includeSubagentThreads:false` 恰减 15,657,611、`cost_source='reported'` 恒 0 行，缺席时在套件名里显式写 `SKIPPED`，不静默。"哪五张表成了源、rollup 一张都没进"本身就是断言。
 
 ## 九、端到端对账（已执行，2026-09-22，真库 +  shipped 适配器）
@@ -188,3 +189,6 @@ v2/tasks-index.sqlite.tasks.task_id  →  cli/db/db.sqlite.session.id     10/10 
 `unknown` 事件 1,617 条的 subtype 分布（`step-finish` 1,355 / `todo_reminder` 188 / `timeline_event` 29 / `timeline` 29 / `background_notification` 10 / `file` 4 / `system_reminder` 2）——注意 `todo_reminder` 的 188 = 94 条 message 行 + 94 条自带 text part，正是 §五 那条"注入有两个载体"的实测形状；`message.user` 只有 178 条而非按 role 直映的 378 条，2.12× 的虚报被规则挡在外面。
 
 **同轮两处补做**（2026-09-22 第二轮）：`session.time_compacting` 从"埋在 `session.start.metadata` 里的一个字段"改成 `context.compact` 事件（与 OpenCode 同形，`PARSER_VERSION` 3；本机 0 行有值，所以这条只有夹具能证），并落了 §15 M3 形态的回归门 `apps/cli/test/reconcile-zcode.test.ts`——fixture 用例恒跑、live 用例自我跳过，两者走同一条 `runScan` → 快照 → `insertEvents` → 持久化 policy → §7 立方体的产品路径。
+
+**第三轮复测（2026-09-23，第 6 个源接上之后）**：同一个真库现在报 **33 个源**（5 张表 + 28 份 `cli/agents/…/metadata.json`）、**11,519 事件**（+28 条 `subagent.end`）、仍 **0 解析失败**；四桶合计**一位不变**（167,593,984）——闭合行自身不带 usage，这正是 §三"只认 `model_usage`"在新增源之后依然成立的直接证据。子代理链 **28/28 按 `foreign-key` 接通、0 靠启发式、0 未决**，`doctor` 关于本 Agent"没有外键可退"的那行随之消失。
+
