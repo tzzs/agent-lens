@@ -51,7 +51,9 @@ Usage:
   agentlens export --format jsonl|csv|otel [--since ...] [--agent ...] [--limit N]
                      --format otel [--push <otlp-url>] [--push-header "Name: value"]
                      (§12: the OTel mapping, optionally POSTed to a Langfuse/Phoenix collector)
-  agentlens pricing update         refresh litellm price snapshot
+  agentlens pricing update [--source litellm|openrouter]
+                                 refresh the price snapshot; openrouter is the §8 fallback
+                                 and only prices models litellm leaves unpriced
   agentlens pricing override --model M --input N --output N [--cache-read N] [--cache-write N]
                              [--reasoning N] [--provider P] [--effective-from MS]
   agentlens pricing billing list   show each agent's declared §8 billing mode

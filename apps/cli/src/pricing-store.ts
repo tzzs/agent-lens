@@ -9,12 +9,14 @@ import { dirname, join } from 'node:path'
 import {
   loadMergedPricing,
   liveBillingModes,
+  OPENROUTER_SNAPSHOT_FILENAME,
   PRICE_SNAPSHOT_FILENAME,
   PRICING_OVERRIDES_FILENAME,
   writeBillingMode,
   writeSnapshotFile,
   type BillingMode,
   type MergedPricing,
+  type OpenRouterSnapshot,
   type PriceEntry,
   type PriceSnapshot,
 } from '@agentlens/pricing'
@@ -24,6 +26,10 @@ export function dataDir(dbPath: string): string {
 }
 export function snapshotPath(dbPath: string): string {
   return join(dataDir(dbPath), PRICE_SNAPSHOT_FILENAME)
+}
+/** The §8 gap-filling source; `loadMergedPricing` picks it up from this convention. */
+export function openRouterSnapshotPath(dbPath: string): string {
+  return join(dataDir(dbPath), OPENROUTER_SNAPSHOT_FILENAME)
 }
 export function overridesPath(dbPath: string): string {
   return join(dataDir(dbPath), PRICING_OVERRIDES_FILENAME)
@@ -46,6 +52,11 @@ export function loadPricing(dbPath: string): LoadedPricing {
 export function writeSnapshot(dbPath: string, snapshot: PriceSnapshot): void {
   ensureDataDir(dbPath)
   writeSnapshotFile(snapshotPath(dbPath), snapshot)
+}
+
+export function writeOpenRouterSnapshot(dbPath: string, snapshot: OpenRouterSnapshot): void {
+  ensureDataDir(dbPath)
+  writeSnapshotFile(openRouterSnapshotPath(dbPath), snapshot)
 }
 
 export function appendOverride(dbPath: string, entry: PriceEntry): void {

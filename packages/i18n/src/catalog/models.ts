@@ -44,6 +44,10 @@ const en = {
   pricingGap:
     '{n, plural, one {1 model has} other {{n} models have}} no price at {n, plural, one {its} other {their}} last-seen date, so {n, plural, one {its} other {their}} cost shows {na}:',
   pricingGapMore: 'and {n} more, listed below',
+  // Split around the command, as the file's header prescribes: a message carries the
+  // words around a command line, never the command line itself.
+  pricingGapFallbackLead: 'Run',
+  pricingGapFallbackTail: 'to price the ones the primary snapshot lacks.',
   period: '.',
   noPriceTableLead: 'No price table is loaded, so est. and actual cost show {na} everywhere. Run',
   noPriceTableTail: 'to fetch one.',
@@ -88,6 +92,8 @@ const zh = matches(en)({
   pricingGapTitle: '定价缺口。',
   pricingGap: '有 {n} 个模型在其最后出现日期上没有价格，因此它们的费用显示为{na}：',
   pricingGapMore: '另有 {n} 个列在下方',
+  pricingGapFallbackLead: '运行',
+  pricingGapFallbackTail: '可为主要快照缺价的模型补上价格。',
   period: '。',
   noPriceTableLead: '当前没有加载任何价格表，所以估算费用与实际费用在任何地方都显示为{na}。运行',
   noPriceTableTail: '即可拉取一份。',

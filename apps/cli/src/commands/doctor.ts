@@ -522,12 +522,18 @@ export function renderStageOneFold(db: DatabaseSync, rctx: Ctx): void {
  */
 export function renderPricing(db: DatabaseSync, rctx: Ctx, dbPath: string): void {
   rctx.out('Pricing')
-  const { table: priceTable, snapshot, overrideCount } = loadPricing(dbPath)
+  const { table: priceTable, snapshot, fallback, fallbackAdded, overrideCount } = loadPricing(dbPath)
   const now = rctx.now()
   rctx.out(
     `${GLYPH.ok} ${formatCount(priceTable.size())} models priced (source: ${snapshot.source === 'bundled' ? 'bundled snapshot' : 'updated snapshot'}` +
       `${overrideCount ? `, ${overrideCount} overrides` : ''})`,
   )
+  if (fallback) {
+    rctx.out(
+      `${GLYPH.ok} ${formatCount(fallbackAdded)} of them priced by the OpenRouter fallback (${fallback.source}) — ` +
+        'a gap-filler only: it never overrides a model the primary snapshot prices (§8)',
+    )
+  }
   const models = modelSpend(db, now)
   if (models.length === 0) {
     rctx.out(`${GLYPH.none} no models ingested yet — nothing to price`)
@@ -562,7 +568,7 @@ export function renderPricing(db: DatabaseSync, rctx: Ctx, dbPath: string): void
     const distinct = new Set(models.map((m) => unpricedModelKey(m.provider, m.model))).size
     rctx.out(
       `${GLYPH.warn} ${formatCount(gaps.length)} of ${formatCount(distinct)} ingested models unpriced → ` +
-        'cost = "n/a", never $0 ($0 reads as a free local model, §8) — `agl pricing update` or `agl pricing override`',
+        'cost = "n/a", never $0 ($0 reads as a free local model, §8) — `agl pricing update --source openrouter` prices what litellm lacks, or `agl pricing override` one model',
     )
     rctx.out(
       table(

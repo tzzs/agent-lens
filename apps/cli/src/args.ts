@@ -173,6 +173,8 @@ export const CLI_FLAG_SCHEMA: FlagSchema = {
   // §18 row 3: drop metadata.subagentThread events from the totals (ccusage alignment).
   // Include stays the default (spec.ts); this only ever excludes.
   'no-subagents': { kind: 'boolean' },
+  // pricing update: which upstream snapshot to refresh (§8: litellm primary, openrouter fallback)
+  source: { kind: 'value' },
   // pricing override
   input: { kind: 'value' },
   output: { kind: 'value' },

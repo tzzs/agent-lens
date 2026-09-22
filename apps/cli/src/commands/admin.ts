@@ -5,15 +5,34 @@
  */
 import type { DatabaseSync } from 'node:sqlite'
 import type { BillingMode, PriceEntry } from '@agentlens/pricing'
-import { assertBillingMode, fetchLitellmSnapshot, LITELLM_PRICES_URL } from '@agentlens/pricing'
+import { assertBillingMode, fetchLitellmSnapshot, fetchOpenRouterSnapshot, LITELLM_PRICES_URL, OPENROUTER_PRICES_URL } from '@agentlens/pricing'
 import { prune } from '@agentlens/storage'
 import { UsageError, type FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
 import { redactHome } from '../context.ts'
-import { configPath, loadBillingModes, setBillingMode, snapshotPath, appendOverride, writeSnapshot } from '../pricing-store.ts'
+import {
+  appendOverride,
+  configPath,
+  loadBillingModes,
+  openRouterSnapshotPath,
+  setBillingMode,
+  snapshotPath,
+  writeOpenRouterSnapshot,
+  writeSnapshot,
+} from '../pricing-store.ts'
 import { GLYPH, formatCount, table } from '../render.ts'
 
 const BILLING_USAGE = 'pricing billing <list | set <agent> <mode> | clear <agent>>'
+
+/** §8: litellm is the price table, OpenRouter only ever fills the models it leaves unpriced. */
+const PRICE_SOURCES = ['litellm', 'openrouter'] as const
+type PriceSource = (typeof PRICE_SOURCES)[number]
+
+function priceSource(raw: string | undefined): PriceSource {
+  if (raw === undefined || raw === 'litellm') return 'litellm'
+  if (raw === 'openrouter') return 'openrouter'
+  throw new UsageError(`unknown price source ${JSON.stringify(raw)} — use ${PRICE_SOURCES.join(' | ')}`)
+}
 
 /** Top-level `pricing` dispatch, so adding a subcommand never touches the arg parser. */
 export async function cmdPricing(
@@ -26,7 +45,7 @@ export async function cmdPricing(
   const [sub, ...rest] = words
   switch (sub) {
     case 'update':
-      return cmdPricingUpdate(dbPath, ctx)
+      return cmdPricingUpdate(dbPath, ctx, { source: flags.str('source') })
     case 'override':
       return cmdPricingOverride(dbPath, flags, ctx)
     case 'billing':
@@ -37,6 +56,8 @@ export async function cmdPricing(
 }
 
 export interface PricingUpdateDeps {
+  /** Which upstream to refresh; defaults to litellm, the primary §8 source. */
+  source?: string
   /** Upstream price map; overridden only by tests and mirrors (§9). */
   url?: string
   /** Stands in for `globalThis.fetch` so the refresh path is testable offline. */
@@ -53,16 +74,26 @@ export async function cmdPricingUpdate(
   ctx: Ctx,
   deps: PricingUpdateDeps = {},
 ): Promise<number> {
-  try {
-    const snapshot = await fetchLitellmSnapshot(deps.url ?? LITELLM_PRICES_URL, {
-      fetchImpl: deps.fetchImpl,
-      now: deps.now,
-    })
-    writeSnapshot(dbPath, snapshot)
+  const source = priceSource(deps.source)
+  const fallback = source === 'openrouter'
+  const url = deps.url ?? (fallback ? OPENROUTER_PRICES_URL : LITELLM_PRICES_URL)
+  const fetchOpts = { fetchImpl: deps.fetchImpl, now: deps.now }
+  const report = (count: number, written: string): void => {
     ctx.out(
-      `${GLYPH.ok} price snapshot updated: ${formatCount(snapshot.entries.length)} entries ` +
-        `(source: ${snapshot.source}) → ${redactHome(snapshotPath(dbPath), ctx.homedir)}`,
+      `${GLYPH.ok} ${source} price snapshot updated: ${formatCount(count)} entries ` +
+        `(source: ${url}) → ${redactHome(written, ctx.homedir)}`,
     )
+  }
+  try {
+    if (fallback) {
+      const snapshot = await fetchOpenRouterSnapshot(url, fetchOpts)
+      writeOpenRouterSnapshot(dbPath, snapshot)
+      report(snapshot.entries.length, openRouterSnapshotPath(dbPath))
+    } else {
+      const snapshot = await fetchLitellmSnapshot(url, fetchOpts)
+      writeSnapshot(dbPath, snapshot)
+      report(snapshot.entries.length, snapshotPath(dbPath))
+    }
     return 0
   } catch (err) {
     ctx.err(`${GLYPH.err} pricing update failed: ${redactHome((err as Error).message, ctx.homedir)}`)

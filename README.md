@@ -45,6 +45,7 @@ agl tools | skills | mcp | plugins | connectors | subagents | hooks
 agl projects                    # one project, seen across agents
 agl export --format jsonl|csv|otel [--push <otlp-url>]
 agl pricing update              # refresh the litellm price snapshot
+agl pricing update --source openrouter   # fill in the models litellm has no price for
 agl pricing billing set <agent> api|subscription|local
 agl prune --older-than 90d
 ```

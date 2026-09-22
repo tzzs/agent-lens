@@ -93,6 +93,7 @@
         <Alert tone="orange" title={$t('models.pricingGapTitle')}>
           {$t('models.pricingGap', { values: { n: formatInt(n), na } })}
           <span class="nums">{gapNames}</span>{#if n > ALERT_NAMES}{' '}{$t('models.pricingGapMore', { values: { n: formatInt(n - ALERT_NAMES) } })}{/if}{$t('models.period')}
+          {' '}{$t('models.pricingGapFallbackLead')} <span class="nums">agentlens pricing update --source openrouter</span> {$t('models.pricingGapFallbackTail')}
         </Alert>
       {/if}
     </div>
