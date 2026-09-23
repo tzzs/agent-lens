@@ -14,8 +14,7 @@ import type { AgentEvent } from '@agentlens/event-model'
 import { insertEvents, migrate, openDatabase } from '@agentlens/storage'
 import { PRICE_MISSING, computeCost, type BillingMode, type PriceEntry } from '@agentlens/pricing'
 import { createContext } from '../src/app.ts'
-import { actualUsdFor, costView, missingPriceModels, modelSpend, reportedCostDrift, unpricedBuckets, unpricedModels } from '../src/cost.ts'
-import { doctor } from '../src/doctor.ts'
+import { actualUsdFor, costView, missingPriceModels, modelSpend, unpricedBuckets, unpricedModels } from '../src/cost.ts'
 import { parseSpec } from '../src/request-spec.ts'
 import type { PriceResolver } from '../src/types.ts'
 import { TEST_PRICE, testPriceResolver } from './helpers.ts'
@@ -351,62 +350,5 @@ describe('§8 the headline floor does not fall below a reported cost', () => {
     } finally {
       dark.close()
     }
-  })
-})
-
-/**
- * §18 row 1 gives an agent's own figure precedence over the price table wherever it logged one.
- * `reportedCostDrift` is the only place those two facts are ever compared, so a wrong self-
- * report cannot outrank a right price in silence.
- */
-describe('§18 row 1 the reported figure is checked against the price it outranks', () => {
-  const store = (events: Parameters<typeof insertEvents>[1]) => {
-    const db = openDatabase(':memory:')
-    migrate(db)
-    insertEvents(db, events, { contentEnabled: false })
-    return db
-  }
-  const driftFor = (db: ReturnType<typeof store>) =>
-    reportedCostDrift(db, { priceResolver: testPriceResolver })
-
-  it('names an agent whose report contradicts the priced figure by an order of magnitude', () => {
-    // TEST_PRICE is $1 per 1M tokens, so 1M input prices at $1; the agent claims $12.
-    const drift = driftFor(
-      store([ev('drift-12x', { agentId: 'opencode', requestId: 'd1', model: MODEL, usage: usage(1_000_000), costReported: 12, costSource: 'reported' })]),
-    )
-    expect(drift).toHaveLength(1)
-    expect(drift[0]).toMatchObject({ agentId: 'opencode', reportedUsd: 12, apiEquivalentUsd: 1 })
-    expect(drift[0]!.ratio).toBeCloseTo(12, 5)
-  })
-
-  it('stays quiet inside the range the price sources actually disagree by', () => {
-    // §19 measured 4 of 20 models differing by up to 2x — that is a pricing difference.
-    for (const reported of [0.5, 1, 2]) {
-      const db = store([ev(`near-${reported}`, { agentId: 'opencode', requestId: 'n1', model: MODEL, usage: usage(1_000_000), costReported: reported, costSource: 'reported' })])
-      expect(reportedCostDrift(db, { priceResolver: testPriceResolver }), `${reported}x`).toEqual([])
-    }
-  })
-
-  it('does not read a plan as a contradiction, and does not judge a half-priced group', () => {
-    // A reported $0 under a subscription plan is §8's own story, not a bad number.
-    const plan = store([ev('plan-0', { agentId: 'opencode', requestId: 'z1', model: MODEL, usage: usage(1_000_000), costReported: 0, costSource: 'reported' })])
-    expect(driftFor(plan)).toEqual([])
-
-    // Mixed group: the report covers one request and the table prices another, so the two
-    // columns no longer describe the same money and no ratio means anything.
-    const mixed = store([
-      ev('mix-1', { agentId: 'opencode', requestId: 'm1', model: MODEL, usage: usage(1_000_000), costReported: 12, costSource: 'reported' }),
-      ev('mix-2', { agentId: 'opencode', requestId: 'm2', model: MODEL, usage: usage(1_000_000) }),
-    ])
-    expect(driftFor(mixed)).toEqual([])
-  })
-
-  it('reaches the served doctor with the same verdict the terminal prints (§14)', async () => {
-    const db = store([ev('doctor-12x', { agentId: 'opencode', requestId: 'dd1', model: MODEL, usage: usage(1_000_000), costReported: 12, costSource: 'reported' })])
-    const ctx = createContext({ db, now: () => 1_700_000_100_000, priceResolver: testPriceResolver })
-    const report = await doctor(ctx, new URLSearchParams())
-    expect(report.pricing.costDrift.map((d) => d.agentId)).toEqual(['opencode'])
-    expect(report.pricing.costDrift[0]!.ratio).toBeCloseTo(12, 5)
-    db.close()
   })
 })

@@ -11,7 +11,7 @@
   import { agentNote, catalogNote, contentNote, costBasis, stageOneNote } from '../lib/notes.ts'
   import { t } from '../lib/lang.js'
   import { coverageText } from '../lib/banners.ts'
-  import { formatCompact, formatDateTime, formatInt, formatUsd } from '../lib/format.ts'
+  import { formatCompact, formatDateTime, formatInt } from '../lib/format.ts'
   import Surface from '../components/ui/Surface.svelte'
   import PageHeader from '../components/ui/PageHeader.svelte'
   import InsightCard from '../components/ui/InsightCard.svelte'
@@ -510,18 +510,6 @@
             <div class="mt-3">
               <Alert tone="orange" title={$t('doctor.missingPriceAlert', { values: { n: formatInt(d.pricing.missing.length) } })}>
                 <span class="nums">{d.pricing.missing.map((m) => m.model).join(', ')}</span>
-              </Alert>
-            </div>
-          {/if}
-          {#if d.pricing.costDrift.length}
-            <div class="mt-3">
-              <Alert tone="orange" title={$t('doctor.costDriftTitle', { values: { n: formatInt(d.pricing.costDrift.length) } })}>
-                {$t('doctor.costDriftBody')}
-                <span class="nums">
-                  {d.pricing.costDrift
-                    .map((x) => `${x.agentId} ${formatUsd(x.reportedUsd)} / ${formatUsd(x.apiEquivalentUsd)} (${x.ratio.toFixed(1)}x)`)
-                    .join(', ')}
-                </span>
               </Alert>
             </div>
           {/if}

@@ -98,17 +98,6 @@ const RULES: Rule[] = [
     ],
   },
   {
-    what: 'whether an agent’s own cost figure contradicts the price table (§18 row 1)',
-    home: '@agentlens/server → cost.ts reportedCostDrift',
-    forbidden: [
-      { re: /cost_api_equiv[^\n]*\/[^\n]*cost_reported/, why: 'the comparison of the two facts, and the ratio that makes it a finding, belong to the owner; a surface that divides them itself picks its own threshold' },
-    ],
-    calls: [
-      { file: 'packages/server/src/doctor.ts', symbol: 'reportedCostDrift' },
-      { file: 'apps/cli/src/commands/doctor.ts', symbol: 'reportedCostDrift' },
-    ],
-  },
-  {
     what: 'the order a session timeline is read in',
     home: '@agentlens/storage → loadSessionEvents / SESSION_EVENT_SQL / CANONICAL_EVENT_ORDER',
     forbidden: [

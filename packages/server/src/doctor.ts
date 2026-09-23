@@ -11,7 +11,7 @@
 import { parserVersionDrift, requestFoldHealth, requestFoldVerdict, sourceRetention, subagentOrphans, timestampGuesses } from '@agentlens/storage'
 import { query } from '@agentlens/query'
 import type { ServerCtx } from './types.ts'
-import { costView, missingPriceModels, reportedCostDrift } from './cost.ts'
+import { costView, missingPriceModels } from './cost.ts'
 import { coverageReport } from './coverage.ts'
 import { catalogSummary } from './capabilities.ts'
 import { doctorAgents } from './doctor-agents.ts'
@@ -102,7 +102,6 @@ export async function doctor(ctx: ServerCtx, sp: URLSearchParams): Promise<Docto
       modelsPriced: ctx.priceTableSize ? ctx.priceTableSize() : null,
       modelsSeen,
       missing,
-      costDrift: reportedCostDrift(ctx.db, ctx.cubeDeps, filter),
     },
     cost: costView(ctx, filter),
     permissions: agents.permissions,

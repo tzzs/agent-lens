@@ -24,7 +24,6 @@ import {
   INGESTED_RETENTION,
   modelSpend,
   projectRowsPhrase,
-  reportedCostDrift,
   retentionPhrase,
   unpricedBuckets,
   unpricedModelKey,
@@ -33,10 +32,10 @@ import {
 import { snapshotAgePhrase } from '@agentlens/pricing'
 import type { FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
-import { displayPath, machineIdentity, machineLines, makeHostCtx, queryDeps, redactHome } from '../context.ts'
+import { displayPath, machineIdentity, machineLines, makeHostCtx, redactHome } from '../context.ts'
 import { getAdapters } from '../adapters.ts'
 import { loadPricing } from '../pricing-store.ts'
-import { GLYPH, formatCount, formatTokens, formatUsd, table } from '../render.ts'
+import { GLYPH, formatCount, formatTokens, table } from '../render.ts'
 import { rowsOf } from './shared.ts'
 import {
   accessOf,
@@ -590,16 +589,6 @@ export function renderPricing(db: DatabaseSync, rctx: Ctx, dbPath: string): void
       ? `${GLYPH.ok} ${formatCount(reported)} event(s) carry a cost the agent reported itself, which the cube prefers over computed (§18 row 1)`
       : `${GLYPH.none} no agent reported a cost for any event — every $ figure this tool prints is computed from the local price table (§8)`,
   )
-  // §18 row 1's priority is a bet that the agent computes its own money correctly, and until
-  // this line the two facts were never put next to each other anywhere in the product: a wrong
-  // report outranked a right price table silently.
-  for (const d of reportedCostDrift(db, queryDeps(db, dbPath, rctx))) {
-    rctx.out(
-      `${GLYPH.warn} ${d.agentId} reports ${formatUsd(d.reportedUsd)} for work the price table puts at ` +
-        `${formatUsd(d.apiEquivalentUsd)} (${d.ratio.toFixed(1)}x apart, §18 row 1 prefers the report) — that agent's ` +
-        'own figure is what the $ totals count, so check it before trusting them',
-    )
-  }
   if (undatedModels > 0) {
     rctx.out(
       `${GLYPH.warn} ${formatCount(undatedModels)} priced model(s) have an undated entry (effective_from 0): the current rate ` +

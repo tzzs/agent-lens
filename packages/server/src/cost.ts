@@ -13,7 +13,7 @@
  * tokens, so the server folds the cube's per-agent API-equivalent through §8's table —
  * via `actualUsdFor` below, the only place this file states that rule.
  */
-import { costFloor, costPortionsByAgent, query, type QueryDeps, type QueryFilter } from '@agentlens/query'
+import { costFloor, costPortionsByAgent, query, type QueryFilter } from '@agentlens/query'
 import { isMissingPrice, type BillingMode, type PriceEntry } from '@agentlens/pricing'
 import type { DatabaseSync } from 'node:sqlite'
 import type { PriceResolver, ServerCtx } from './types.ts'
@@ -335,49 +335,4 @@ export function missingPriceModels(ctx: ServerCtx): { provider: string; model: s
     model: m.model,
     lastSeen: m.lastSeen,
   }))
-}
-
-/** How far apart the two money facts must be to be a finding rather than a price difference. */
-export const COST_DRIFT_RATIO = 10
-
-export interface CostDrift {
-  agentId: string
-  reportedUsd: number
-  apiEquivalentUsd: number
-  /** `reported / apiEquivalent` or its inverse, always >= 1; the direction is in the pair. */
-  ratio: number
-}
-
-/**
- * §18 row 1 lets an agent's own cost figure win wherever it logged one — a bet on the agent
- * computing its money correctly, and one nothing in the product ever checked: the reported and
- * api-equivalent columns sit side by side and are never compared. A wrong report therefore
- * outranks a right price table silently, and the reader has no way to notice.
- *
- * The comparison only makes sense where both facts describe the SAME money, so an agent whose
- * unreported slices were priced on top is skipped: there `cost_total > cost_reported` and the
- * two columns answer different questions. `fused === reported` is the exact test, and floats
- * allow it because the priced half is then a sum of nothing, not a rounded number.
- *
- * 10x is measured, not picked: the two price sources disagree by up to 2x on this machine (4
- * of the 20 models both sources price), so anything near that is a pricing difference, while an
- * order of magnitude above it is a different accounting. A reported $0 is never drift either —
- * that is what §8 calls a plan, and flagging it would bury the real ones.
- */
-export function reportedCostDrift(db: DatabaseSync, deps: QueryDeps, filter?: QueryFilter): CostDrift[] {
-  const res = query(
-    db,
-    { metrics: ['cost_reported', 'cost_api_equiv', 'cost_total'], dims: ['agent'], filter, totals: false },
-    deps,
-  )
-  const out: CostDrift[] = []
-  for (const r of res.rows) {
-    const reported = numOrNull(r.cost_reported)
-    const apiEquivalent = numOrNull(r.cost_api_equiv)
-    if (reported === null || apiEquivalent === null || reported <= 0 || apiEquivalent <= 0) continue
-    if (numOrNull(r.cost_total) !== reported) continue
-    const ratio = Math.max(reported / apiEquivalent, apiEquivalent / reported)
-    if (ratio >= COST_DRIFT_RATIO) out.push({ agentId: String(r.agent ?? ''), reportedUsd: reported, apiEquivalentUsd: apiEquivalent, ratio })
-  }
-  return out.sort((a, b) => b.ratio - a.ratio)
 }

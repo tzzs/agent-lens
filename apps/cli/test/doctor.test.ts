@@ -793,46 +793,6 @@ describe('Pricing', () => {
     empty.close()
   })
 
-  /**
-   * §18 row 1 lets the agent's own figure win wherever it logged one, so a wrong report is
-   * what the $ totals count. The panel compares the two — this is the only place that happens.
-   */
-  it('says so when an agent reports a cost the price table contradicts', () => {
-    const driftDb = openDatabase(':memory:')
-    migrate(driftDb)
-    insertEvents(driftDb, [
-      {
-        id: 'd'.repeat(64),
-        schemaVersion: 1,
-        agentId: 'claude-code',
-        hostId: 'cli',
-        sourceId: 'src-drift',
-        sessionId: 'sess-drift',
-        projectId: 'proj-drift',
-        timestamp: Date.UTC(2026, 8, 20, 9),
-        type: 'generation.end',
-        usageSource: 'reported',
-        status: 'ok',
-        rawSeq: 1,
-        rawOffset: 0,
-        requestId: 'req-drift',
-        model: { provider: 'anthropic', name: 'claude-sonnet-5' },
-        usage: { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 },
-        // The bundled table prices that at $2.00; the agent claims twelve times that.
-        costReported: 24,
-        costSource: 'reported',
-      } as AgentEvent,
-    ])
-    // A store of its own, in a directory of its own: the fixture's `price-snapshot.json` sits
-    // beside `dbPath` and knows nothing about claude-sonnet-5, so pricing from that dir would
-    // leave nothing to contradict.
-    const out = recordingCtx(HOME)
-    renderPricing(driftDb, out, join(ROOT, 'drift-check', 'agentlens.db'))
-    const line = out.text().split('\n').find((l) => l.includes('apart'))
-    expect(line).toContain('claude-code reports $24.00 for work the price table puts at $2.00 (12.0x apart')
-    driftDb.close()
-  })
-
   it('names the OpenRouter fallback and the gap it closed (§8)', () => {
     const fallback = openRouterSnapshotPath(dbPath)
     try {
