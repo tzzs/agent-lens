@@ -15,6 +15,7 @@
   // so one long hash can no longer push the rest of the table off-screen.
   import type { Snippet } from 'svelte'
   import { msg } from '@agentlens/i18n'
+  import { t } from '../../lib/lang.js'
   import InfoTip from './InfoTip.svelte'
 
   let {
@@ -45,9 +46,42 @@
     /** below this width the table scrolls sideways inside its card instead of squeezing every cell to an ellipsis */
     minWidth?: number
   } = $props()
+
+  /**
+   * A table that scrolls sideways has to say so: at phone widths the last two or three
+   * columns sit entirely off-screen and nothing on the page hinted that more existed. The
+   * fade answers "is there more to the right", which only the scrolled box knows, so it is
+   * measured rather than guessed from a breakpoint — a wide table on a desktop gets no fade
+   * and no tab stop, and neither can go stale when the window resizes or rows change.
+   */
+  let scrollable = $state(false)
+  let atEnd = $state(true)
+
+  function trackScroll(node: HTMLElement) {
+    const measure = () => {
+      const slack = node.scrollWidth - node.clientWidth
+      scrollable = slack > 1
+      atEnd = slack - node.scrollLeft <= 1
+    }
+    const observer = new ResizeObserver(measure)
+    if (node.firstElementChild) observer.observe(node.firstElementChild)
+    node.addEventListener('scroll', measure, { passive: true })
+    measure()
+    return { update: measure, destroy: () => { observer.disconnect(); node.removeEventListener('scroll', measure) } }
+  }
 </script>
 
-<div class="dt overflow-auto" class:dense style={maxHeight ? `max-height:${maxHeight}px` : ''}>
+<div class="relative">
+  <div
+    class="dt overflow-auto"
+    class:dense
+    class:scrollable
+    style={maxHeight ? `max-height:${maxHeight}px` : ''}
+    use:trackScroll
+    role={scrollable ? 'region' : undefined}
+    aria-label={scrollable ? $t('comps.scrollTable') : undefined}
+    tabindex={scrollable ? 0 : undefined}
+  >
   <table class="w-full table-fixed border-separate border-spacing-0 text-left text-[13px]" style="min-width:{minWidth}px">
     {#if caption}<caption class="sr-only">{caption}</caption>{/if}
     <colgroup>
@@ -78,9 +112,43 @@
       <tfoot>{@render footer()}</tfoot>
     {/if}
   </table>
+  </div>
+  {#if scrollable && !atEnd}<span class="dt-fade" aria-hidden="true"></span>{/if}
 </div>
 
 <style>
+  .dt-fade {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 40px;
+    pointer-events: none;
+    /* Not a fade into `--surface`: on the light theme that is white on white and says
+       nothing. A wash of the muted ink colour reads on both themes, and it is the only
+       hint that the columns cut off at the card edge continue. */
+    background: linear-gradient(to right, transparent, color-mix(in oklch, var(--ink-3) 30%, transparent));
+  }
+  /* Only a table that actually scrolls pins its first column: otherwise the sticky cell
+     paints over its own row for no reason. */
+  .dt.scrollable :global(th:first-child),
+  .dt.scrollable :global(td:first-child) {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--surface);
+  }
+  .dt.scrollable :global(tbody tr:hover td:first-child) {
+    background: var(--hover);
+  }
+  /* the top-left cell is sticky in both directions, so it has to beat the sticky header row */
+  .dt.scrollable :global(thead th:first-child) {
+    z-index: 2;
+  }
+  .dt:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
   .dt :global(th),
   .dt :global(td) {
     padding: 9px 16px;

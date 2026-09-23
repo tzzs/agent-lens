@@ -153,7 +153,9 @@
 
   <div class="flex min-w-0 flex-1 flex-col">
     <header class="sticky top-0 z-20 border-b border-line bg-page/85 backdrop-blur-md">
-      <div class="flex h-14 items-center gap-3 px-4 sm:px-6">
+      <!-- Two rows on a phone rather than a sideways scroll: the header's filter box hid the two
+           selects behind an invisible scroll, which is where the whole point of the bar goes. -->
+      <div class="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 sm:px-6">
         <button
           type="button"
           class="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-2 hover:bg-hover-2 lg:hidden"

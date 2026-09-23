@@ -21,7 +21,7 @@
     "background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\");background-position:right 9px center"
 </script>
 
-<div class="flex items-center gap-2">
+<div class="flex flex-wrap items-center gap-2">
   <Segmented label={$t('comps.rangeTitle')} bind:value={range.since} options={SINCE_OPTIONS.map((o) => ({ value: o.value, label: SHORT[o.value] ?? o.label }))} />
 
   <select class={sel} style={chevron} bind:value={range.agent} aria-label={$t('comps.agent')}>

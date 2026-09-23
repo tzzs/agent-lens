@@ -19,7 +19,7 @@
       aria-checked={value === o.value}
       aria-label={iconOnly ? o.label : undefined}
       title={iconOnly ? o.label : undefined}
-      class="inline-flex h-7 items-center gap-1.5 rounded-full text-xs font-medium transition-colors {iconOnly ? 'w-7 justify-center' : 'px-3'}
+      class="inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full text-xs font-medium transition-colors {iconOnly ? 'w-7 justify-center' : 'px-3'}
         {value === o.value ? 'bg-surface text-ink shadow-btn' : 'text-ink-3 hover:text-ink'}"
       onclick={() => (value = o.value)}
     >

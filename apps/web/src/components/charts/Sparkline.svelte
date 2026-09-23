@@ -145,10 +145,16 @@
         </div>
       {/if}
     </div>
-    <div class="nums mt-2 flex justify-between text-[11px] text-ink-3">
-      <span>{labels[0] ?? ''}</span>
-      <span>{hasGaps ? `${priced.length ? `${$t('viz.peak')} ${format(max)} · ` : ''}${$t('viz.gapsIn', { values: { na: unknown, n: n - priced.length } })}` : `${$t('viz.peak')} ${format(max)}`}</span>
-      <span>{labels[labels.length - 1] ?? ''}</span>
+    <!-- The window's two ends on one row, and what happened inside it on the row below.
+         Three items sharing one row wrapped mid-phrase ("2 个时 / 间桶为…") as soon as the
+         caption grew — in Chinese it always does — so the caption gets its own line in every
+         locale instead of a layout that depends on how long the words happen to be. -->
+    <div class="nums mt-2 text-[11px] text-ink-3">
+      <div class="flex justify-between gap-3">
+        <span>{labels[0] ?? ''}</span>
+        <span>{labels[labels.length - 1] ?? ''}</span>
+      </div>
+      <div class="mt-0.5 text-center">{hasGaps ? `${priced.length ? `${$t('viz.peak')} ${format(max)} · ` : ''}${$t('viz.gapsIn', { values: { na: unknown, n: n - priced.length } })}` : `${$t('viz.peak')} ${format(max)}`}</div>
     </div>
     <table class="sr-only">
       <caption>{label}</caption>
