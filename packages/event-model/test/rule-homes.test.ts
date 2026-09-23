@@ -84,14 +84,17 @@ const RULES: Rule[] = [
   },
   {
     what: 'what a NULL fused cost leaves as a floor (§8)',
-    home: '@agentlens/query → costFloor',
+    home: '@agentlens/query → costFloor / costPortionsByAgent',
     forbidden: [
       { re: /cost_total\)\s*\?\?\s*numOrNull\(r\.cost_reported/, why: 'the fallback is the floor rule; a surface that writes it inline drifts from the one that prints "at least" vs n/a' },
       { re: /totals\.cost_total\s*\?\?\s*totals\.cost_reported/, why: 'same rule, CLI side' },
+      { re: /costPortionsByAgent\([^)]*\)\s*\.\s*reduce/, why: 'the portion map folds inside the owner; summing it again in a surface is a second floor' },
     ],
     calls: [
       { file: 'packages/server/src/cost.ts', symbol: 'costFloor' },
+      { file: 'packages/server/src/cost.ts', symbol: 'costPortionsByAgent' },
       { file: 'apps/cli/src/commands/usage.ts', symbol: 'costFloor' },
+      { file: 'apps/cli/src/commands/usage.ts', symbol: 'costPortionsByAgent' },
     ],
   },
   {
