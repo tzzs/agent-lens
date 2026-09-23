@@ -43,12 +43,13 @@
    * read more authoritative than it is. Words come from the catalog; only the source names are
    * data.
    */
+  const MARKS = $derived.by(() => ({
+    openrouter: { label: $t('models.chipViaOpenRouter'), title: $t('models.chipViaOpenRouterTitle') },
+    override: { label: $t('models.chipPinned'), title: $t('models.chipPinnedTitle') },
+    manual: { label: $t('models.chipPinned'), title: $t('models.chipPinnedTitle') },
+  }))
   const provenanceFor = (source: ModelRow['priceSource']) =>
-    source === 'openrouter'
-      ? { label: t('models.chipViaOpenRouter'), title: t('models.chipViaOpenRouterTitle') }
-      : source === 'override' || source === 'manual'
-        ? { label: t('models.chipPinned'), title: t('models.chipPinnedTitle') }
-        : undefined
+    source === 'openrouter' || source === 'override' || source === 'manual' ? MARKS[source] : undefined
   type Price = 'priced' | 'unpriced' | 'unconfigured' | 'no-model'
   function priceOf(m: ModelRow): Price {
     if (!m.model) return 'no-model'
