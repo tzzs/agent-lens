@@ -9,7 +9,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AgentEvent } from '@agentlens/event-model'
-import { insertEvents, requestFoldHealth, requestFoldSentence, setAgentAggregations, updateSourceProgress } from '@agentlens/storage'
+import { insertEvents, requestFoldHealth, requestFoldVerdict, setAgentAggregations, updateSourceProgress } from '@agentlens/storage'
 import { harness } from './helpers.ts'
 
 const HOME = '/home/tester'
@@ -140,11 +140,13 @@ describe('GET /api/doctor checks the web used to lack (§11)', () => {
     expect(body.subagents).toEqual([{ agentId: 'claude-code', total: 1, orphan: 0, orphanPct: 0 }])
   })
 
-  it('serves the stage-1 verdict in storage\'s own words, not a paraphrase (§14)', async () => {
+  it('serves the stage-1 verdict from storage\'s own decision, not a re-derivation (§14)', async () => {
     h = harness({ homedir: HOME })
     const { body } = await h.get('/api/doctor')
-    // Byte-identical to what `agl doctor` prints, because the route calls the same owner.
-    expect(body.stageOneFold).toEqual(requestFoldSentence(requestFoldHealth(h.seeded.db)))
+    // The same verdict `agl doctor` prints a sentence from, because the route calls the
+    // same owner; only the wording diverges, and it belongs to the viewer.
+    const health = requestFoldHealth(h.seeded.db)
+    expect(body.stageOneFold).toEqual({ ...requestFoldVerdict(health), rows: health.rows, members: health.members, events: health.events })
     expect(body.stageOneFold.ok).toBe(true)
   })
 

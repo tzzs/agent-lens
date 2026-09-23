@@ -72,7 +72,9 @@ describe('costView reads the fused cost from the cube (§18 row 1)', () => {
     expect(cc?.totalUsd).toBeCloseTo(1, 10) // no report: priced
     expect(view.totalUsd).toBeCloseTo(1.5, 10) // NOT 0.5+3+1=4.5 (the double count the fusion forbids)
     expect(view.totalPartial).toBe(false)
-    expect(view.basis).toContain('cost_total')
+    // Which sentence explains the figure; the sentence itself (and the fact that it
+    // names `cost_total`) lives in the message catalog, tested in apps/web.
+    expect(view.basisCode).toBe('fusedFormula')
   })
 
   it('the subagent switch flows through to the fused figure', () => {
@@ -243,7 +245,9 @@ describe('§8 the headline floor does not fall below a reported cost', () => {
     expect(view.totalUsd!).toBeGreaterThanOrEqual(0.42)
     expect(view.totalUsd!).toBeLessThan(1.42) // the unpriced work is NOT folded in
     expect(view.totalPartial).toBe(true)
-    expect(view.basis).toContain('cost_total')
+    // Which sentence explains the figure; the sentence itself (and the fact that it
+    // names `cost_total`) lives in the message catalog, tested in apps/web.
+    expect(view.basisCode).toBe('fusedFormula')
   })
 
   it('stays byte-identical when everything is priceable, so the floor adds nothing', () => {

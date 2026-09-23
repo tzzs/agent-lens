@@ -3,7 +3,13 @@
  * colour (a --cat-N theme token, so light/dark both stay legible) and the filter
  * group it belongs to. TimelineNode, Payload and the session filter chips all
  * read this instead of carrying their own hex tables.
+ *
+ * Labels come from the message catalog because they are UI words ("user",
+ * "compact"), but a *named* tool keeps its own name: `tool.bash` reads "bash"
+ * in every locale, since that is an identifier this tool did not choose.
  */
+
+import { msg } from '@agentlens/i18n'
 
 export type EventGroup = 'message' | 'tool' | 'agent' | 'context' | 'error' | 'other'
 
@@ -17,32 +23,37 @@ const cat = (n: number) => `var(--cat-${n})`
 
 export function eventKind(type: string | null | undefined): EventKind {
   const t = type ?? ''
-  if (t.startsWith('message.user')) return { label: 'user', color: cat(1), group: 'message' }
-  if (t.startsWith('message.assistant')) return { label: 'assistant', color: cat(2), group: 'message' }
-  if (t.startsWith('tool')) return { label: t.replace('tool.', '') || 'tool', color: cat(4), group: 'tool' }
-  if (t.startsWith('skill')) return { label: 'skill', color: cat(3), group: 'tool' }
-  if (t.startsWith('mcp')) return { label: 'mcp', color: cat(2), group: 'tool' }
-  if (t.startsWith('plugin')) return { label: 'plugin', color: cat(8), group: 'tool' }
-  if (t.startsWith('connector')) return { label: 'connector', color: cat(2), group: 'tool' }
-  if (t.startsWith('command')) return { label: 'command', color: cat(7), group: 'tool' }
-  if (t.startsWith('subagent')) return { label: 'subagent', color: cat(5), group: 'agent' }
-  if (t.startsWith('hook')) return { label: 'hook', color: cat(7), group: 'tool' }
-  if (t.startsWith('generation')) return { label: 'gen', color: cat(1), group: 'message' }
-  if (t.startsWith('context.compact')) return { label: 'compact', color: cat(6), group: 'context' }
-  if (t.startsWith('error')) return { label: 'error', color: 'var(--red)', group: 'error' }
+  if (t.startsWith('message.user')) return { label: msg('ev.user'), color: cat(1), group: 'message' }
+  if (t.startsWith('message.assistant')) return { label: msg('ev.assistant'), color: cat(2), group: 'message' }
+  if (t.startsWith('tool')) return { label: t.replace('tool.', '') || msg('ev.tool'), color: cat(4), group: 'tool' }
+  if (t.startsWith('skill')) return { label: msg('ev.skill'), color: cat(3), group: 'tool' }
+  if (t.startsWith('mcp')) return { label: msg('ev.mcp'), color: cat(2), group: 'tool' }
+  if (t.startsWith('plugin')) return { label: msg('ev.plugin'), color: cat(8), group: 'tool' }
+  if (t.startsWith('connector')) return { label: msg('ev.connector'), color: cat(2), group: 'tool' }
+  if (t.startsWith('command')) return { label: msg('ev.command'), color: cat(7), group: 'tool' }
+  if (t.startsWith('subagent')) return { label: msg('ev.subagent'), color: cat(5), group: 'agent' }
+  if (t.startsWith('hook')) return { label: msg('ev.hook'), color: cat(7), group: 'tool' }
+  if (t.startsWith('generation')) return { label: msg('ev.generation'), color: cat(1), group: 'message' }
+  if (t.startsWith('context.compact')) return { label: msg('ev.compact'), color: cat(6), group: 'context' }
+  if (t.startsWith('error')) return { label: msg('ev.error'), color: 'var(--red)', group: 'error' }
   if (t.startsWith('session')) return { label: t.replace('session.', ''), color: 'var(--cat-muted)', group: 'other' }
-  return { label: t || 'event', color: 'var(--cat-muted)', group: 'other' }
+  return { label: t || msg('ev.event'), color: 'var(--cat-muted)', group: 'other' }
 }
 
-/** Filter chips on the session page, in display order. */
-export const EVENT_GROUPS: { key: EventGroup; label: string }[] = [
-  { key: 'message', label: 'Messages' },
-  { key: 'tool', label: 'Tools' },
-  { key: 'agent', label: 'Subagents' },
-  { key: 'context', label: 'Compaction' },
-  { key: 'error', label: 'Errors' },
-  { key: 'other', label: 'Other' },
-]
+/**
+ * Filter chips on the session page, in display order. A function, not a const:
+ * the labels are locale-dependent, so they cannot be read once at import time.
+ */
+export function eventGroups(): { key: EventGroup; label: string }[] {
+  return [
+    { key: 'message', label: msg('ev.groupMessage') },
+    { key: 'tool', label: msg('ev.groupTool') },
+    { key: 'agent', label: msg('ev.groupAgent') },
+    { key: 'context', label: msg('ev.groupContext') },
+    { key: 'error', label: msg('ev.groupError') },
+    { key: 'other', label: msg('ev.groupOther') },
+  ]
+}
 
 /** Payload kinds (content layer) share the same palette as the events that carry them. */
 export function payloadColor(kind: string): string {

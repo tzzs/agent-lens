@@ -181,6 +181,22 @@ export function capabilityDimCell(dim: string, value: unknown, selected: readonl
   return selected.some((d) => d !== dim && isCapabilityNameDim(d)) ? '(unnamed or other kind)' : UNNAMED_CAPABILITY
 }
 
+/**
+ * Which explanatory note the server meant. These mirror `packages/server/src/notes.ts`
+ * one-for-one, and `apps/web/test/server-notes.test.ts` fails if the two lists ever
+ * disagree — the mirror is deliberate: this file is the HTTP contract as the browser
+ * sees it, and it must not drag server code into the web program.
+ */
+export type TokenBasisCode = 'dedupRequestMax'
+export type CostBasisCode = 'noPriceTable' | 'fusedFormula'
+export type AgentNoteCode = 'notDetected' | 'dataRootUnreadable' | 'adapterNotInstalled' | 'probeError'
+export type CatalogNoteCode = 'noCatalogInjected' | 'catalogUnreadable' | 'catalogCounts'
+export type ContentNoteCode = 'contentOn' | 'contentOff' | 'contentPresent' | 'contentWithheldByParam' | 'contentMissing'
+export type ProjectNoteCode = 'canonicalRootFold'
+export type ModelNoteCode = 'naMeansUnpriced'
+/** §11's stage-1 fold state; mirrors `RequestFoldCode` in @agentlens/storage. */
+export type StageOneCode = 'absent' | 'drifted' | 'policyMismatch' | 'materialised'
+
 /** A cost figure as the server emits it: null means "no basis", never $0. */
 export interface CostView {
   pricingConfigured: boolean
@@ -202,7 +218,7 @@ export interface CostView {
     actualUsd: number | null
     reportedUsd: number | null
   }[]
-  basis: string
+  basisCode: CostBasisCode
 }
 
 export interface Filter {
@@ -251,6 +267,8 @@ export interface HostSplitBanner {
   dominantHost: string
   dominantShare: number
   hosts: HostShare[]
+  /** The dominant host is only the agent's own name repeated; the banner is worded differently. */
+  degenerate: boolean
   splitByDefault: true
   message: string
 }
@@ -258,7 +276,7 @@ export interface OverviewResponse {
   generatedAt: number
   window: { since?: string; until?: string; sinceTs: number | null; granularity: string; defaultSinceApplied: boolean }
   cards: {
-    tokens: { total: number; input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number; basis: string }
+    tokens: { total: number; input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number; basisCode: TokenBasisCode }
     cost: CostView
     sessions: number
     events: number
@@ -385,7 +403,7 @@ export interface SessionDetailResponse {
     eventCount: number
   }
   contentAvailable: boolean
-  contentNote: string
+  contentNoteCode: ContentNoteCode
   totals: Record<string, number | null>
   nodes: TimelineNode[]
   explain: string
@@ -415,7 +433,8 @@ export interface CapabilityTypeRow {
 }
 export interface CatalogView {
   available: boolean
-  note: string
+  noteCode: CatalogNoteCode
+  noteDetail?: string
   installed: number
   neverUsed: { agentId: string | null; type: string; name: string; source: string }[]
 }
@@ -448,7 +467,7 @@ export interface ProjectsResponse {
   totals: Record<string, number | null>
   truncated: boolean
   cost: CostView
-  note: string
+  noteCode: ProjectNoteCode
 }
 
 /* ------------------------------------------------------------------ *
@@ -493,7 +512,7 @@ export interface ModelsResponse {
   pricingConfigured: boolean
   unpriced: { provider: string; model: string; lastSeen: number | null }[]
   cost: CostView
-  note: string
+  noteCode: ModelNoteCode
 }
 
 /* ------------------------------------------------------------------ *
@@ -521,7 +540,8 @@ export interface DoctorAgentRow {
   events: number
   sources: number
   status: 'ok' | 'ingested-only' | 'not-detected' | 'error'
-  note: string | null
+  noteCode: AgentNoteCode | null
+  noteDetail?: string
 }
 export interface DoctorReport {
   generatedAt: number
@@ -541,7 +561,7 @@ export interface DoctorReport {
   coverage: CoverageReport
   capabilities: { type: string; events: number; errors: number }[]
   capabilitySupport: { agentId: string; recorded: string[] }[]
-  catalog: { available: boolean; note: string; installed: number; neverUsed: number }
+  catalog: { available: boolean; noteCode: CatalogNoteCode; noteDetail?: string; installed: number; neverUsed: number }
   pricing: {
     pricingConfigured: boolean
     modelsPriced: number | null
@@ -550,7 +570,7 @@ export interface DoctorReport {
   }
   cost: CostView
   permissions: { path: string; readable: boolean }[]
-  content: { available: boolean; payloads: number; note: string }
+  content: { available: boolean; payloads: number; noteCode: ContentNoteCode }
 }
 
 /* ------------------------------------------------------------------ *

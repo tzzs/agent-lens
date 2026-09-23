@@ -9,6 +9,8 @@
   import { live } from '../lib/live.svelte.js'
   import { formatCompact, formatInt, formatMs, pct } from '../lib/format.ts'
   import { eventKind } from '../lib/eventKinds.ts'
+  import { catalogNote } from '../lib/notes.ts'
+  import { t } from '../lib/lang.js'
   import Surface from '../components/ui/Surface.svelte'
   import PageHeader from '../components/ui/PageHeader.svelte'
   import DataTable, { type Column } from '../components/ui/DataTable.svelte'
@@ -34,17 +36,32 @@
   })
   const d = $derived(q.state.data)
 
-  const LABELS: Record<string, string> = {
-    tool: 'Tools',
-    skill: 'Skills',
-    mcp: 'MCP',
-    plugin: 'Plugins',
-    connector: 'Connectors',
-    command: 'Commands',
-    subagent: 'Subagents',
-    hook: 'Hooks',
-  }
+  // Derived, not const: the row labels are the viewer's language. A type this map
+  // does not know still reads with its raw id, exactly as before.
+  const LABELS: Record<string, string> = $derived({
+    tool: $t('capabilities.typeTool'),
+    skill: $t('capabilities.typeSkill'),
+    mcp: $t('capabilities.typeMcp'),
+    plugin: $t('capabilities.typePlugin'),
+    connector: $t('capabilities.typeConnector'),
+    command: $t('capabilities.typeCommand'),
+    subagent: $t('capabilities.typeSubagent'),
+    hook: $t('capabilities.typeHook'),
+  })
   const labelOf = (type: string) => LABELS[type] ?? type
+
+  /** The category word inside a sentence or a catalog chip, where the page used to print the raw type. */
+  const WORDS: Record<string, string> = $derived({
+    tool: $t('capabilities.wordTool'),
+    skill: $t('capabilities.wordSkill'),
+    mcp: $t('capabilities.wordMcp'),
+    plugin: $t('capabilities.wordPlugin'),
+    connector: $t('capabilities.wordConnector'),
+    command: $t('capabilities.wordCommand'),
+    subagent: $t('capabilities.wordSubagent'),
+    hook: $t('capabilities.wordHook'),
+  })
+  const wordOf = (type: string) => WORDS[type] ?? type
 
   // used: the type has events in the window. unreported: agents are present but none
   // records this type at all (an absence). idle: nothing to attribute, a plain zero.
@@ -77,55 +94,66 @@
   let open = $state<string[]>([])
   const toggle = (type: string) => (open = open.includes(type) ? open.filter((t) => t !== type) : [...open, type])
 
-  const plural = (n: number, word: string) => `${formatInt(n)} ${word}${n === 1 ? '' : 's'}`
+  // English agrees its own count; the figures arrive pre-grouped, so a locale
+  // switch never changes how a number reads.
   function agentTitle(stats: CapabilityTypeRow, agentId: string): string {
     const a = stats.agents.find((x) => x.agentId === agentId)
-    return a ? `${agentId}: ${plural(a.events, 'use')} across ${plural(a.sessions, 'session')}` : agentId
+    return a
+      ? $t('capabilities.agentUseTitle', {
+          values: {
+            agent: agentId,
+            n: a.events,
+            uses: formatInt(a.events),
+            m: a.sessions,
+            sessions: formatInt(a.sessions),
+          },
+        })
+      : agentId
   }
 
-  const columns: Column[] = [
-    { key: 'type', label: 'Type', width: '17%' },
-    { key: 'uses', label: 'Uses', align: 'right', width: '10%', info: 'Events recorded for this capability type in the selected window.' },
+  const columns: Column[] = $derived([
+    { key: 'type', label: $t('capabilities.colType'), width: '17%' },
+    { key: 'uses', label: $t('capabilities.colUses'), align: 'right', width: '10%', info: $t('capabilities.usesInfo') },
     {
       key: 'duration',
-      label: 'Duration',
+      label: $t('capabilities.colDuration'),
       align: 'right',
       width: '11%',
-      info: 'Total time the agents logged for these calls. A dash means no durations were recorded for this type, not zero time.',
+      info: $t('capabilities.durationInfo'),
     },
-    { key: 'tokens', label: 'Tokens', align: 'right', width: '10%', info: 'Tokens carried by these events, counted once per request (§3.1).' },
-    { key: 'failures', label: 'Failures', align: 'right', width: '10%', info: 'Calls that ended in an error status.' },
+    { key: 'tokens', label: $t('capabilities.colTokens'), align: 'right', width: '10%', info: $t('capabilities.tokensInfo') },
+    { key: 'failures', label: $t('capabilities.colFailures'), align: 'right', width: '10%', info: $t('capabilities.failuresInfo') },
     {
       key: 'cost',
-      label: 'Est. cost',
+      label: $t('capabilities.colCost'),
       align: 'right',
       width: '11%',
-      info: 'Tokens × list price. n/a when there is no price or no tokens to price — never $0.',
+      info: $t('capabilities.costInfo'),
     },
-    { key: 'agents', label: 'Reported by', width: '31%', info: 'Agents that recorded this type in the selected window.' },
-  ]
-  const nameColumns: Column[] = [
-    { key: 'name', label: 'Name', width: '40%' },
-    { key: 'uses', label: 'Uses', align: 'right', width: '12%' },
-    { key: 'duration', label: 'Duration', align: 'right', width: '12%' },
-    { key: 'tokens', label: 'Tokens', align: 'right', width: '12%' },
-    { key: 'errors', label: 'Errors', align: 'right', width: '12%' },
-    { key: 'cost', label: 'Est. cost', align: 'right', width: '12%' },
-  ]
+    { key: 'agents', label: $t('capabilities.colReportedBy'), width: '31%', info: $t('capabilities.reportedByInfo') },
+  ])
+  const nameColumns: Column[] = $derived([
+    { key: 'name', label: $t('capabilities.colName'), width: '40%' },
+    { key: 'uses', label: $t('capabilities.colUses'), align: 'right', width: '12%' },
+    { key: 'duration', label: $t('capabilities.colDuration'), align: 'right', width: '12%' },
+    { key: 'tokens', label: $t('capabilities.colTokens'), align: 'right', width: '12%' },
+    { key: 'errors', label: $t('capabilities.colErrors'), align: 'right', width: '12%' },
+    { key: 'cost', label: $t('capabilities.colCost'), align: 'right', width: '12%' },
+  ])
 </script>
 
 {#snippet duration(ms: number)}
   {#if ms > 0}
     <td class="nums text-right text-ink-2">{formatMs(ms)}</td>
   {:else}
-    <td class="nums text-right text-ink-3" title="No durations recorded">—</td>
+    <td class="nums text-right text-ink-3" title={$t('capabilities.noDurations')}>—</td>
   {/if}
 {/snippet}
 
 {#snippet failures(errors: number, events: number)}
   <td class="text-right">
     {#if errors > 0}
-      <Chip tone="red" mono title="{plural(errors, 'call')} of {formatInt(events)} ended in an error ({pct(errors / Math.max(1, events))})">{formatInt(errors)}</Chip>
+      <Chip tone="red" mono title={$t('capabilities.failureChipTitle', { values: { n: errors, calls: formatInt(errors), total: formatInt(events), pct: pct(errors / Math.max(1, events)) } })}>{formatInt(errors)}</Chip>
     {:else}
       <span class="nums text-ink-3">0</span>
     {/if}
@@ -142,23 +170,23 @@
 {/snippet}
 
 <PageHeader
-  title="Capabilities"
-  description="Which tools, skills, MCP servers, hooks and subagents did the work — uses, time, failures and cost."
-  info="Grouped by capability type for the selected window (§10). A type an agent does not record reads “Not reported”, never 0 (§18 item 5)."
+  title={$t('capabilities.title')}
+  description={$t('capabilities.pageDesc')}
+  info={$t('capabilities.pageInfo')}
   refreshing={q.state.refreshing}
 />
 
 {#if !d}
-  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} since={q.state.since} loadingText="Loading capabilities" />
+  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} since={q.state.since} loadingText={$t('capabilities.loading')} />
 {:else}
   {#if q.state.status === 'error'}
-    <div class="mb-4"><Alert tone="red" title="Refresh failed.">{q.state.error} — showing the last good numbers.</Alert></div>
+    <div class="mb-4"><Alert tone="red" title={$t('states.refreshFailed')}>{q.state.error} — {$t('states.showingLastNumbers')}</Alert></div>
   {/if}
 
-  <Surface title="By type" subtitle={anyNames ? 'Expand a type to see its most-used names.' : ''} padded={false}>
+  <Surface title={$t('capabilities.byType')} subtitle={anyNames ? $t('capabilities.byTypeSubtitle') : ''} padded={false}>
     <div class="overflow-x-auto rounded-b-card">
       <div class="min-w-[760px]">
-        <DataTable {columns} {rows} key={(r: TypeView) => r.type} caption="Capability use by type" isExpanded={(r: TypeView) => open.includes(r.type)}>
+        <DataTable {columns} {rows} key={(r: TypeView) => r.type} caption={$t('capabilities.tableCaption')} isExpanded={(r: TypeView) => open.includes(r.type)}>
           {#snippet row(r: TypeView)}
             {@const isOpen = open.includes(r.type)}
             {@const dot = r.stats ? eventKind(r.type).color : 'var(--cat-muted)'}
@@ -174,7 +202,7 @@
                   <Icon name={isOpen ? 'chevronDown' : 'chevronRight'} size={14} class="text-ink-3" />
                   <span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background:{dot}" aria-hidden="true"></span>
                   <span class="truncate">{labelOf(r.type)}</span>
-                  <span class="sr-only">, top names</span>
+                  <span class="sr-only">{$t('capabilities.topNamesSr')}</span>
                 </button>
               {:else}
                 <span class="inline-flex max-w-full items-center gap-1.5 py-0.5 font-medium {r.stats ? 'text-ink' : 'text-ink-2'}">
@@ -209,14 +237,14 @@
             {:else if r.status === 'unreported'}
               <td colspan="5">
                 <span class="inline-flex max-w-full items-center gap-2">
-                  <Chip dashed title="An absence, not a zero: these agents record no {r.type === 'mcp' ? 'MCP' : r.type} events at all.">Not reported</Chip>
-                  <span class="truncate text-xs text-ink-3" title={r.missing.join(', ')}>by {r.missing.join(', ')}</span>
+                  <Chip dashed title={$t('capabilities.notReportedTitle', { values: { type: wordOf(r.type) } })}>{$t('capabilities.notReported')}</Chip>
+                  <span class="truncate text-xs text-ink-3" title={r.missing.join(', ')}>{$t('capabilities.byAgents', { values: { agents: r.missing.join(', ') } })}</span>
                 </span>
               </td>
               <td class="text-ink-3">—</td>
             {:else}
               <td class="nums text-right text-ink-3">0</td>
-              <td colspan="4" class="text-xs text-ink-3">No uses in this window</td>
+              <td colspan="4" class="text-xs text-ink-3">{$t('capabilities.noUses')}</td>
               <td class="text-ink-3">—</td>
             {/if}
           {/snippet}
@@ -231,11 +259,11 @@
                     key={(n: CapabilityNameRow) => n.name}
                     row={nameRow}
                     dense
-                    caption="Most-used {labelOf(r.type)} names"
+                    caption={$t('capabilities.namesCaption', { values: { type: labelOf(r.type) } })}
                   />
                 </div>
                 <p class="mt-2 text-xs text-ink-3">
-                  Top {formatInt(r.stats.names.length)} names by uses. The {labelOf(r.type)} row above totals every name, including ones not listed.
+                  {$t('capabilities.topNamesNote', { values: { n: formatInt(r.stats.names.length), type: labelOf(r.type) } })}
                 </p>
               </div>
             {/if}
@@ -247,35 +275,35 @@
 
   <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
     <Surface
-      title="Installed but never used"
-      subtitle="In an agent's catalog, but no uses in this window"
-      info="Read from each agent's static capability catalog (§5.1). An entry is listed when nothing in the selected window used it."
+      title={$t('capabilities.installedTitle')}
+      subtitle={$t('capabilities.installedSubtitle')}
+      info={$t('capabilities.installedInfo')}
     >
       {#if !d.catalog.available}
         <div class="flex items-start gap-2.5 rounded-[10px] border border-dashed border-line-strong px-3.5 py-3">
           <Icon name="info" size={15} class="mt-0.5 text-ink-3" />
           <div class="min-w-0">
-            <p class="text-[13px] text-ink-2">No catalog available, so unused capabilities can't be listed. That is not the same as none.</p>
-            <p class="nums mt-1 break-words text-xs text-ink-3">{d.catalog.note}</p>
+            <p class="text-[13px] text-ink-2">{$t('capabilities.noCatalog')}</p>
+            <p class="nums mt-1 break-words text-xs text-ink-3">{catalogNote(d.catalog.noteCode, { installed: d.catalog.installed, neverUsed: d.catalog.neverUsed.length, detail: d.catalog.noteDetail })}</p>
           </div>
         </div>
       {:else if d.catalog.neverUsed.length === 0}
         <p class="flex items-center gap-2 text-[13px] text-ink-2">
           <Icon name="check" size={15} class="text-green" />
           {#if d.catalog.installed === 0}
-            The catalog is empty: no installed capabilities were found.
+            {$t('capabilities.catalogEmpty')}
           {:else}
-            All {formatInt(d.catalog.installed)} catalogued {d.catalog.installed === 1 ? 'entry was' : 'entries were'} used in this window.
+            {$t('capabilities.catalogAllUsed', { values: { n: d.catalog.installed, s: formatInt(d.catalog.installed) } })}
           {/if}
         </p>
       {:else}
-        <p class="mb-2 text-xs text-ink-3">{d.catalog.note}</p>
+        <p class="mb-2 text-xs text-ink-3">{catalogNote(d.catalog.noteCode, { installed: d.catalog.installed, neverUsed: d.catalog.neverUsed.length, detail: d.catalog.noteDetail })}</p>
         <ul class="max-h-72 divide-y divide-line-soft overflow-y-auto">
           {#each d.catalog.neverUsed as c (`${c.agentId}:${c.type}:${c.name}:${c.source}`)}
             <li class="flex flex-col gap-1 py-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
               <span class="nums min-w-0 truncate text-[13px] text-ink" title={c.name}>{c.name}</span>
               <span class="flex min-w-0 shrink-0 items-center gap-1">
-                <Chip color={eventKind(c.type).color}>{c.type}</Chip>
+                <Chip color={eventKind(c.type).color}>{wordOf(c.type)}</Chip>
                 {#if c.agentId}<Chip>{c.agentId}</Chip>{/if}
                 {#if c.source}<span class="inline-flex min-w-0 max-w-40"><Chip mono title={c.source}>{c.source}</Chip></span>{/if}
               </span>
@@ -285,10 +313,10 @@
       {/if}
     </Surface>
 
-    <Surface title="How these numbers were derived" info="The cube query behind this page (§7). “Not reported” follows §18 item 5.">
-      <CodeBlock text={d.explain} label="Query" />
+    <Surface title={$t('capabilities.deriveTitle')} info={$t('capabilities.deriveInfo')}>
+      <CodeBlock text={d.explain} label={$t('capabilities.queryLabel')} />
       <p class="mt-3 text-xs leading-6 text-ink-3">
-        <Chip dashed>Not reported</Chip> means the agent records no events of that type at all. It is an absence, not a zero.
+        <Chip dashed>{$t('capabilities.notReported')}</Chip> {$t('capabilities.notReportedMeans')}
       </p>
     </Surface>
   </div>

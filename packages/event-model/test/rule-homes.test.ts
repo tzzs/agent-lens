@@ -145,7 +145,7 @@ const RULES: Rule[] = [
   },
   {
     what: 'whether the materialised stage 1 still describes `events`, and what that costs (§11/§19)',
-    home: '@agentlens/storage → requestFoldHealth / requestFoldSentence',
+    home: '@agentlens/storage → requestFoldHealth / requestFoldVerdict / requestFoldSentence',
     forbidden: [
       { re: /SUM\(member_count\)/, why: 'the certificate is one query; a surface that re-reads it can disagree with the reader that declines on it' },
       { re: /FROM (main\.)?requests\b/, why: 'the folded table is storage\'s; reading it from a surface bypasses the decline rule as well as the counts' },
@@ -153,7 +153,9 @@ const RULES: Rule[] = [
     ],
     calls: [
       { file: 'apps/cli/src/commands/doctor.ts', symbol: 'requestFoldSentence' },
-      { file: 'packages/server/src/doctor.ts', symbol: 'requestFoldSentence' },
+      // The API serves the verdict and its counts; the dashboard words them, so the
+      // server must call the decision, not the sentence the terminal prints.
+      { file: 'packages/server/src/doctor.ts', symbol: 'requestFoldVerdict' },
     ],
   },
 ]

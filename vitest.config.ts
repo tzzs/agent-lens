@@ -11,6 +11,7 @@ export default defineConfig({
       '@agentlens/collector': r('./packages/collector/src/index.ts'),
       '@agentlens/pricing': r('./packages/pricing/src/index.ts'),
       '@agentlens/query': r('./packages/query/src/index.ts'),
+      '@agentlens/i18n': r('./packages/i18n/src/index.ts'),
       '@agentlens/adapter-claude-code': r('./adapters/claude-code/src/index.ts'),
       '@agentlens/adapter-codex': r('./adapters/codex/src/index.ts'),
       '@agentlens/adapter-qoder': r('./adapters/qoder/src/index.ts'),

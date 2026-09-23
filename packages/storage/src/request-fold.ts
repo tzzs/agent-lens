@@ -466,29 +466,37 @@ export function requestFoldHealth(db: DatabaseSync): RequestFoldHealth {
   }
 }
 
+/** Which of §11's four fold states a store is in. */
+export const REQUEST_FOLD_CODES = ['absent', 'drifted', 'policyMismatch', 'materialised'] as const
+export type RequestFoldCode = (typeof REQUEST_FOLD_CODES)[number]
+
+/**
+ * The decision, once. The terminal wants a sentence and the dashboard wants to say
+ * the same thing in the reader's language, so both ask this one question instead of
+ * each re-deriving which case applies — the §14 rule that a fact gets one decider.
+ */
+export function requestFoldVerdict(h: RequestFoldHealth): { ok: boolean; code: RequestFoldCode } {
+  if (!h.present) return { ok: false, code: 'absent' }
+  if (h.members !== h.events) return { ok: false, code: 'drifted' }
+  if (!h.policyMatches) return { ok: false, code: 'policyMismatch' }
+  return { ok: true, code: 'materialised' }
+}
+
 /** The one sentence both doctors say about §11's fold health. */
 export function requestFoldSentence(h: RequestFoldHealth): { ok: boolean; text: string } {
   // Digits are grouped here so the terminal and the browser print one string, not two
   // renderings of one fact (§14).
   const n = (v: number) => v.toLocaleString('en-US')
-  if (!h.present) {
-    return { ok: false, text: 'no materialised stage 1 (migration 008) — every cube read folds events live' }
-  }
-  if (h.members !== h.events) {
-    return {
-      ok: false,
-      text:
-        `stage 1 accounts for ${n(h.members)} of ${n(h.events)} events — it drifted from ` +
-        '`events`, so reads fold live again until the next scan (§11)',
-    }
-  }
-  if (!h.policyMatches) {
-    return {
-      ok: false,
-      text:
-        `stage 1 holds ${n(h.rows)} request rows for ${n(h.events)} events, but under a different ` +
-        '§18 grouping than the stored policies — reads fold live until a re-scan',
-    }
-  }
-  return { ok: true, text: `stage 1 materialised: ${n(h.rows)} request rows over ${n(h.events)} events` }
+  const { ok, code } = requestFoldVerdict(h)
+  const text = {
+    absent: 'no materialised stage 1 (migration 008) — every cube read folds events live',
+    drifted:
+      `stage 1 accounts for ${n(h.members)} of ${n(h.events)} events — it drifted from ` +
+      '`events`, so reads fold live again until the next scan (§11)',
+    policyMismatch:
+      `stage 1 holds ${n(h.rows)} request rows for ${n(h.events)} events, but under a different ` +
+      '§18 grouping than the stored policies — reads fold live until a re-scan',
+    materialised: `stage 1 materialised: ${n(h.rows)} request rows over ${n(h.events)} events`,
+  }[code]
+  return { ok, text }
 }

@@ -3,6 +3,7 @@
   // the DOM, so a 13k-event session renders as fast as a 30-event one. Rows must
   // all be `itemHeight` px tall — variable-height detail lives in a side panel.
   import type { Snippet } from 'svelte'
+  import { msg } from '@agentlens/i18n'
 
   let {
     items,
@@ -11,7 +12,7 @@
     overscan = 12,
     key,
     row,
-    label = 'List',
+    label = msg('comps.list'),
     role = 'list',
     itemAttrs,
     onkeydown,

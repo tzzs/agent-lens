@@ -4,6 +4,8 @@
   // from the --cat-N theme tokens.
   import { SERIES } from '../../lib/eventKinds.ts'
   import { topN } from '../../lib/series.ts'
+  import { msg } from '@agentlens/i18n'
+  import { t } from '../../lib/lang.js'
 
   let {
     data = [],
@@ -11,7 +13,7 @@
     thickness = 18,
     max = 6,
     format = (n: number) => String(n),
-    label = 'breakdown',
+    label = msg('viz.donutBreakdown'),
   }: {
     data: { label: string; value: number; title?: string }[]
     size?: number
@@ -44,16 +46,16 @@
     })
   })
   let active = $state<number | null>(null)
-  const centre = $derived(active === null ? { v: format(total), l: 'total' } : { v: format(arcs[active]!.value), l: arcs[active]!.label })
+  const centre = $derived(active === null ? { v: format(total), l: $t('viz.total') } : { v: format(arcs[active]!.value), l: arcs[active]!.label })
 </script>
 
 {#if total === 0}
-  <div class="grid h-[148px] place-items-center rounded-lg border border-dashed border-line-strong text-xs text-ink-3">No data in range</div>
+  <div class="grid h-[148px] place-items-center rounded-lg border border-dashed border-line-strong text-xs text-ink-3">{$t('viz.noDataInRange')}</div>
 {:else}
   <!-- container query: side-by-side only when the card itself is wide enough -->
   <div class="@container">
   <div class="flex flex-col items-center gap-4 @md:flex-row @md:items-center">
-    <svg width={size} height={size} viewBox="0 0 {size} {size}" class="shrink-0" role="img" aria-label="{label}: total {format(total)}">
+    <svg width={size} height={size} viewBox="0 0 {size} {size}" class="shrink-0" role="img" aria-label={$t('viz.donutAria', { values: { label, v: format(total) } })}>
       <g transform="translate({size / 2},{size / 2}) rotate(-90)">
         <circle {r} fill="none" stroke="var(--hover-2)" stroke-width={thickness} />
         {#each arcs as a, i (a.label)}

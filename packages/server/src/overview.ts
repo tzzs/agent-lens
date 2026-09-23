@@ -12,6 +12,7 @@ import { banners } from './banners.ts'
 import { contentLayerPresent, payloadCount } from './content.ts'
 import { parseFilter, strParam } from './request-spec.ts'
 import { ApiError } from './errors.ts'
+import type { TokenBasisCode } from './notes.ts'
 
 const GRANULARITIES = ['day', 'week', 'month'] as const
 
@@ -26,7 +27,7 @@ export interface OverviewResponse {
       cacheRead: number
       cacheWrite: number
       reasoning: number
-      basis: string
+      basisCode: TokenBasisCode
     }
     cost: ReturnType<typeof costView>
     sessions: number
@@ -134,7 +135,7 @@ export function overview(ctx: ServerCtx, sp: URLSearchParams): OverviewResponse 
         cacheRead: sumOf('tokens_cache_read'),
         cacheWrite: sumOf('tokens_cache_write'),
         reasoning: sumOf('tokens_reasoning'),
-        basis: 'deduped by request_id (MAX per request, then SUM) — §3.1 invariant',
+        basisCode: 'dedupRequestMax',
       },
       cost: costView(ctx, windowFilter),
       sessions,

@@ -16,6 +16,7 @@ import { ApiError } from './errors.ts'
 import { contentLayerPresent, loadPayloads, payloadCountByEvent, payloadCountBySession, chunk, type PayloadView } from './content.ts'
 import { parseFilter, strParam } from './request-spec.ts'
 import { projectLabelMap, rowsOf, redactMetadata } from './resolve.ts'
+import type { ContentNoteCode } from './notes.ts'
 
 export interface SessionRow {
   sessionId: string
@@ -81,8 +82,8 @@ export interface SessionDetailResponse {
     eventCount: number
   }
   contentAvailable: boolean
-  /** Present so the degraded mode is explainable in the UI, not just visible. */
-  contentNote: string
+  /** Which sentence explains a metrics-only timeline; the text itself is the viewer's. */
+  contentNoteCode: ContentNoteCode
   totals: Record<string, number | null>
   nodes: TimelineNode[]
   explain: string
@@ -270,11 +271,7 @@ export function sessionDetail(ctx: ServerCtx, wanted: string, opts: SessionDetai
     },
     contentAvailable,
     /** Present so the degraded mode is explainable in the UI, not just visible. */
-    contentNote: contentAvailable
-      ? includePayloads
-        ? 'content layer present for this session'
-        : 'content layer present; payload text withheld by `payloads=0`, fetch it per node from /api/sessions/:id/nodes/:nodeId/payloads'
-      : 'content layer off or expired (payload TTL) — metrics-only timeline; re-scan with --content to capture message/tool text',
+    contentNoteCode: contentAvailable ? (includePayloads ? 'contentPresent' : 'contentWithheldByParam') : 'contentMissing',
     totals: agg.totals,
     nodes,
     explain: describeQuery({ metrics: [...spec.metrics], filter: spec.filter }),

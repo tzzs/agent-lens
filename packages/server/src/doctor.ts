@@ -8,7 +8,7 @@
  * injected — the only inputs the server genuinely cannot produce alone (§5.4).
  * This route scans all usage rows on purpose; hot dashboard routes do not.
  */
-import { parserVersionDrift, requestFoldHealth, requestFoldSentence, sourceRetention, subagentOrphans, timestampGuesses } from '@agentlens/storage'
+import { parserVersionDrift, requestFoldHealth, requestFoldVerdict, sourceRetention, subagentOrphans, timestampGuesses } from '@agentlens/storage'
 import { query } from '@agentlens/query'
 import type { ServerCtx } from './types.ts'
 import { costView, missingPriceModels } from './cost.ts'
@@ -69,7 +69,9 @@ export async function doctor(ctx: ServerCtx, sp: URLSearchParams): Promise<Docto
   const catalog = await catalogSummary(ctx, filter)
   // §11/§19: whether the materialised stage 1 still describes `events`, phrased by storage so
   // this page and `agl doctor` print one sentence (§14).
-  const stageOneFold = requestFoldSentence(requestFoldHealth(ctx.db))
+  // The verdict and its numbers travel; the sentence is the viewer's to write.
+  const foldHealth = requestFoldHealth(ctx.db)
+  const stageOneFold = { ...requestFoldVerdict(foldHealth), rows: foldHealth.rows, members: foldHealth.members, events: foldHealth.events }
 
   const usageQuality = usageQualityBlock(ctx, adapters)
 
@@ -90,7 +92,8 @@ export async function doctor(ctx: ServerCtx, sp: URLSearchParams): Promise<Docto
     capabilitySupport: [...support.entries()].map(([agentId, recorded]) => ({ agentId, recorded })),
     catalog: {
       available: catalog.available,
-      note: catalog.note,
+      noteCode: catalog.noteCode,
+      ...(catalog.noteDetail ? { noteDetail: catalog.noteDetail } : {}),
       installed: catalog.installed,
       neverUsed: catalog.neverUsed.length,
     },
@@ -105,9 +108,7 @@ export async function doctor(ctx: ServerCtx, sp: URLSearchParams): Promise<Docto
     content: {
       available: contentLayerPresent(ctx.db),
       payloads: payloadCount(ctx.db),
-      note: contentLayerPresent(ctx.db)
-        ? 'content layer on: timelines show message/tool text'
-        : 'content layer off (the default; scan with --content) or expired: timelines are metrics-only, statistics unaffected',
+      noteCode: contentLayerPresent(ctx.db) ? 'contentOn' : 'contentOff',
     },
   }
 }

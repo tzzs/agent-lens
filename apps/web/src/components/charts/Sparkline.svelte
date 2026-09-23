@@ -8,14 +8,17 @@
   // unpriced model as $0). Unknown buckets are gaps: the line breaks, they are excluded
   // from the peak, and the readout says so. Plotting them as 0 would draw the exact
   // falsehood §8 exists to prevent — a day that looks free because we could not price it.
+  import { msg } from '@agentlens/i18n'
+  import { t } from '../../lib/lang.js'
+
   let {
     values = [],
     labels = [],
     color = 'var(--cat-1)',
     height = 110,
     format = (n: number) => String(n),
-    unknown = 'n/a',
-    label = 'trend',
+    unknown = msg('common.na'),
+    label = msg('viz.sparkTrend'),
   }: {
     values?: (number | null)[]
     labels?: string[]
@@ -88,7 +91,7 @@
 <div class="w-full">
   {#if n === 0}
     <div class="grid place-items-center rounded-lg border border-dashed border-line-strong text-xs text-ink-3" style="height:{height}px">
-      No data in range
+      {$t('viz.noDataInRange')}
     </div>
   {:else}
     <div
@@ -96,11 +99,11 @@
       class="relative outline-none"
       style="height:{height}px"
       role="slider"
-      aria-label="{label} — arrow keys step through points"
+      aria-label={$t('viz.sparkAria', { values: { label } })}
       aria-valuemin={0}
       aria-valuemax={n - 1}
       aria-valuenow={hover ?? n - 1}
-      aria-valuetext={hp ? `${hp.label}: ${text(hp.v)}` : `peak ${priced.length === 0 ? unknown : format(max)}`}
+      aria-valuetext={hp ? `${hp.label}: ${text(hp.v)}` : `${$t('viz.peak')} ${priced.length === 0 ? unknown : format(max)}`}
       tabindex="0"
       onpointermove={onMove}
       onpointerleave={() => (hover = null)}
@@ -144,7 +147,7 @@
     </div>
     <div class="nums mt-2 flex justify-between text-[11px] text-ink-3">
       <span>{labels[0] ?? ''}</span>
-      <span>{hasGaps ? `${priced.length ? `peak ${format(max)} · ` : ''}${unknown} in ${n - priced.length}` : `peak ${format(max)}`}</span>
+      <span>{hasGaps ? `${priced.length ? `${$t('viz.peak')} ${format(max)} · ` : ''}${$t('viz.gapsIn', { values: { na: unknown, n: n - priced.length } })}` : `${$t('viz.peak')} ${format(max)}`}</span>
       <span>{labels[labels.length - 1] ?? ''}</span>
     </div>
     <table class="sr-only">

@@ -1,11 +1,13 @@
 <script lang="ts">
   // Horizontal bar list: ranked breakdowns where a donut would be too small to
   // read the labels.
+  import { msg } from '@agentlens/i18n'
+
   let {
     rows = [],
     format = (n: number) => String(n),
     color = 'var(--cat-1)',
-    emptyText = 'No data in range',
+    emptyText = msg('viz.noDataInRange'),
   }: {
     rows?: { label: string; value: number; note?: string; color?: string }[]
     format?: (n: number) => string
