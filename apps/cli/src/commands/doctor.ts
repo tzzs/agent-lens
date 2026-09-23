@@ -26,6 +26,7 @@ import {
   projectRowsPhrase,
   retentionPhrase,
   unpricedBuckets,
+  unpricedModelKey,
   UPSTREAM_RETENTION,
 } from '@agentlens/server'
 import type { FlagView } from '../args.ts'
@@ -533,6 +534,7 @@ export function renderPricing(db: DatabaseSync, rctx: Ctx, dbPath: string): void
     return
   }
   const gaps: { provider: string; model: string; events: number; buckets: string[] }[] = []
+  const byKey = new Map<string, { provider: string; model: string; events: number; buckets: string[] }>()
   let pricedEvents = 0
   let undatedModels = 0
   for (const m of models) {
@@ -543,12 +545,23 @@ export function renderPricing(db: DatabaseSync, rctx: Ctx, dbPath: string): void
       pricedEvents += m.events
       continue
     }
-    gaps.push({ provider: m.provider, model: m.model, events: m.events, buckets })
+    // One entry per model, not per `models` row: that table is unique on (provider, name, tier)
+    // and the price lookup ignores tier, so a four-tier model is one gap with four spend rows.
+    // The served report merges the same way in `unpricedModels`, and the two counts have to
+    // agree (§14) — this used to print 12 where the Models page listed 8.
+    const key = unpricedModelKey(m.provider, m.model)
+    const seen = byKey.get(key)
+    if (seen) {
+      seen.events += m.events
+      seen.buckets = [...new Set([...seen.buckets, ...buckets])].sort()
+    } else byKey.set(key, { provider: m.provider, model: m.model, events: m.events, buckets })
   }
+  gaps.push(...byKey.values())
   gaps.sort((a, b) => b.events - a.events || a.model.localeCompare(b.model))
   if (gaps.length > 0) {
+    const distinct = new Set(models.map((m) => unpricedModelKey(m.provider, m.model))).size
     rctx.out(
-      `${GLYPH.warn} ${formatCount(gaps.length)} of ${formatCount(models.length)} ingested models unpriced → ` +
+      `${GLYPH.warn} ${formatCount(gaps.length)} of ${formatCount(distinct)} ingested models unpriced → ` +
         'cost = "n/a", never $0 ($0 reads as a free local model, §8) — `agl pricing update` or `agl pricing override`',
     )
     rctx.out(

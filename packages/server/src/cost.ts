@@ -228,11 +228,32 @@ export function unpricedModelKey(provider: string, model: string): string {
   return `${provider}\u0000${model}`
 }
 
-/** The §8 unpriced set: the models whose cost the cube renders as `n/a`, never as $0. */
+/**
+ * The §8 unpriced set: the models whose cost the cube renders as `n/a`, never as $0.
+ *
+ * A SET, keyed the way every reader joins it — `models` is unique on
+ * `(provider, name, tier)` while the price lookup ignores tier, so one model behind four
+ * tiers is one gap, not four. Handing readers the per-tier rows made the Models banner
+ * render the same `(provider, model)` four times, which Svelte rejects as a duplicate
+ * `{#each}` key and the count overstates by the tier fan-out.
+ */
 export function unpricedModels(db: DatabaseSync, priceFor: PriceResolver, now: number): UnpricedModel[] {
-  return modelSpend(db, now)
-    .map((m) => ({ ...m, buckets: unpricedBuckets(priceFor(m.provider, m.model, m.lastSeen), m) }))
-    .filter((m) => m.buckets.length > 0)
+  const byKey = new Map<string, UnpricedModel>()
+  for (const m of modelSpend(db, now)) {
+    const buckets = unpricedBuckets(priceFor(m.provider, m.model, m.lastSeen), m)
+    if (buckets.length === 0) continue
+    const key = unpricedModelKey(m.provider, m.model)
+    const seen = byKey.get(key)
+    if (!seen) {
+      byKey.set(key, { ...m, buckets })
+      continue
+    }
+    seen.events += m.events
+    for (const f of ['input', 'output', 'cacheRead', 'cacheWrite', 'reasoning'] as const) seen[f] += m[f]
+    seen.lastSeen = Math.max(seen.lastSeen ?? 0, m.lastSeen ?? 0)
+    seen.buckets = [...new Set([...seen.buckets, ...buckets])].sort()
+  }
+  return [...byKey.values()]
 }
 
 /** Models present in the data with no price at their last-seen date (§11 pricing gap line). */

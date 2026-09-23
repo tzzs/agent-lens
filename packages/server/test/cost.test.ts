@@ -14,7 +14,7 @@ import type { AgentEvent } from '@agentlens/event-model'
 import { insertEvents, migrate, openDatabase } from '@agentlens/storage'
 import { PRICE_MISSING, computeCost, type BillingMode, type PriceEntry } from '@agentlens/pricing'
 import { createContext } from '../src/app.ts'
-import { actualUsdFor, costView, missingPriceModels, modelSpend, unpricedBuckets } from '../src/cost.ts'
+import { actualUsdFor, costView, missingPriceModels, modelSpend, unpricedBuckets, unpricedModels } from '../src/cost.ts'
 import { parseSpec } from '../src/request-spec.ts'
 import type { PriceResolver } from '../src/types.ts'
 import { TEST_PRICE, testPriceResolver } from './helpers.ts'
@@ -178,6 +178,38 @@ describe('§8 unpriced set is the spent-bucket rule, not the null-entry rule (de
     // And the model with no spend at all cannot manufacture a gap out of an absent bucket.
     expect(modelSpend(pricedDb, 1).find((m) => m.model === 'full')?.events).toBe(1)
     pricedDb.close()
+  })
+
+  it('counts a model once however many tiers its rows come in under', () => {
+    // `models` is unique on (provider, name, tier) and the price lookup ignores tier, so the
+    // same unpriced model arrives as one spend row per tier. The set has to fold them: the
+    // Models page keys its banner on (provider, model) and a per-tier list is a duplicate key
+    // there — a real store had one GLM model listed four times and the page never rendered.
+    const db = openDatabase(':memory:')
+    migrate(db)
+    const tiered = (id: string, tier: string, input: number): AgentEvent =>
+      ev(id, {
+        model: { provider: 'bigmodel', name: 'GLM-5.3-Flash', tier },
+        usage: { ...usage(input), outputTokens: 10 },
+        requestId: id,
+      })
+    insertEvents(db, [
+      tiered('t1', 'plan-a', 1_000_000),
+      tiered('t2', 'plan-b', 2_000_000),
+      tiered('t3', 'plan-c', 3_000_000),
+      ev('priced', { model: { provider: 'anthropic', name: 'full', tier: 'x' }, usage: { ...usage(500), outputTokens: 5 }, requestId: 'priced' }),
+    ])
+    const resolver: PriceResolver = (_p, model) => (model === 'full' ? { ...TEST_PRICE } : null)
+    const ctx = createContext({ db, now: () => 1_700_000_100_000, priceResolver: resolver })
+    expect(modelSpend(db, 1).filter((m) => m.model === 'GLM-5.3-Flash')).toHaveLength(3)
+    const gaps = missingPriceModels(ctx)
+    expect(gaps.map((g) => `${g.provider}/${g.model}`)).toEqual(['bigmodel/GLM-5.3-Flash'])
+    // The merged row still carries the whole model's spend, not one tier's.
+    const merged = unpricedModels(db, resolver, 1_700_000_100_000)
+    expect(merged.map((m) => m.model)).toEqual(['GLM-5.3-Flash'])
+    expect(merged[0]?.events).toBe(3)
+    expect(merged[0]?.input).toBe(6_000_000)
+    db.close()
   })
 })
 
