@@ -5,7 +5,7 @@ import { aggregateRequestTokens, aggregateUsage, UnknownAggregationError } from 
 import { hexSeed } from './fixtures.ts'
 import { insertEvents, migrate, openDatabase } from '@agentlens/storage'
 import type { PriceEntry } from '@agentlens/pricing'
-import { bucketTs, costFloor, query, resolveSince, UnknownDimError, UnknownMetricError, type QuerySpec } from '@agentlens/query'
+import { bucketTs, costFloor, costPortionsByAgent, query, resolveSince, UnknownDimError, UnknownMetricError, type QuerySpec } from '@agentlens/query'
 
 function seeded(events: AgentEvent[]): DatabaseSync {
   const db = openDatabase(':memory:')
@@ -243,6 +243,27 @@ describe('whitelist validation', () => {
   })
   it('unknown dim throws UnknownDimError', () => {
     expect(() => query(db, { dims: ['moon' as never] })).toThrow(UnknownDimError)
+  })
+})
+
+describe('costPortionsByAgent — the priced half of a window a gap NULLs (§8/§14)', () => {
+  const usage: Usage = { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 }
+  const db = seeded([
+    hexSeed({ agentId: 'a1', requestId: 'p1', usage, model: { provider: 'anthropic', name: 'test-model' } }, 'p1'),
+    hexSeed({ agentId: 'a1', requestId: 'p2', usage, model: { provider: 'anthropic', name: 'unpriced-model' } }, 'p2'),
+    hexSeed({ agentId: 'a2', requestId: 'p3', usage, model: { provider: 'anthropic', name: 'unpriced-model' } }, 'p3'),
+  ])
+
+  it('sums what prices out, per agent, and invents nothing where nothing prices', () => {
+    const portions = costPortionsByAgent(db, {}, { priceResolver: resolver })
+    // a1's window is half priced: the gap drops out of the floor, the $3 does not.
+    expect(portions.get('a1')).toEqual({ api: 3, total: 3 })
+    expect(portions.get('a2'), 'an agent with no priced slice has no floor').toEqual({ api: null, total: null })
+    // The complete answer stays NULL at agent grain — this map is a floor, not a relaxed §18 row 1.
+    expect(query(db, { metrics: ['cost_api_equiv'], dims: ['agent'] }, { priceResolver: resolver }).rows).toEqual([
+      { agent: 'a1', cost_api_equiv: null },
+      { agent: 'a2', cost_api_equiv: null },
+    ])
   })
 })
 

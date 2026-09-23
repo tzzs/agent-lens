@@ -674,6 +674,51 @@ export function costFloor(strict: number | null, reported: number | null): numbe
   return strict ?? reported
 }
 
+/** The knowable part of an agent's cost, per agent: `null` means that column has nothing to say. */
+export interface CostPortion {
+  api: number | null
+  total: number | null
+}
+
+/**
+ * §8/§14: what a cost slice is worth once its complete answer came back NULL.
+ *
+ * A group is NULLed by its worst gap — one unpriced model, or one never-reported slice with no
+ * price — so the agent-level figures throw away every token that DID price out. This refolds the
+ * same metrics one level finer (per model, where §18 row 1's NULL can only be caused by that
+ * model's own window) and sums what survives, so a surface can print the largest claim the store
+ * actually supports instead of the smallest one it can prove.
+ *
+ * It lives next to `costFloor` because the two are one rule: `strict ?? portion ?? reported`, and
+ * both surfaces that print a cost figure call it, so the terminal and the dashboard cannot
+ * disagree about what "at least $x" means (§14). No `limit`: this is a fold, and a truncated
+ * one would under-read silently.
+ */
+export function costPortionsByAgent(
+  db: DatabaseSync,
+  filter: QueryFilter | undefined,
+  deps?: QueryDeps,
+): Map<string, CostPortion> {
+  const res = query(
+    db,
+    { metrics: ['cost_api_equiv', 'cost_reported', 'cost_total'], dims: ['agent', 'model'], filter, totals: false },
+    deps,
+  )
+  const out = new Map<string, CostPortion>()
+  for (const row of res.rows) {
+    const agentId = String(row.agent ?? '')
+    const api = row.cost_api_equiv == null ? null : Number(row.cost_api_equiv)
+    const reported = row.cost_reported == null ? null : Number(row.cost_reported)
+    const fused = costFloor(row.cost_total == null ? null : Number(row.cost_total), reported)
+    const share = out.get(agentId) ?? { api: null, total: null }
+    out.set(agentId, {
+      api: api === null ? share.api : (share.api ?? 0) + api,
+      total: fused === null ? share.total : (share.total ?? 0) + fused,
+    })
+  }
+  return out
+}
+
 /** Metrics that make stage 1 run at all: token/duration read the fold, `cost_api_equiv`
  *  prices its buckets, and `cost_total` needs both the folded report and the unreported
  *  buckets. A spec with none of them must never pay for — or create — one. */
