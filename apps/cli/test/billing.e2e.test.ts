@@ -74,7 +74,7 @@ describe('agentlens pricing billing (declaration surface, §8)', () => {
     const s = makeCtx(['pricing', 'billing', 'set', 'claude-code', 'subscription', '--db', dbPath])
     expect(await runCli(s.ctx)).toBe(0)
     expect(s.lines.join('\n')).toContain('subscription')
-    expect(loadBillingModes(dbPath)).toEqual({ 'claude-code': 'subscription' })
+    expect(loadBillingModes(dbPath)).toEqual({ 'claude-code': { mode: 'subscription', planUsdPerMonth: null, models: {} } })
     // The documented file shape, since the server route writes the same one.
     expect(JSON.parse(readFileSync(configPath(dbPath), 'utf8'))).toEqual({ billing: { 'claude-code': 'subscription' } })
 
@@ -117,7 +117,7 @@ describe('agentlens pricing billing (declaration surface, §8)', () => {
 
     const l = makeCtx(['pricing', 'billing', 'list', '--db', dbPath])
     expect(await runCli(l.ctx)).toBe(0)
-    expect(l.lines.join('\n')).toMatch(/claude-code\s+api\s+default/)
+    expect(l.lines.join('\n')).toMatch(/claude-code\s+api\s+—\s+—\s+default/)
   })
 
   it('an invalid mode exits 2 naming the accepted set; an unknown agent exits 2', async () => {
@@ -142,5 +142,60 @@ describe('agentlens pricing billing (declaration surface, §8)', () => {
       expect(out).toMatch(/set <agent> <mode>/)
     }
     expect(loadBillingModes(dbPath)).toEqual({})
+  })
+})
+
+describe('§8 per-model and plan-fee declarations from the terminal (§14)', () => {
+  it('--model narrows one model without rewriting the agent default', async () => {
+    const s = makeCtx(['pricing', 'billing', 'set', 'claude-code', 'subscription', '--db', dbPath])
+    expect(await runCli(s.ctx)).toBe(0)
+    const m = makeCtx([
+      'pricing', 'billing', 'set', 'claude-code', 'api',
+      '--model', 'anthropic/test-model-billing', '--db', dbPath,
+    ])
+    expect(await runCli(m.ctx)).toBe(0)
+    expect(m.lines.join('\n')).toContain('anthropic/test-model-billing')
+    expect(loadBillingModes(dbPath)['claude-code']).toEqual({
+      mode: 'subscription',
+      planUsdPerMonth: null,
+      models: { 'anthropic/test-model-billing': 'api' },
+    })
+    // The cube the terminal folds with resolves the same narrower mode the file says.
+    const db = openDatabase(dbPath)
+    const deps = queryDeps(db, dbPath, makeCtx([], ).ctx)
+    expect(deps.billingModeFor?.('claude-code', 'anthropic', 'test-model-billing')).toBe('api')
+    expect(deps.billingModeFor?.('claude-code', 'anthropic', 'anything-else')).toBe('subscription')
+    db.close()
+  })
+
+  it('--fee records what the plan costs, and the metering rule survives an empty fee', async () => {
+    const f = makeCtx(['pricing', 'billing', 'set', 'claude-code', '--fee', '20', '--db', dbPath])
+    expect(await runCli(f.ctx)).toBe(0)
+    expect(f.lines.join('\n')).toContain('$20.00')
+    expect(loadBillingModes(dbPath)['claude-code'].planUsdPerMonth).toBe(20)
+    // The mode from the previous case is still standing: a fee write is not a mode write.
+    expect(loadBillingModes(dbPath)['claude-code'].mode).toBe('subscription')
+
+    const bad = makeCtx(['pricing', 'billing', 'set', 'claude-code', '--fee', 'twenty', '--db', dbPath])
+    expect(await runCli(bad.ctx)).toBe(2)
+    expect(bad.lines.join('\n')).toContain('non-negative')
+    expect(loadBillingModes(dbPath)['claude-code'].planUsdPerMonth).toBe(20)
+
+    const none = makeCtx(['pricing', 'billing', 'set', 'claude-code', '--fee', 'none', '--db', dbPath])
+    expect(await runCli(none.ctx)).toBe(0)
+    expect(loadBillingModes(dbPath)['claude-code'].planUsdPerMonth).toBeNull()
+  })
+
+  it('refuses to guess which of several --model flags was meant, and a model key that cannot match', async () => {
+    const many = makeCtx([
+      'pricing', 'billing', 'set', 'claude-code', 'api',
+      '--model', 'anthropic/a', '--model', 'anthropic/b', '--db', dbPath,
+    ])
+    expect(await runCli(many.ctx)).toBe(2)
+    expect(many.lines.join('\n')).toContain('one --model')
+
+    const bare = makeCtx(['pricing', 'billing', 'set', 'claude-code', 'api', '--model', 'gpt-5', '--db', dbPath])
+    expect(await runCli(bare.ctx)).toBe(2)
+    expect(bare.lines.join('\n')).toContain('<provider>/<name>')
   })
 })

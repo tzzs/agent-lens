@@ -257,13 +257,38 @@ describe('costPortionsByAgent — the priced half of a window a gap NULLs (§8/�
   it('sums what prices out, per agent, and invents nothing where nothing prices', () => {
     const portions = costPortionsByAgent(db, {}, { priceResolver: resolver })
     // a1's window is half priced: the gap drops out of the floor, the $3 does not.
-    expect(portions.get('a1')).toEqual({ api: 3, total: 3 })
-    expect(portions.get('a2'), 'an agent with no priced slice has no floor').toEqual({ api: null, total: null })
+    expect(portions.get('a1')).toEqual({
+      api: 3,
+      total: 3,
+      models: new Map([
+        ['anthropic/test-model', { api: 3, total: 3 }],
+        ['anthropic/unpriced-model', { api: null, total: null }],
+      ]),
+    })
+    expect(portions.get('a2'), 'an agent with no priced slice has no floor').toEqual({
+      api: null,
+      total: null,
+      models: new Map([['anthropic/unpriced-model', { api: null, total: null }]]),
+    })
     // The complete answer stays NULL at agent grain — this map is a floor, not a relaxed §18 row 1.
     expect(query(db, { metrics: ['cost_api_equiv'], dims: ['agent'] }, { priceResolver: resolver }).rows).toEqual([
       { agent: 'a1', cost_api_equiv: null },
       { agent: 'a2', cost_api_equiv: null },
     ])
+  })
+
+  /**
+   * The model rows are the whole point of the second half of this function's contract: a
+   * billing mode is declared per model, so a surface that folded the agent first would price
+   * a metered model at whatever the agent's default happened to be.
+   */
+  it('keeps the per-model rows separable, so a mode can be resolved per model', () => {
+    const portions = costPortionsByAgent(db, {}, { priceResolver: resolver })
+    const a1 = portions.get('a1')!.models
+    expect(a1.get('anthropic/test-model')).toEqual({ api: 3, total: 3 })
+    // The gap belongs to ONE model; carrying it up is what the agent rollup does, and that
+    // is exactly the information a per-model mode needs to not lose.
+    expect(a1.get('anthropic/unpriced-model')).toEqual({ api: null, total: null })
   })
 })
 

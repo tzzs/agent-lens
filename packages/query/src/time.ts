@@ -5,7 +5,7 @@
  */
 import type { TimeUnit } from './spec.ts'
 
-const DAY_MS = 86_400_000
+export const DAY_MS = 86_400_000
 const WEEK_MS = 7 * DAY_MS
 /** epoch day 0 is a Thursday; Monday of week 0 is +4 days. */
 const WEEK_START_OFFSET_MS = 4 * DAY_MS
@@ -24,6 +24,26 @@ export function bucketTs(timestamp: number, unit: TimeUnit): number {
 
 /** ms per unit for relative durations (`7d`, `24h`, `30m`). */
 const RELATIVE: Record<string, number> = { m: 60_000, h: 3_600_000, d: DAY_MS }
+
+/**
+ * How long the query's window is, in days — the divisor a plan fee prorates over.
+ *
+ * `null` means the window has no known end (`until` in the past of `since`, or a filter
+ * with no `since` at all), and §8's rule then applies by analogy: an unknown period is not
+ * a zero-length one, so a caller must NOT prorate a monthly fee over "all time" and print
+ * the result as spend. `until` absent means "up to now", which is what every surface
+ * already draws its window to.
+ */
+export function windowDaysOf(
+  filter: { since?: string | number; until?: string | number } | undefined,
+  now: number = Date.now(),
+): number | null {
+  if (!filter?.since) return null
+  const start = resolveSince(filter.since, now)
+  const end = filter.until === undefined ? now : resolveSince(filter.until, now)
+  if (!(end > start)) return null
+  return (end - start) / DAY_MS
+}
 
 /**
  * Accepts `7d` / `24h` / `30m` (relative to `now`), `2026-09-01` and `YYYYMMDD`

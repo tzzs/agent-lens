@@ -13,7 +13,10 @@ import {
   PRICE_SNAPSHOT_FILENAME,
   PRICING_OVERRIDES_FILENAME,
   writeBillingMode,
+  writeBillingModelMode,
+  writeBillingPlanFee,
   writeSnapshotFile,
+  type BillingDeclaration,
   type BillingMode,
   type MergedPricing,
   type OpenRouterSnapshot,
@@ -70,16 +73,37 @@ export function appendOverride(dbPath: string, entry: PriceEntry): void {
  * `queryDeps()` runs once per command, but `--serve` holds its deps for the lifetime of
  * the dashboard while the Settings page writes declarations into this same file (§14).
  */
-export function loadBillingModes(dbPath: string): Record<string, BillingMode> {
+export function loadBillingModes(dbPath: string): Record<string, BillingDeclaration> {
   return liveBillingModes(configPath(dbPath))
 }
 
-/** Declare (`mode`) or undeclare (`null`) one agent; returns the validated declarations left. */
+/** Declare (`mode`) or undeclare (`null`) one agent's DEFAULT; models and the fee survive. */
 export function setBillingMode(
   dbPath: string,
   agentId: string,
   mode: BillingMode | null,
-): Record<string, BillingMode> {
+): Record<string, BillingDeclaration> {
   ensureDataDir(dbPath)
   return writeBillingMode(configPath(dbPath), agentId, mode)
+}
+
+/** Declare what the agent's plan costs per calendar month; `null` undeclares it (actual becomes unknown, not $0). */
+export function setBillingPlanFee(
+  dbPath: string,
+  agentId: string,
+  planUsdPerMonth: number | null,
+): Record<string, BillingDeclaration> {
+  ensureDataDir(dbPath)
+  return writeBillingPlanFee(configPath(dbPath), agentId, planUsdPerMonth)
+}
+
+/** Declare one model of one agent, keyed "<provider>/<name>"; `null` drops just that override. */
+export function setBillingModelMode(
+  dbPath: string,
+  agentId: string,
+  modelKey: string,
+  mode: BillingMode | null,
+): Record<string, BillingDeclaration> {
+  ensureDataDir(dbPath)
+  return writeBillingModelMode(configPath(dbPath), agentId, modelKey, mode)
 }

@@ -175,6 +175,8 @@ export const CLI_FLAG_SCHEMA: FlagSchema = {
   'no-subagents': { kind: 'boolean' },
   // pricing update: which upstream snapshot to refresh (§8: litellm primary, openrouter fallback)
   source: { kind: 'value' },
+  // pricing billing set: the plan's monthly fee in USD ('none' undeclares it)
+  fee: { kind: 'value' },
   // pricing override
   input: { kind: 'value' },
   output: { kind: 'value' },

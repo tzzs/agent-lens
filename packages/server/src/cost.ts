@@ -13,8 +13,8 @@
  * tokens, so the server folds the cube's per-agent API-equivalent through §8's table —
  * via `actualUsdFor` below, the only place this file states that rule.
  */
-import { costFloor, costPortionsByAgent, query, type QueryFilter } from '@agentlens/query'
-import { isMissingPrice, type BillingMode, type PriceEntry } from '@agentlens/pricing'
+import { costFloor, costPortionsByAgent, query, windowDaysOf, type QueryFilter } from '@agentlens/query'
+import { actualUsdFor, isMissingPrice, parseModelKey, planCostFor, type BillingMode, type PriceEntry } from '@agentlens/pricing'
 import type { DatabaseSync } from 'node:sqlite'
 import type { PriceResolver, ServerCtx } from './types.ts'
 import { rowsOf } from './resolve.ts'
@@ -27,6 +27,10 @@ export interface CostSlice {
   actualUsd: number | null
   /** §18 row 1: cost the agent reported for itself (OpenCode/WorkBuddy); null = it logs none. */
   reportedUsd: number | null
+  /** §8 cash attributable to a declared plan fee, prorated over this window; null = nothing to count. */
+  planCostUsd: number | null
+  /** True when this agent's models do not all bill at `billingMode`, so a single label would mislead. */
+  mixedBilling: boolean
   /** §18 row 1 fused: reported-where-reported + priced-where-not, from the cube's cost_total. */
   totalUsd: number | null
 }
@@ -60,22 +64,13 @@ function usd(values: (number | null)[]): number | null {
 }
 
 /**
- * §8's billing-mode table applied to an already-priced amount: `api` pays its tokens,
- * `subscription` and `local` pay a flat fee that is not per-token, so their cash is $0
- * while their tokens keep an API-equivalent value. `null` (no price) stays `null` — §8
- * bans reading an unknown price as $0, and a fold that turned `n/a` into free would do it
- * silently for the one agent class this row exists to describe.
- *
- * This is a PROJECTION of the normative statement in `packages/pricing`'s `computeCost`
- * (`mode === 'api' ? api : 0`), which prices one request at a time; a per-agent aggregate
- * has no single `PriceEntry` to hand it, so it cannot call it. `test/cost.test.ts` asserts
- * the two agree for all three modes and both price states, which is what keeps this from
- * becoming §8's third copy.
+ * §8's billing-mode table, called straight from its owner in `@agentlens/pricing` rather than
+ * restated here. It used to be a projection written a second time, because a per-agent aggregate
+ * has no single `PriceEntry` to hand `computeCost`; that made two files hold one rule, and the
+ * only thing keeping them honest was a test comparing them. There is now one implementation, and
+ * what this file adds is the per-(agent, model) fold around it, which is a different question.
  */
-export function actualUsdFor(apiEquivalentUsd: number | null, mode: BillingMode): number | null {
-  if (apiEquivalentUsd === null) return null
-  return mode === 'api' ? apiEquivalentUsd : 0
-}
+export { actualUsdFor, planCostFor }
 
 export function costView(ctx: ServerCtx, filter?: QueryFilter): CostView {
   // With a DB file, createContext already wired billingModeFor to the `config.json`
@@ -105,8 +100,25 @@ export function costView(ctx: ServerCtx, filter?: QueryFilter): CostView {
   const gappedAgents = ctx.priceResolver
     ? res.rows.filter((r) => numOrNull(r.cost_api_equiv) === null).map((r) => String(r.agent ?? ''))
     : []
-  const needsPortion = gappedAgents.length > 0 || res.rows.some((r) => numOrNull(r.cost_total) === null)
-  const portion = ctx.priceResolver && needsPortion ? costPortionsByAgent(ctx.db, filter, ctx.cubeDeps) : new Map()
+  // Cash resolves per (agent, model) now, so the model rows are needed on every priced read,
+  // not only on a gapped one. They ride the SAME stage-1 materialisation the agent-grain query
+  // above used (`fold-cache.ts` shares one per request), so this is one more stage-2 scan and
+  // not one more fold over `events`.
+  const portion = ctx.priceResolver ? costPortionsByAgent(ctx.db, filter, ctx.cubeDeps) : new Map()
+  // The plan fee, prorated over exactly the window being priced, and counted once per agent:
+  // the fee buys the plan, so two of its models must not double it. `null` = nothing to count
+  // (not on a plan, no fee declared, or a window with no known end — an unknown period is not a
+  // zero-length one, and prorating over "all time" would print one month's fee as the whole
+  // history's bill).
+  const planCostForAgent = (agentId: string, onPlan: boolean): number | null => {
+    if (!onPlan || !ctx.billingPlanFor) return null
+    const perMonth = ctx.billingPlanFor(agentId)
+    if (perMonth === null) return null
+    return planCostFor('subscription', {
+      planUsdPerMonth: perMonth,
+      windowDays: windowDaysOf(filter, ctx.now()),
+    })
+  }
   const fusedTotal = usd(
     res.rows.map((r) => {
       const strict = numOrNull(r.cost_total)
@@ -134,6 +146,8 @@ export function costView(ctx: ServerCtx, filter?: QueryFilter): CostView {
         billingMode: modeFor(String(r.agent ?? '')),
         apiEquivalentUsd: null,
         actualUsd: null,
+        planCostUsd: null,
+        mixedBilling: false,
         reportedUsd: numOrNull(r.cost_reported),
         totalUsd: numOrNull(r.cost_total),
       })),
@@ -144,13 +158,29 @@ export function costView(ctx: ServerCtx, filter?: QueryFilter): CostView {
     const agentId = String(r.agent ?? '')
     const billingMode = modeFor(agentId)
     const apiStrict = numOrNull(r.cost_api_equiv)
+    const slice = portion.get(agentId)
     // The priced portion of a gapped agent, never a guess at the rest of it.
-    const api = apiStrict ?? portion.get(agentId)?.api ?? null
+    const api = apiStrict ?? slice?.api ?? null
+    // Cash is summed per model because a billing mode now is per model: one Claude install on a
+    // subscription with a metered model has to cost the plan's fee PLUS that model's tokens, and
+    // folding the agent first would apply whichever mode happened to be the default to both.
+    // `apiStrict` non-null means every model priced out, so the model rows cover the same money.
+    const modes = slice
+      ? [...slice.models.keys()].map((key) => modeFor(agentId, ...parseModelKey(key)))
+      : [billingMode]
+    const marginal = slice
+      ? usd([...slice.models.values()].map((share, i) => actualUsdFor(share.api, modes[i]!)))
+      : actualUsdFor(api, billingMode)
+    const planCostUsd = planCostForAgent(agentId, modes.includes('subscription'))
     return {
       agentId,
       billingMode,
       apiEquivalentUsd: api,
-      actualUsd: actualUsdFor(api, billingMode),
+      // A plan's cash is not its tokens priced — that is the $0 marginal answer above. It is the
+      // fee, counted once per agent here, because the fee buys the plan and not a seat per model.
+      actualUsd: marginal === null ? null : marginal + (planCostUsd ?? 0),
+      planCostUsd,
+      mixedBilling: new Set(modes).size > 1,
       reportedUsd: numOrNull(r.cost_reported),
       totalUsd: numOrNull(r.cost_total),
     }

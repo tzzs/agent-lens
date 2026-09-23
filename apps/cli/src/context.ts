@@ -11,6 +11,7 @@ import { projectLabel, type HostContext } from '@agentlens/event-model'
 import type { FlagView } from './args.ts'
 import type { ServeHandle } from './serve.ts'
 import { ensureMachineId, loadAgentAggregations, type MachineIdentity } from '@agentlens/storage'
+import { billingModeFor as billingModeForOwner } from '@agentlens/pricing'
 import type { BillingMode, QueryFilter, QueryDeps } from './types.ts'
 import { loadBillingModes, loadPricing } from './pricing-store.ts'
 
@@ -146,7 +147,7 @@ export function queryDeps(db: DatabaseSync, dbPath: string, ctx: Ctx): QueryDeps
   const modes = loadBillingModes(dbPath)
   return {
     priceResolver: (provider, model, occurredAt) => table.lookup(provider, model, occurredAt),
-    billingModeFor: (agentId): BillingMode => modes[agentId] ?? 'api',
+    billingModeFor: (agentId, provider, model): BillingMode => billingModeForOwner(modes, agentId, provider, model),
     // §18 row 2: read the fold rule back from the rows' own agents, so a query never has to
     // know which adapter version wrote them.
     aggregation: loadAgentAggregations(db),

@@ -57,7 +57,12 @@ Usage:
   agentlens pricing override --model M --input N --output N [--cache-read N] [--cache-write N]
                              [--reasoning N] [--provider P] [--effective-from MS]
   agentlens pricing billing list   show each agent's declared §8 billing mode
-  agentlens pricing billing set <agent> api|subscription|local
+  agentlens pricing billing set <agent> api|subscription|local [--model <provider/name>]
+                             without --model this is the agent's default; with it, that one
+                             model bills differently and wins over the default
+  agentlens pricing billing set <agent> --fee <usd|none>
+                             what the agent's plan costs per month, prorated over the window
+                             being shown; without it a plan's actual cash stays its marginal $0
   agentlens pricing billing clear <agent>
   agentlens prune [--older-than 90d]
 

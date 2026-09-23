@@ -47,7 +47,17 @@
     subscription: { label: $t('agents.billingSubscription'), note: $t('agents.billingSubscriptionNote') },
     local: { label: $t('agents.billingLocal'), note: $t('agents.billingLocalNote') },
   })
-  const billing = (mode: string) => BILLING[mode] ?? { label: mode, note: $t('agents.billingFallbackNote') }
+  /**
+   * The card names the agent's DEFAULT mode, which is only the whole truth when no model
+   * overrides it. Once one does, saying "Subscription" alone would promise a $0-cash agent
+   * that also has a metered model paying per token, so the label carries the caveat.
+   */
+  const billing = (mode: string, mixed = false) => {
+    const one = BILLING[mode] ?? { label: mode, note: $t('agents.billingFallbackNote') }
+    return mixed
+      ? { label: `${one.label}${$t('agents.billingMixedSuffix')}`, note: $t('agents.billingMixedNote', { values: { mode: one.label } }) }
+      : one
+  }
 
   /** Capability type as one word; an unknown type keeps the id the server sent. */
   const WORDS: Record<string, string> = $derived({
@@ -114,7 +124,7 @@
     <div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
       {#each cards as a, i (a.agentId)}
         {@const name = a.displayName || a.agentId}
-        {@const mode = billing(a.billingMode)}
+        {@const mode = billing(a.billingMode, a.mixedBilling)}
         {#if a.recorded}
           {@const isOpen = !!open[a.agentId]}
           {@const hostEvents = a.hosts.reduce((s, h) => s + h.events, 0)}

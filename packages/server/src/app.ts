@@ -11,7 +11,7 @@ import { homedir as osHomedir } from 'node:os'
 import type { Context, Hono } from 'hono'
 import { Hono as HonoClass } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { billingConfigPath, liveBillingModes, type BillingMode } from '@agentlens/pricing'
+import { billingConfigPath, billingModeFor as billingModeForOwner, liveBillingModes, planFeeFor, type BillingMode } from '@agentlens/pricing'
 import { createFoldCache, describeQuery, query } from '@agentlens/query'
 import { migrate } from '@agentlens/storage'
 import type { ServerCtx, ServerDeps } from './types.ts'
@@ -36,20 +36,26 @@ export const SERVER_NAME = '@agentlens/server'
 
 export function createContext(deps: ServerDeps): ServerCtx {
   const homedir = deps.homedir ?? osHomedir()
-  // §8/§14: with no override injected, the server reads the same `config.json` beside
-  // the DB that the CLI writes and the settings route declares into. liveBillingModes
-  // re-reads on file change, so a declaration through the API or the terminal folds
-  // into the NEXT request — no restart, no `'api'`-fallback silence.
-  const declaredModes =
-    deps.billingModeFor || !deps.dbPath ? null : liveBillingModes(billingConfigPath(deps.dbPath))
+  // §8/§14: the server reads the same `config.json` beside the DB that the CLI writes and the
+  // settings route declares into, and liveBillingModes re-reads on file change, so a declaration
+  // through either surface folds into the NEXT request — no restart, no `'api'`-fallback silence.
+  // Read whenever there is a file, INDEPENDENT of whether the caller injected its own mode view:
+  // the fee lives in the same document, so gating this on `deps.billingModeFor` left `agl
+  // --serve` — which injects one — silently unable to prorate a plan the page had declared.
+  const declaredModes = deps.dbPath ? liveBillingModes(billingConfigPath(deps.dbPath)) : null
   const billingModeFor =
     deps.billingModeFor ??
-    (declaredModes ? (agentId: string): BillingMode => declaredModes[agentId] ?? 'api' : undefined)
+    (declaredModes
+      ? (agentId: string, provider?: string, model?: string): BillingMode =>
+          billingModeForOwner(declaredModes, agentId, provider, model)
+      : undefined)
+  const billingPlanFor = declaredModes ? (agentId: string): number | null => planFeeFor(declaredModes, agentId) : undefined
   return {
     db: deps.db,
     now: deps.now,
     ...(deps.priceResolver ? { priceResolver: deps.priceResolver } : {}),
     ...(billingModeFor ? { billingModeFor } : {}),
+    ...(billingPlanFor ? { billingPlanFor } : {}),
     ...(deps.aggregation ? { aggregation: deps.aggregation } : {}),
     ...(deps.priceTableSize ? { priceTableSize: deps.priceTableSize } : {}),
     ...(deps.staticDir ? { staticDir: deps.staticDir } : {}),
@@ -61,6 +67,7 @@ export function createContext(deps: ServerDeps): ServerCtx {
     cubeDeps: {
       ...(deps.priceResolver ? { priceResolver: deps.priceResolver } : {}),
       ...(billingModeFor ? { billingModeFor } : {}),
+      ...(billingPlanFor ? { billingPlanFor } : {}),
       ...(deps.aggregation ? { aggregation: deps.aggregation } : {}),
       // Same clock the routes stamp their window with, so a hand-built ctx is consistent too.
       now: deps.now,

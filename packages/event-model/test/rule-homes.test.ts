@@ -146,16 +146,37 @@ const RULES: Rule[] = [
     ],
   },
   {
-    what: "the §8 fold from an API-equivalent amount to actual cash for a declared mode",
-    home: "@agentlens/pricing → computeCost, projected per agent by @agentlens/server → actualUsdFor",
-    statedIn: 'packages/server/src/cost.ts',
+    // There used to be a `statedIn` exemption here: @agentlens/server kept its own copy of
+    // the mode table because a per-agent aggregate has no single PriceEntry to hand
+    // `computeCost`, and a test compared the two copies. The aggregate now folds per
+    // (agent, model) and calls the owner, so no surface states the rule and nothing is
+    // exempt — which makes the forbidden set below strictly wider than it was.
+    what: "the §8 fold from an API-equivalent amount to actual cash, and the §8 plan-fee proration",
+    home: '@agentlens/pricing → computeCost / actualUsdFor / planCostFor',
     forbidden: [
-      {
-        re: /=== 'api' \?/,
-        why: "the mode table is pricing's; this file holds the only surface-side projection of it (a per-agent aggregate has no single PriceEntry to hand computeCost), and packages/server/test/cost.test.ts asserts the two agree for every mode",
-      },
+      { re: /=== 'api' \?/, why: "the mode table is pricing's; a surface that re-reads it can disagree with the request-grain number the cube already stored" },
+      { re: /mode === 'subscription'/, why: "which modes pay what is §8's table, not a surface's if-chain" },
+      { re: /\/\s*30\.4|\*\s*30\.4|DAYS_PER_MONTH/, why: 'a month is one constant; a surface that hard-codes its length prorates the same fee to a different number than the terminal prints' },
+      { re: /planUsdPerMonth\s*\*/, why: 'prorating the fee is planCostFor\u2019s, and twice prorated is twice charged' },
     ],
-    calls: [{ file: 'packages/server/src/cost.ts', symbol: 'actualUsdFor(' }],
+    calls: [
+      { file: 'packages/server/src/cost.ts', symbol: 'actualUsdFor(' },
+      { file: 'packages/server/src/cost.ts', symbol: 'planCostFor(' },
+    ],
+  },
+  {
+    what: 'which billing mode applies to a row, and what its plan costs (§8 declarations)',
+    home: '@agentlens/pricing → billingModeFor / planFeeFor / billingModelKey',
+    forbidden: [
+      { re: /\?\s*\{\s*mode\b.*\bbilling\[/, why: 'reading the config document is the store\u2019s job' },
+      { re: /\.billing\b\[/, why: 'the `billing` key inside config.json belongs to billing-config.ts' },
+      { re: /modes\[\w+\]\s*\.\s*mode/, why: 'a declaration is resolved through billingModeFor, never indexed and unwrapped in two places' },
+    ],
+    calls: [
+      { file: 'apps/cli/src/context.ts', symbol: 'billingModeForOwner(' },
+      { file: 'packages/server/src/app.ts', symbol: 'billingModeForOwner(' },
+      { file: 'packages/server/src/settings.ts', symbol: 'billingModeFor(' },
+    ],
   },
   {
     what: 'whether the materialised stage 1 still describes `events`, and what that costs (§11/§19)',
@@ -224,12 +245,12 @@ describe('§14: one owner per shared rule, surfaces may not re-implement it', ()
     // Guards the guard: the failure message tells people to "use the owner", which is only a
     // fix if the owner really publishes the symbol.
     const owners: { pkg: string; names: string[] }[] = [
-      { pkg: 'packages/pricing', names: ['loadMergedPricing'] },
+      { pkg: 'packages/pricing', names: ['loadMergedPricing', 'actualUsdFor', 'planCostFor', 'computeCost', 'billingModeFor', 'planFeeFor', 'writeBillingModelMode', 'writeBillingPlanFee'] },
       { pkg: 'packages/storage', names: ['hostSplitFor', 'pickHostWarning', 'pickHostSplit', 'loadSessionEvents', 'SESSION_EVENT_SQL'] },
       { pkg: 'packages/event-model', names: ['projectLabel'] },
       {
         pkg: 'packages/server',
-        names: ['coverageReport', 'retentionPhrase', 'modelSpend', 'unpricedBuckets', 'modelPrices', 'gappedModels', 'isGapped', 'priceVerdictsByModel', 'missingPriceModels', 'actualUsdFor'],
+        names: ['coverageReport', 'retentionPhrase', 'modelSpend', 'unpricedBuckets', 'modelPrices', 'gappedModels', 'isGapped', 'priceVerdictsByModel', 'missingPriceModels'],
       },
     ]
     for (const { pkg, names } of owners) {

@@ -16,11 +16,13 @@ import {
   loadBillingModes,
   openRouterSnapshotPath,
   setBillingMode,
+  setBillingModelMode,
+  setBillingPlanFee,
   snapshotPath,
   writeOpenRouterSnapshot,
   writeSnapshot,
 } from '../pricing-store.ts'
-import { GLYPH, formatCount, table } from '../render.ts'
+import { formatUsd, GLYPH, formatCount, table } from '../render.ts'
 
 const BILLING_USAGE = 'pricing billing <list | set <agent> <mode> | clear <agent>>'
 
@@ -49,7 +51,7 @@ export async function cmdPricing(
     case 'override':
       return cmdPricingOverride(dbPath, flags, ctx)
     case 'billing':
-      return cmdPricingBilling(db, dbPath, rest, ctx)
+      return cmdPricingBilling(db, dbPath, rest, ctx, flags)
     default:
       throw new UsageError(`unknown pricing subcommand: ${sub ?? '(none)'} — use update | override | ${BILLING_USAGE}`)
   }
@@ -165,9 +167,21 @@ function listBilling(db: DatabaseSync, dbPath: string, ctx: Ctx): number {
   const agents = [...new Set([...ingestedAgents(db), ...declared])].sort()
   ctx.out(
     table(
-      ['Agent', 'Billing mode', 'Source'],
-      agents.map((a) => [a, modes[a] ?? 'api', modes[a] ? 'declared' : 'default']),
+      ['Agent', 'Billing mode', 'Plan $/month', 'Models overridden', 'Source'],
+      agents.map((a) => {
+        const d = modes[a]
+        return [
+          a,
+          d?.mode ?? 'api',
+          d?.planUsdPerMonth == null ? '—' : formatUsd(d.planUsdPerMonth),
+          d && Object.keys(d.models).length > 0 ? String(Object.keys(d.models).length) : '—',
+          d ? 'declared' : 'default',
+        ]
+      }),
     ),
+  )
+  ctx.out(
+    `a model override prices that one "<provider>/<name>" and wins over the agent default; the plan fee is prorated over the window being shown, so an undeclared fee leaves actual cash at its marginal $0`,
   )
   for (const a of declared.filter((d) => !ingestedAgents(db).includes(d))) {
     ctx.out(`${GLYPH.warn} ${a} has a billing declaration but no ingested events — the cost figures above come from the mode it is declared with`)
@@ -177,13 +191,51 @@ function listBilling(db: DatabaseSync, dbPath: string, ctx: Ctx): number {
   return 0
 }
 
-/** §8's "let the user declare a billing mode per agent", on the same file the cube reads. */
-export function cmdPricingBilling(db: DatabaseSync, dbPath: string, words: string[], ctx: Ctx): number {
+/**
+ * §8's "let the user declare a billing mode", on the same file the cube reads.
+ *
+ * The dashboard's two extra controls (one model, and the plan's monthly fee) are reachable here
+ * as `--model` and `--fee`, because §14 is broken as soon as a fact the page can write is one
+ * the terminal cannot read back as the same shape — `list` prints both, and the cost figures
+ * come from them, so a page-only declaration would have the two surfaces disagree about money.
+ */
+export function cmdPricingBilling(
+  db: DatabaseSync,
+  dbPath: string,
+  words: string[],
+  ctx: Ctx,
+  flags: FlagView,
+): number {
   const [op, agent, mode] = words
   if (op === 'list') return listBilling(db, dbPath, ctx)
   const declared = Object.keys(loadBillingModes(dbPath))
   if (op === 'set') {
-    if (!agent || !mode) throw new UsageError(`usage: pricing billing set <agent> <mode> — mode is api | subscription | local (§8)`)
+    // `--model` is a repeat flag for filters, so a billing write takes exactly one of it:
+    // silently honouring the last of several would declare one model and look like two.
+    const modelList = flags.list('model')
+    if (modelList.length > 1) {
+      throw new UsageError(`pricing billing set takes one --model, got ${modelList.length}; run one command per model`)
+    }
+    const model = modelList[0]
+    const fee = flags.str('fee')
+    if (fee !== undefined) {
+      if (!agent) throw new UsageError('usage: pricing billing set <agent> --fee <usd|none>')
+      const known = knownAgent(db, agent, declared)
+      const value = fee === 'none' || fee === '' ? null : Number(fee)
+      if (value !== null && (!Number.isFinite(value) || value < 0)) {
+        throw new UsageError(`--fee must be a non-negative number of US dollars, or "none" to undeclare it, got ${JSON.stringify(fee)}`)
+      }
+      setBillingPlanFee(dbPath, known, value)
+      ctx.out(
+        value === null
+          ? `${GLYPH.ok} plan fee undeclared for ${known} — actual cash returns to its marginal $0 and says the fee is unknown`
+          : `${GLYPH.ok} plan fee set: ${known} = ${formatUsd(value)}/month, prorated over whatever window is being shown`,
+      )
+      return 0
+    }
+    if (!agent || !mode) {
+      throw new UsageError('usage: pricing billing set <agent> <mode> [--model <provider/name>] — mode is api | subscription | local (§8)')
+    }
     let resolved: BillingMode
     try {
       resolved = assertBillingMode(mode)
@@ -192,8 +244,16 @@ export function cmdPricingBilling(db: DatabaseSync, dbPath: string, words: strin
       throw new UsageError((err as Error).message)
     }
     const known = knownAgent(db, agent, declared)
-    setBillingMode(dbPath, known, resolved)
-    ctx.out(`${GLYPH.ok} billing mode set: ${known} = ${resolved} — ${MODE_NOTE[resolved]}`)
+    if (model === undefined) {
+      setBillingMode(dbPath, known, resolved)
+      ctx.out(`${GLYPH.ok} billing mode set: ${known} = ${resolved} — ${MODE_NOTE[resolved]}`)
+    } else {
+      if (!model.includes('/')) {
+        throw new UsageError(`--model must be "<provider>/<name>" as the Models table shows it, got ${JSON.stringify(model)}`)
+      }
+      setBillingModelMode(dbPath, known, model, resolved)
+      ctx.out(`${GLYPH.ok} billing mode set: ${known} · ${model} = ${resolved} — it wins over that agent's default for this model alone`)
+    }
     ctx.out(`  saved in ${redactHome(configPath(dbPath), ctx.homedir)} — it applies to history too, cost is computed at query time`)
     return 0
   }

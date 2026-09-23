@@ -241,7 +241,8 @@ export interface QueryDeps {
    */
   priceResolver?: (provider: string, model: string, occurredAt: number) => PriceEntry | null
   /** Default 'api' (§8). */
-  billingModeFor?: (agentId: string) => BillingMode
+  /** §8 mode for a row: the agent, narrowed by its provider+model when the caller can say them. */
+  billingModeFor?: (agentId: string, provider?: string, model?: string) => BillingMode
   /**
    * §18 row 2: how each adapter's rows fold into token totals, keyed by `agent_id` —
    * the same declaration `Adapter.aggregation` carries, so the CLI wires adapters straight
@@ -632,7 +633,11 @@ function priceBuckets(
     if (totalTokens(usage) === 0) continue // zero-token rows must not manufacture price gaps
     const dayMs = Date.parse(`${String(row.b_day)}T00:00:00Z`) + DAY_MS / 2 // price at noon UTC of the bucket day
     const entry = priceResolver(String(row.b_provider), String(row.b_model), dayMs)
-    const cost = computeCost(usage, entry, billingModeFor(String(row.b_agent)))
+    const cost = computeCost(
+      usage,
+      entry,
+      billingModeFor(String(row.b_agent), String(row.b_provider), String(row.b_model)),
+    )
     const key = rowKey(row, reqs.dims)
     const priced = cost[field]
     // NULL dominates, never $0 (§8: unknown price must not read as free).
@@ -695,6 +700,10 @@ export interface CostPortion {
  * model's own window) and sums what survives, so a surface can print the largest claim the store
  * actually supports instead of the smallest one it can prove.
  *
+ * The per-model rows come back with the agent rollup rather than as a second call, because a
+ * billing mode is now resolved per (agent, model) and the two answers must come from ONE fold —
+ * a second query would be a second vintage of the same rows, which is exactly what §14 forbids.
+ *
  * It lives next to `costFloor` because the two are one rule: `strict ?? portion ?? reported`, and
  * both surfaces that print a cost figure call it, so the terminal and the dashboard cannot
  * disagree about what "at least $x" means (§14). No `limit`: this is a fold, and a truncated
@@ -704,23 +713,33 @@ export function costPortionsByAgent(
   db: DatabaseSync,
   filter: QueryFilter | undefined,
   deps?: QueryDeps,
-): Map<string, CostPortion> {
+): Map<string, CostPortion & { models: Map<string, CostPortion> }> {
   const res = query(
     db,
-    { metrics: ['cost_api_equiv', 'cost_reported', 'cost_total'], dims: ['agent', 'model'], filter, totals: false },
+    {
+      metrics: ['cost_api_equiv', 'cost_reported', 'cost_total'],
+      dims: ['agent', 'provider', 'model'],
+      filter,
+      totals: false,
+    },
     deps,
   )
-  const out = new Map<string, CostPortion>()
+  const add = (share: CostPortion, api: number | null, total: number | null): CostPortion => ({
+    api: api === null ? share.api : (share.api ?? 0) + api,
+    total: total === null ? share.total : (share.total ?? 0) + total,
+  })
+  const out = new Map<string, CostPortion & { models: Map<string, CostPortion> }>()
   for (const row of res.rows) {
     const agentId = String(row.agent ?? '')
     const api = row.cost_api_equiv == null ? null : Number(row.cost_api_equiv)
     const reported = row.cost_reported == null ? null : Number(row.cost_reported)
     const fused = costFloor(row.cost_total == null ? null : Number(row.cost_total), reported)
-    const share = out.get(agentId) ?? { api: null, total: null }
-    out.set(agentId, {
-      api: api === null ? share.api : (share.api ?? 0) + api,
-      total: fused === null ? share.total : (share.total ?? 0) + fused,
-    })
+    const entry = out.get(agentId) ?? { api: null, total: null, models: new Map<string, CostPortion>() }
+    const modelKey = `${String(row.provider ?? '')}/${String(row.model ?? '')}`
+    const modelShare = entry.models.get(modelKey) ?? { api: null, total: null }
+    entry.models.set(modelKey, add(modelShare, api, fused))
+    const rolled = add({ api: entry.api, total: entry.total }, api, fused)
+    out.set(agentId, { ...rolled, models: entry.models })
   }
   return out
 }
