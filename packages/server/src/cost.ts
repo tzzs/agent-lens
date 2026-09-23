@@ -13,7 +13,7 @@
  * tokens, so the server folds the cube's per-agent API-equivalent through §8's table —
  * via `actualUsdFor` below, the only place this file states that rule.
  */
-import { costFloor, query, type QueryFilter } from '@agentlens/query'
+import { costFloor, costPortionsByAgent, query, type QueryFilter } from '@agentlens/query'
 import { isMissingPrice, type BillingMode, type PriceEntry } from '@agentlens/pricing'
 import type { DatabaseSync } from 'node:sqlite'
 import type { PriceResolver, ServerCtx } from './types.ts'
@@ -90,14 +90,33 @@ export function costView(ctx: ServerCtx, filter?: QueryFilter): CostView {
     ctx.cubeDeps,
   )
   const reportedTotal = usd(res.rows.map((r) => numOrNull(r.cost_reported)))
-  // §18 row 1 NULLs a whole agent's `cost_total` when any of its never-reported slices has no
-  // price. That is the right answer for "what did this agent cost", and the wrong one for a
-  // headline floor: the same agent may report a real figure for the other requests, and dropping
-  // it made the top-line total read *lower* than a number the agent itself logged ($0.2114 shown
-  // beside $0.4200 reported), which understates a known cost — §8's worst direction.
-  // So the floor falls back to the reported slice per agent, and `totalPartial` keeps saying the
-  // rest is unknown rather than pretending the sum is complete.
-  const fusedTotal = usd(res.rows.map((r) => costFloor(numOrNull(r.cost_total), numOrNull(r.cost_reported))))
+  // §18 row 1 NULLs a whole agent's cost when any of its never-reported slices has no price.
+  // That is the right answer to "what did this agent cost" and a bad one for a floor: the rest
+  // of that agent's tokens ARE priced, and a headline that drops them printed `≥ $0.00` next to
+  // a Models table showing $3.20 for the same rows — an under-read of a known amount, which is
+  // §8's worst direction and the one §19 already fixed for the reported slice.
+  // So when any agent-grain fact is missing, the same metrics fold once more at model grain and
+  // the knowable portion becomes the floor. A complete answer still passes through untouched
+  // (a `subscription` agent's real $0 must not be rewritten into "unknown"), and every fallback
+  // keeps its `*Partial` flag, so the number stays a floor rather than pretending to be a total.
+  // Two different "something is missing" sets: an agent whose *price* is absent (what the UI
+  // calls unpriced, and what makes api-equivalent/actual a partial figure), and an agent whose
+  // fused total is NULL (which also loses the priced part of it from the headline floor).
+  const gappedAgents = ctx.priceResolver
+    ? res.rows.filter((r) => numOrNull(r.cost_api_equiv) === null).map((r) => String(r.agent ?? ''))
+    : []
+  const needsPortion = gappedAgents.length > 0 || res.rows.some((r) => numOrNull(r.cost_total) === null)
+  const portion = ctx.priceResolver && needsPortion ? costPortionsByAgent(ctx.db, filter, ctx.cubeDeps) : new Map()
+  const fusedTotal = usd(
+    res.rows.map((r) => {
+      const strict = numOrNull(r.cost_total)
+      const reported = numOrNull(r.cost_reported)
+      const share = portion.get(String(r.agent ?? ''))?.total
+      // Rungs, widest-first in trust: the complete fused answer, then the priced portion of it,
+      // then only what the agent itself logged.
+      return costFloor(costFloor(strict, share), reported)
+    }),
+  )
   const fusedPartial = res.rows.some((r) => numOrNull(r.cost_total) === null)
   if (!ctx.priceResolver) {
     return {
@@ -124,7 +143,9 @@ export function costView(ctx: ServerCtx, filter?: QueryFilter): CostView {
   const perAgent: CostSlice[] = res.rows.map((r) => {
     const agentId = String(r.agent ?? '')
     const billingMode = modeFor(agentId)
-    const api = numOrNull(r.cost_api_equiv)
+    const apiStrict = numOrNull(r.cost_api_equiv)
+    // The priced portion of a gapped agent, never a guess at the rest of it.
+    const api = apiStrict ?? portion.get(agentId)?.api ?? null
     return {
       agentId,
       billingMode,
@@ -141,9 +162,9 @@ export function costView(ctx: ServerCtx, filter?: QueryFilter): CostView {
     reportedUsd: reportedTotal,
     totalUsd: fusedTotal,
     totalPartial: fusedPartial,
-    apiEquivalentPartial: perAgent.some((s) => s.apiEquivalentUsd === null),
-    actualPartial: perAgent.some((s) => s.actualUsd === null),
-    unpricedAgents: perAgent.filter((s) => s.apiEquivalentUsd === null).map((s) => s.agentId),
+    apiEquivalentPartial: gappedAgents.length > 0 || perAgent.some((s) => s.apiEquivalentUsd === null),
+    actualPartial: gappedAgents.length > 0 || perAgent.some((s) => s.actualUsd === null),
+    unpricedAgents: gappedAgents,
     perAgent,
     basisCode: 'fusedFormula',
   }
