@@ -7,4 +7,8 @@ packages:
 # than a warning — that is what killed CI. esbuild is the one that must run: Vite links its
 # native binary, so silently skipping it would break `pnpm -F @agentlens/web build` anyway.
 allowBuilds:
+  # es5-ext arrives through svelte-i18n -> cli-color. Its postinstall only prints a
+  # donation notice, and pnpm 11 fails the install over a script left undecided —
+  # which is exactly how esbuild broke CI — so it is declined by name, not by silence.
+  es5-ext: false
   esbuild: true

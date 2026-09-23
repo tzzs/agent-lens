@@ -2,7 +2,12 @@
   // Beautiful UI's loading state: a 3×3 pixel grid with a travelling shimmer plus
   // elapsed seconds. Some queries take tens of seconds on a large store; a
   // visible clock tells the user it is working rather than stuck.
-  let { label = 'Loading', since = Date.now() }: { label?: string; since?: number } = $props()
+  //
+  // `label` has no English default on purpose: the fallback is read through `$t`
+  // in the template, so a page that is still loading when the viewer switches
+  // language changes wording without remounting.
+  import { t } from '../../lib/lang.js'
+  let { label, since = Date.now() }: { label?: string; since?: number } = $props()
   let now = $state(Date.now())
   $effect(() => {
     const t = setInterval(() => (now = Date.now()), 100)
@@ -18,8 +23,8 @@
       <span class="pixel h-[5px] w-[5px] rounded-[1px] bg-ink-3" style="animation-delay:{o * 90}ms"></span>
     {/each}
   </span>
-  <span class="shimmer">{label}</span>
-  <span class="nums text-xs text-ink-3">{elapsed.toFixed(1)}s</span>
+  <span class="shimmer">{label ?? $t('states.loading')}</span>
+  <span class="nums text-xs text-ink-3">{$t('fmt.unitS', { values: { n: elapsed.toFixed(1) } })}</span>
 </div>
 
 <style>

@@ -6,6 +6,7 @@
   import { eventKind } from '../lib/eventKinds.ts'
   import { barGeometry, type Span } from '../lib/timeline.ts'
   import { formatCompact, formatMs, formatClock } from '../lib/format.ts'
+  import { t } from '../lib/lang.js'
   import Icon from './ui/Icon.svelte'
 
   let {
@@ -50,7 +51,7 @@
         type="button"
         class="grid h-5 w-5 shrink-0 place-items-center rounded text-ink-3 hover:bg-hover-2 hover:text-ink"
         aria-expanded={expanded}
-        aria-label="{expanded ? 'Collapse' : 'Expand'} {childCount} child events"
+        aria-label={expanded ? $t('viz.collapseChildren', { values: { n: childCount } }) : $t('viz.expandChildren', { values: { n: childCount } })}
         onclick={onToggle}
       >
         <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={13} />
@@ -67,7 +68,7 @@
       >{kind.label}</span>
       <span class="truncate {node.capability ? 'nums text-ink' : 'text-ink-2'}">{name}</span>
       {#if childCount > 0 && !expanded}<span class="nums shrink-0 text-xs text-ink-3">+{childCount}</span>{/if}
-      {#if errored}<span class="shrink-0 rounded-full bg-red-tint px-1.5 text-[11px] font-medium text-red">error</span>{/if}
+      {#if errored}<span class="shrink-0 rounded-full bg-red-tint px-1.5 text-[11px] font-medium text-red">{$t('ev.error')}</span>{/if}
     </button>
   </div>
 

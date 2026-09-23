@@ -1,14 +1,18 @@
 <script lang="ts">
   // Beautiful UI filter-table chips: pill toggles with an optional colour dot and
   // count. Single-select (with an implicit "All") or multi-select.
+  import { activeLocale, msg } from '@agentlens/i18n'
   type Opt = { key: string; label: string; count?: number; dot?: string }
   let {
     options,
     selected = $bindable([]),
     multiple = false,
-    allLabel = 'All',
-    label = 'Filter',
+    allLabel = msg('comps.all'),
+    label = msg('comps.filter'),
   }: { options: Opt[]; selected?: string[]; multiple?: boolean; allLabel?: string; label?: string } = $props()
+
+  /** Counts are grouped the way the viewer writes numbers, not always en-US. */
+  const count = (n: number) => n.toLocaleString(activeLocale())
 
   function toggle(k: string) {
     if (multiple) selected = selected.includes(k) ? selected.filter((x) => x !== k) : [...selected, k]
@@ -23,12 +27,12 @@
     class="chip"
     aria-pressed={selected.length === 0}
     onclick={() => (selected = [])}
-  >{allLabel}{#if total}<span class="nums count">{total.toLocaleString('en')}</span>{/if}</button>
+  >{allLabel}{#if total}<span class="nums count">{count(total)}</span>{/if}</button>
   {#each options as o (o.key)}
     <button type="button" class="chip" aria-pressed={selected.includes(o.key)} onclick={() => toggle(o.key)}>
       {#if o.dot}<span class="h-1.5 w-1.5 rounded-full" style="background:{o.dot}"></span>{/if}
       {o.label}
-      {#if o.count !== undefined}<span class="nums count">{o.count.toLocaleString('en')}</span>{/if}
+      {#if o.count !== undefined}<span class="nums count">{count(o.count)}</span>{/if}
     </button>
   {/each}
 </div>

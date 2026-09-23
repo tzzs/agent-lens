@@ -6,9 +6,10 @@
  * ($0.9584) and pi 160 rows ($0.1234), while WorkBuddy reported nothing at all.
  *
  * A producer list in copy is a fact about the data, and the data moves, so the sentence
- * has to state the RULE instead. This file's harness note: the root vitest config has no
- * svelte plugin (components are only compiled by `vite build`), so the copy is asserted
- * at its source — which is also the only way to keep it next to the cube's behaviour.
+ * has to state the RULE instead. The copy now lives in the message catalog (it is said in
+ * two languages), so this file asserts the *rendered* sentence per locale — which the root
+ * vitest config can import directly, where a component's source line was only ever a proxy
+ * for it.
  */
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -19,16 +20,11 @@ import { afterAll, describe, expect, it } from 'vitest'
 import type { AgentEvent } from '@agentlens/event-model'
 import { insertEvents, migrate, openDatabase } from '@agentlens/storage'
 import { query } from '@agentlens/query'
+import { translate } from '@agentlens/i18n'
 
-const COMPONENT = fileURLToPath(new URL('../../web/src/components/CostFigure.svelte', import.meta.url))
-
-/** The `reported:` arm of the component's `titles` map. */
-function reportedCopy(): string {
-  const line = readFileSync(COMPONENT, 'utf8')
-    .split('\n')
-    .find((l) => l.trim().startsWith('reported:'))
-  expect(line, 'CostFigure.svelte must keep a single-line `reported:` title').toBeDefined()
-  return line!
+/** The `reported` basis sentence as the dashboard actually shows it. */
+function reportedCopy(locale: 'en' | 'zh' = 'en'): string {
+  return translate(locale, 'viz.costTitleReported')
 }
 
 const tmp = mkdtempSync(join(tmpdir(), 'agentlens-cost-copy-'))
@@ -63,14 +59,16 @@ function reporters(events: AgentEvent[]): Map<string, number> {
 
 describe('CostFigure "reported" basis copy (§18 row 1, §14)', () => {
   it('names no producer, because which agents report cost is a fact about the data', () => {
-    const copy = reportedCopy()
-    expect(copy).not.toMatch(/OpenCode|WorkBuddy|\bpi\b/i)
+    for (const locale of ['en', 'zh'] as const) {
+      expect(reportedCopy(locale), locale).not.toMatch(/OpenCode|WorkBuddy|\bpi\b/i)
+    }
   })
 
   it('states the rule: an agent appears here only when its own log carries the figure', () => {
     const copy = reportedCopy()
     expect(copy.toLowerCase()).toContain('only')
     expect(copy).toMatch(/own (log|records)/i)
+    expect(reportedCopy('zh')).toMatch(/自己(的)?(日志|记录)/)
   })
 
   it('stays honest that everything else falls back to the computed price', () => {
@@ -78,6 +76,8 @@ describe('CostFigure "reported" basis copy (§18 row 1, §14)', () => {
     expect(copy).toMatch(/computed|price table/i)
     // The §18 row-1 fusion reference belongs in the sentence, not in a stale list.
     expect(copy).toContain('§18 row 1')
+    expect(reportedCopy('zh')).toMatch(/估算/)
+    expect(reportedCopy('zh')).toContain('§18 第 1 行')
   })
 
   it('tracks the producers when they change, which is exactly what the old list could not do', () => {

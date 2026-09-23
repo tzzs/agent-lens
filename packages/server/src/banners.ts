@@ -6,7 +6,7 @@
  * partial history from reading as a complete one.
  */
 import { query, type QueryFilter } from '@agentlens/query'
-import { hostSplitFor, hostSplitNotice, pickHostSplit } from '@agentlens/storage'
+import { hostSplitFor, hostSplitNotice, isDegenerateHost, pickHostSplit } from '@agentlens/storage'
 import type { ServerCtx } from './types.ts'
 import { coverageReport, type CoverageReport } from './coverage.ts'
 
@@ -21,6 +21,13 @@ export interface HostSplitBanner {
   dominantHost: string
   dominantShare: number
   hosts: HostShare[]
+  /**
+   * Whether the dominant host is just the agent's own name repeated. The two
+   * phrasings of this banner differ on that fact, and the rule that decides it
+   * belongs to `host-split.ts` — a viewer that re-derived it could disagree with
+   * the terminal about what the same share means.
+   */
+  degenerate: boolean
   /** §1.5: the UI shows the split rather than one merged agent row by default. */
   splitByDefault: true
   message: string
@@ -67,6 +74,7 @@ export function hostSplitBanner(ctx: ServerCtx, filter?: QueryFilter): HostSplit
     dominantHost: best.dominant.host,
     dominantShare: best.dominant.share,
     hosts: best.hosts,
+    degenerate: isDegenerateHost(best.agentId, best.dominant.host),
     splitByDefault: true,
     message: `${hostSplitNotice(best)} — shown split by default`,
   }

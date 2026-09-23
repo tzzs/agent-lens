@@ -14,6 +14,7 @@
   // figures, chips). Column widths are fixed through <colgroup> and cells truncate,
   // so one long hash can no longer push the rest of the table off-screen.
   import type { Snippet } from 'svelte'
+  import { msg } from '@agentlens/i18n'
   import InfoTip from './InfoTip.svelte'
 
   let {
@@ -24,7 +25,7 @@
     expanded,
     isExpanded,
     footer,
-    empty = 'No rows',
+    empty = msg('comps.noRows'),
     maxHeight = 0,
     dense = false,
     caption = '',

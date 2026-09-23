@@ -8,8 +8,9 @@
   import { loader } from '../lib/pagestate.svelte.js'
   import { range, filterParams } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
-  import { ACTIVE_METRIC_INFO, formatCompact, formatInt, formatMs } from '../lib/format.ts'
+  import { activeMetricInfo, formatCompact, formatInt, formatMs } from '../lib/format.ts'
   import { SERIES, eventKind } from '../lib/eventKinds.ts'
+  import { t } from '../lib/lang.js'
   import Surface from '../components/ui/Surface.svelte'
   import PageHeader from '../components/ui/PageHeader.svelte'
   import Chip from '../components/ui/Chip.svelte'
@@ -40,17 +41,33 @@
 
   let open = $state<Record<string, boolean>>({})
 
-  const BILLING: Record<string, { label: string; note: string }> = {
-    api: { label: 'API', note: 'billed per token, so est. cost is the cash figure' },
-    subscription: { label: 'Subscription', note: 'flat plan: actual cash is $0, while est. cost prices the same tokens as an API call' },
-    local: { label: 'Local', note: 'nothing bills per token: actual cash is $0, while est. cost prices the same tokens as an API call (§8)' },
-  }
-  const billing = (mode: string) => BILLING[mode] ?? { label: mode, note: 'est. cost is the API equivalent' }
+  // Derived, not const: the mode names and their notes are the viewer's language.
+  const BILLING: Record<string, { label: string; note: string }> = $derived({
+    api: { label: $t('agents.billingApi'), note: $t('agents.billingApiNote') },
+    subscription: { label: $t('agents.billingSubscription'), note: $t('agents.billingSubscriptionNote') },
+    local: { label: $t('agents.billingLocal'), note: $t('agents.billingLocalNote') },
+  })
+  const billing = (mode: string) => BILLING[mode] ?? { label: mode, note: $t('agents.billingFallbackNote') }
+
+  /** Capability type as one word; an unknown type keeps the id the server sent. */
+  const WORDS: Record<string, string> = $derived({
+    tool: $t('agents.wordTool'),
+    skill: $t('agents.wordSkill'),
+    mcp: $t('agents.wordMcp'),
+    plugin: $t('agents.wordPlugin'),
+    connector: $t('agents.wordConnector'),
+    command: $t('agents.wordCommand'),
+    subagent: $t('agents.wordSubagent'),
+    hook: $t('agents.wordHook'),
+  })
+  const wordOf = (type: string) => WORDS[type] ?? type
 
   const num = (v: number | null | undefined) => Number(v ?? 0)
   /** Exact below a million; compact above so a 4-up stat strip never overflows. The title keeps the exact figure. */
   const count = (n: number) => (n >= 1e6 ? formatCompact(n) : formatInt(n))
-  const plural = (n: number, one: string, many: string) => `${formatInt(n)} ${n === 1 ? one : many}`
+  /** A count in words: English picks its own plural, the figure arrives pre-grouped. */
+  const pluralOf = (key: 'agents.hostsCount' | 'agents.capabilitiesCount' | 'agents.modelsCount' | 'agents.errorsCount', n: number) =>
+    $t(key, { values: { n, s: formatInt(n) } })
   const share = (part: number, total: number) => {
     if (total <= 0) return '—'
     const pct = (part / total) * 100
@@ -59,31 +76,38 @@
   const hostColor = (j: number) => SERIES[j % SERIES.length]!
   const subtitle = (a: AgentRow) => {
     const id = a.displayName && a.displayName !== a.agentId ? a.agentId : ''
-    const hosts = a.hosts.length === 1 ? `Host ${a.hosts[0]!.host}` : a.hosts.length > 1 ? `${a.hosts.length} hosts` : ''
+    const hosts =
+      a.hosts.length === 1
+        ? $t('agents.hostOne', { values: { host: a.hosts[0]!.host } })
+        : a.hosts.length > 1
+          ? pluralOf('agents.hostsCount', a.hosts.length)
+          : ''
     return [id, hosts].filter(Boolean).join(' · ')
   }
   const capTitle = (c: AgentRow['capabilities'][number]) =>
-    `${plural(c.events, `${c.type} event`, `${c.type} events`)}${c.errors ? `, ${formatInt(c.errors)} with an error status` : ''}`
+    $t('agents.capEvents', {
+      values: { n: c.events, s: formatInt(c.events), type: wordOf(c.type) },
+    }) + (c.errors ? $t('agents.capErrorTail', { values: { n: formatInt(c.errors) } }) : '')
 </script>
 
 <PageHeader
-  title="Agents"
-  description="Every local agent, split by host."
-  info="Host is part of an agent's identity (§18 item 6), so each card shows its own host split. Est. cost is tokens × list price — an estimate, not cash, and n/a when a model has no price. An agent with nothing in the window says so instead of showing zeros (§14)."
+  title={$t('agents.title')}
+  description={$t('agents.pageDesc')}
+  info={$t('agents.pageInfo')}
   refreshing={q.state.refreshing}
 />
 
 {#if !d}
-  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} since={q.state.since} loadingText="Loading agents" />
+  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} since={q.state.since} loadingText={$t('agents.loading')} />
 {:else}
   {#if q.state.status === 'error'}
-    <div class="mb-4"><Alert tone="red" title="Refresh failed.">{q.state.error} — showing the last good numbers.</Alert></div>
+    <div class="mb-4"><Alert tone="red" title={$t('states.refreshFailed')}>{q.state.error} — {$t('states.showingLastNumbers')}</Alert></div>
   {/if}
 
   {#if cards.length === 0}
     <Surface>
       <p class="py-8 text-center text-[13px] text-ink-3">
-        {d.rows.length ? 'No agent matches the agent filter' : 'No agents detected on this machine yet'}
+        {d.rows.length ? $t('agents.noMatch') : $t('agents.noneDetected')}
       </p>
     </Surface>
   {:else}
@@ -97,32 +121,32 @@
           {@const duration = num(a.metrics.duration)}
           <Surface title={name} subtitle={subtitle(a)} padded={false}>
             {#snippet actions()}
-              <Chip title="Billing mode these figures use — declare it in Settings › Billing modes. {mode.note}">{mode.label}</Chip>
+              <Chip title={$t('agents.billingTitle', { values: { note: mode.note } })}>{mode.label}</Chip>
             {/snippet}
 
             <div class="px-4 py-3.5">
               <dl class="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
                 <div class="min-w-0">
-                  <dt class="text-xs text-ink-3">Sessions</dt>
-                  <dd class="nums mt-0.5 text-lg font-semibold text-ink" title="{formatInt(num(a.metrics.sessions))} sessions">{count(num(a.metrics.sessions))}</dd>
+                  <dt class="text-xs text-ink-3">{$t('agents.sessions')}</dt>
+                  <dd class="nums mt-0.5 text-lg font-semibold text-ink" title={$t('agents.sessionsTitle', { values: { n: num(a.metrics.sessions), s: formatInt(num(a.metrics.sessions)) } })}>{count(num(a.metrics.sessions))}</dd>
                 </div>
                 <div class="min-w-0">
-                  <dt class="text-xs text-ink-3">Events</dt>
-                  <dd class="nums mt-0.5 text-lg font-semibold text-ink" title="{formatInt(num(a.metrics.events))} events">{count(num(a.metrics.events))}</dd>
+                  <dt class="text-xs text-ink-3">{$t('agents.events')}</dt>
+                  <dd class="nums mt-0.5 text-lg font-semibold text-ink" title={$t('agents.eventsTitle', { values: { n: num(a.metrics.events), s: formatInt(num(a.metrics.events)) } })}>{count(num(a.metrics.events))}</dd>
                 </div>
                 <div class="min-w-0">
-                  <dt class="text-xs text-ink-3">Tokens</dt>
-                  <dd class="nums mt-0.5 text-lg font-semibold text-ink" title="{formatInt(num(a.metrics.tokens_total))} tokens">{formatCompact(num(a.metrics.tokens_total))}</dd>
+                  <dt class="text-xs text-ink-3">{$t('agents.tokens')}</dt>
+                  <dd class="nums mt-0.5 text-lg font-semibold text-ink" title={$t('agents.tokensTitle', { values: { n: num(a.metrics.tokens_total), s: formatInt(num(a.metrics.tokens_total)) } })}>{formatCompact(num(a.metrics.tokens_total))}</dd>
                 </div>
                 <div class="min-w-0">
-                  <dt class="text-xs text-ink-3">Est. cost</dt>
+                  <dt class="text-xs text-ink-3">{$t('agents.estCost')}</dt>
                   <dd class="mt-0.5 text-lg font-semibold"><CostFigure value={a.metrics.cost_api_equiv ?? null} basis="est" showLabel={false} /></dd>
                 </div>
               </dl>
               <p class="mt-3 flex items-center gap-1.5 text-xs text-ink-3">
-                Active
-                <span class="nums text-ink-2" title={duration > 0 ? undefined : 'No event durations recorded'}>{duration > 0 ? formatMs(duration) : '—'}</span>
-                <InfoTip text={ACTIVE_METRIC_INFO} />
+                {$t('agents.active')}
+                <span class="nums text-ink-2" title={duration > 0 ? undefined : $t('agents.noDurations')}>{duration > 0 ? formatMs(duration) : '—'}</span>
+                <InfoTip text={activeMetricInfo()} />
               </p>
             </div>
 
@@ -134,9 +158,9 @@
               onclick={() => (open[a.agentId] = !open[a.agentId])}
             >
               <Icon name={isOpen ? 'chevronDown' : 'chevronRight'} size={13} class="text-ink-3" />
-              <span class="font-medium text-ink-2">Breakdown</span>
+              <span class="font-medium text-ink-2">{$t('agents.breakdown')}</span>
               <span class="ml-auto truncate text-ink-3">
-                {plural(a.hosts.length, 'host', 'hosts')} · {plural(a.capabilities.length, 'capability', 'capabilities')} · {plural(a.models.length, 'model', 'models')}
+                {pluralOf('agents.hostsCount', a.hosts.length)} · {pluralOf('agents.capabilitiesCount', a.capabilities.length)} · {pluralOf('agents.modelsCount', a.models.length)}
               </span>
             </button>
 
@@ -144,7 +168,7 @@
               <div id="agent-detail-{i}" class="space-y-5 rounded-b-card border-t border-line-soft bg-inset px-4 py-4">
                 {#if a.hosts.length}
                   <section>
-                    <h4 class="mb-2 text-xs font-medium text-ink-2">Hosts</h4>
+                    <h4 class="mb-2 text-xs font-medium text-ink-2">{$t('agents.hostsHeading')}</h4>
                     {#if a.hosts.length > 1}
                       <div class="mb-2 flex h-1.5 gap-px overflow-hidden rounded-full bg-hover-2" aria-hidden="true">
                         {#each a.hosts as h, j (h.host)}
@@ -153,13 +177,13 @@
                       </div>
                     {/if}
                     <table class="w-full table-fixed text-[13px]">
-                      <caption class="sr-only">Sessions and events per host for {name}</caption>
+                      <caption class="sr-only">{$t('agents.hostsCaption', { values: { name } })}</caption>
                       <thead>
                         <tr class="text-[11px] text-ink-3">
-                          <th scope="col" class="pb-1 text-left font-medium">Host</th>
-                          <th scope="col" class="w-20 pb-1 text-right font-medium">Sessions</th>
-                          <th scope="col" class="w-24 pb-1 text-right font-medium">Events</th>
-                          <th scope="col" class="w-14 pb-1 text-right font-medium" title="Share of this agent's events">Share</th>
+                          <th scope="col" class="pb-1 text-left font-medium">{$t('agents.colHost')}</th>
+                          <th scope="col" class="w-20 pb-1 text-right font-medium">{$t('agents.sessions')}</th>
+                          <th scope="col" class="w-24 pb-1 text-right font-medium">{$t('agents.events')}</th>
+                          <th scope="col" class="w-14 pb-1 text-right font-medium" title={$t('agents.shareInfo')}>{$t('agents.colShare')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -185,14 +209,14 @@
 
                 {#if a.capabilities.length}
                   <section>
-                    <h4 class="mb-2 text-xs font-medium text-ink-2">Capabilities</h4>
+                    <h4 class="mb-2 text-xs font-medium text-ink-2">{$t('agents.capabilitiesHeading')}</h4>
                     <ul class="flex flex-wrap gap-1.5">
                       {#each a.capabilities as c (c.type)}
                         <li class="min-w-0">
                           <Chip title={capTitle(c)}>
-                            <span class="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style="background:{eventKind(c.type).color}" aria-hidden="true"></span>{c.type}
+                            <span class="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style="background:{eventKind(c.type).color}" aria-hidden="true"></span>{wordOf(c.type)}
                             <span class="nums text-ink-3">{formatInt(c.events)}</span>
-                            {#if c.errors}<span class="nums text-red">· {plural(c.errors, 'error', 'errors')}</span>{/if}
+                            {#if c.errors}<span class="nums text-red">· {pluralOf('agents.errorsCount', c.errors)}</span>{/if}
                           </Chip>
                         </li>
                       {/each}
@@ -202,21 +226,21 @@
 
                 {#if a.models.length}
                   <section>
-                    <h4 class="mb-2 text-xs font-medium text-ink-2">Models</h4>
+                    <h4 class="mb-2 text-xs font-medium text-ink-2">{$t('agents.modelsHeading')}</h4>
                     <table class="w-full table-fixed text-[13px]">
-                      <caption class="sr-only">Tokens and estimated cost per model for {name}</caption>
+                      <caption class="sr-only">{$t('agents.modelsCaption', { values: { name } })}</caption>
                       <thead>
                         <tr class="text-[11px] text-ink-3">
-                          <th scope="col" class="pb-1 text-left font-medium">Model</th>
-                          <th scope="col" class="w-20 pb-1 text-right font-medium">Tokens</th>
-                          <th scope="col" class="w-24 pb-1 text-right font-medium">Est. cost</th>
+                          <th scope="col" class="pb-1 text-left font-medium">{$t('agents.colModel')}</th>
+                          <th scope="col" class="w-20 pb-1 text-right font-medium">{$t('agents.tokens')}</th>
+                          <th scope="col" class="w-24 pb-1 text-right font-medium">{$t('agents.estCost')}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {#each a.models as m (m.model)}
                           <tr class="border-t border-line-soft">
                             <td class="nums truncate py-1.5 pr-3 text-ink" title={m.model}>{m.model}</td>
-                            <td class="nums py-1.5 text-right text-ink-2" title="{formatInt(m.tokensTotal)} tokens">{formatCompact(m.tokensTotal)}</td>
+                            <td class="nums py-1.5 text-right text-ink-2" title={$t('agents.tokensTitle', { values: { n: m.tokensTotal, s: formatInt(m.tokensTotal) } })}>{formatCompact(m.tokensTotal)}</td>
                             <td class="py-1.5 text-right"><CostFigure value={m.costApiEquiv} basis="est" showLabel={false} /></td>
                           </tr>
                         {/each}
@@ -225,7 +249,7 @@
                   </section>
                 {/if}
 
-                <a href="#/sessions" class="inline-flex text-[13px] font-medium text-accent-ink hover:underline">View sessions →</a>
+                <a href="#/sessions" class="inline-flex text-[13px] font-medium text-accent-ink hover:underline">{$t('agents.viewSessions')}</a>
               </div>
             {/if}
           </Surface>
@@ -236,11 +260,11 @@
                 <h3 class="truncate text-[13px] font-semibold text-ink-2">{name}</h3>
                 {#if a.displayName && a.displayName !== a.agentId}<p class="nums mt-0.5 truncate text-xs text-ink-3">{a.agentId}</p>{/if}
               </div>
-              <Chip title="Billing mode these figures use — declare it in Settings › Billing modes. {mode.note}">{mode.label}</Chip>
+              <Chip title={$t('agents.billingTitle', { values: { note: mode.note } })}>{mode.label}</Chip>
             </div>
             <div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
-              <Chip dashed title="Known to AgentLens, but it logged no events in the selected range — shown instead of a row of zeros.">Not recorded in this window</Chip>
-              {#if hostFilter.length}<span class="text-xs text-ink-3">Host filter: {hostFilter.join(', ')}</span>{/if}
+              <Chip dashed title={$t('agents.notRecordedTitle')}>{$t('agents.notRecorded')}</Chip>
+              {#if hostFilter.length}<span class="text-xs text-ink-3">{$t('agents.hostFilterLine', { values: { hosts: hostFilter.join(', ') } })}</span>{/if}
             </div>
           </section>
         {/if}
@@ -249,6 +273,6 @@
   {/if}
 
   {#if hiddenByFilter > 0}
-    <p class="mt-3 text-xs text-ink-3">{plural(hiddenByFilter, 'other known agent is', 'other known agents are')} hidden by the agent filter.</p>
+    <p class="mt-3 text-xs text-ink-3">{$t('agents.hiddenByFilter', { values: { n: hiddenByFilter, s: formatInt(hiddenByFilter) } })}</p>
   {/if}
 {/if}

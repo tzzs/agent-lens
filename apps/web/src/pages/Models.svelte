@@ -7,6 +7,7 @@
   import { range, filterParams } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
   import { formatCompact, formatInt, formatDate, formatDateTime } from '../lib/format.ts'
+  import { t } from '../lib/lang.js'
   import Surface from '../components/ui/Surface.svelte'
   import PageHeader from '../components/ui/PageHeader.svelte'
   import DataTable, { type Column } from '../components/ui/DataTable.svelte'
@@ -41,53 +42,57 @@
     return m.priced && !unpricedKeys.has(modelKey(m.provider, m.model)) ? 'priced' : 'unpriced'
   }
 
-  const columns: Column[] = [
-    { key: 'model', label: 'Model', width: '28%' },
-    { key: 'provider', label: 'Provider', width: '13%' },
-    { key: 'events', label: 'Events', align: 'right', width: '10%' },
-    { key: 'sessions', label: 'Sessions', align: 'right', width: '10%' },
-    { key: 'tokens', label: 'Tokens', align: 'right', width: '10%', info: 'Counted once per request, then summed (§3.1).' },
+  // Derived, not const: the headers and their tooltips are the viewer's language.
+  // `n/a` comes from `common.na`, the same string `CostFigure` prints in the cell,
+  // so the prose and the figure can never disagree about what the glyph says.
+  const na = $derived($t('common.na'))
+  const columns = $derived<Column[]>([
+    { key: 'model', label: $t('models.colModel'), width: '28%' },
+    { key: 'provider', label: $t('models.colProvider'), width: '13%' },
+    { key: 'events', label: $t('models.colEvents'), align: 'right', width: '10%' },
+    { key: 'sessions', label: $t('models.colSessions'), align: 'right', width: '10%' },
+    { key: 'tokens', label: $t('models.colTokens'), align: 'right', width: '10%', info: $t('models.colTokensInfo') },
     {
       key: 'cost',
-      label: 'Est. cost',
+      label: $t('models.colCost'),
       align: 'right',
       width: '12%',
-      info: "Each day's tokens × that day's list price. n/a when the model has no price — never $0.",
+      info: $t('models.colCostInfo', { values: { na } }),
     },
     {
       key: 'price',
-      label: 'Price',
+      label: $t('models.colPrice'),
       width: '17%',
-      info: 'Whether the price table covers this model at its last-seen date. “Not configured” means no price table is loaded at all.',
+      info: $t('models.colPriceInfo', { values: { chip: $t('models.chipUnconfigured') } }),
     },
-  ]
+  ])
 </script>
 
 <PageHeader
-  title="Models"
-  description="Tokens and estimated cost per model, and which models are missing a price."
-  info="Est. cost is tokens × list price. A model with no price shows n/a, never $0 (§8)."
+  title={$t('models.title')}
+  description={$t('models.pageDesc')}
+  info={$t('models.pageInfo', { values: { na } })}
   refreshing={q.state.refreshing}
 />
 
 {#if !d}
-  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} since={q.state.since} loadingText="Loading models" />
+  <StatePanel status={q.state.status} error={q.state.error} kind={q.state.kind} since={q.state.since} loadingText={$t('models.loadingText')} />
 {:else}
   {#if q.state.status === 'error' || !d.pricingConfigured || d.unpriced.length}
     <div class="mb-4 space-y-2">
       {#if q.state.status === 'error'}
-        <Alert tone="red" title="Refresh failed.">{q.state.error} — showing the last good numbers.</Alert>
+        <Alert tone="red" title={$t('states.refreshFailed')}>{q.state.error} — {$t('states.showingLastNumbers')}</Alert>
       {/if}
       {#if !d.pricingConfigured}
-        <Alert tone="neutral" title="Pricing not configured.">
-          No price table is loaded, so est. and actual cost show n/a everywhere. Run <span class="nums">agentlens pricing update</span> to fetch one.
+        <Alert tone="neutral" title={$t('models.notConfiguredTitle')}>
+          {$t('models.noPriceTableLead', { values: { na } })} <span class="nums">agentlens pricing update</span> {$t('models.noPriceTableTail')}
         </Alert>
       {/if}
       {#if d.unpriced.length}
         {@const n = d.unpriced.length}
-        <Alert tone="orange" title="Pricing gap.">
-          {n === 1 ? '1 model has' : `${formatInt(n)} models have`} no price at {n === 1 ? 'its' : 'their'} last-seen date, so {n === 1 ? 'its' : 'their'} cost shows n/a:
-          <span class="nums">{gapNames}</span>{#if n > ALERT_NAMES}{' '}and {formatInt(n - ALERT_NAMES)} more, listed below{/if}.
+        <Alert tone="orange" title={$t('models.pricingGapTitle')}>
+          {$t('models.pricingGap', { values: { n: formatInt(n), na } })}
+          <span class="nums">{gapNames}</span>{#if n > ALERT_NAMES}{' '}{$t('models.pricingGapMore', { values: { n: formatInt(n - ALERT_NAMES) } })}{/if}{$t('models.period')}
         </Alert>
       {/if}
     </div>
@@ -96,13 +101,13 @@
   <Surface padded={false}>
     <div class="overflow-x-auto rounded-card">
       <div class="min-w-[720px]">
-        <DataTable {columns} rows={d.rows} key={(m: ModelRow) => modelKey(m.provider, m.model)} caption="Models" empty="No model activity in this window">
+        <DataTable {columns} rows={d.rows} key={(m: ModelRow) => modelKey(m.provider, m.model)} caption={$t('models.title')} empty={$t('models.empty')}>
           {#snippet row(m: ModelRow)}
             {@const price = priceOf(m)}
             {#if m.model}
               <td class="nums font-medium text-ink" title={m.model}>{m.model}</td>
             {:else}
-              <td class="text-ink-3" title="Events recorded without a model, such as tool calls and lifecycle events">(no model)</td>
+              <td class="text-ink-3" title={$t('models.noModelTitle')}>{$t('models.noModel')}</td>
             {/if}
             <td class={m.provider ? 'text-ink-2' : 'text-ink-3'} title={m.provider || undefined}>{m.provider || '—'}</td>
             <td class="nums text-right">{formatInt(m.events)}</td>
@@ -111,13 +116,13 @@
             <td class="text-right"><CostFigure value={m.costApiEquiv} basis="est" showLabel={false} /></td>
             <td>
               {#if price === 'priced'}
-                <Chip tone="green" dot>Priced</Chip>
+                <Chip tone="green" dot>{$t('models.chipPriced')}</Chip>
               {:else if price === 'unpriced'}
-                <Chip tone="orange" dot title="No price at this model's last-seen date, so its cost shows n/a, never $0.">Unpriced</Chip>
+                <Chip tone="orange" dot title={$t('models.chipUnpricedTitle', { values: { na } })}>{$t('models.chipUnpriced')}</Chip>
               {:else if price === 'unconfigured'}
-                <Chip dashed title="No price table is loaded, so no model can be priced.">Not configured</Chip>
+                <Chip dashed title={$t('models.chipUnconfiguredTitle')}>{$t('models.chipUnconfigured')}</Chip>
               {:else}
-                <Chip dashed title="There is no model on these events, so there is nothing to price.">No model</Chip>
+                <Chip dashed title={$t('models.chipNoModelTitle')}>{$t('models.chipNoModel')}</Chip>
               {/if}
             </td>
           {/snippet}
@@ -126,15 +131,15 @@
     </div>
   </Surface>
   {#if d.truncated}
-    <p class="mt-3 text-xs text-ink-3">Showing the first {formatInt(d.rows.length)} {d.rows.length === 1 ? 'model' : 'models'}. Narrow the range or agent to see the rest.</p>
+    <p class="mt-3 text-xs text-ink-3">{$t('models.truncated', { values: { n: formatInt(d.rows.length) } })}</p>
   {/if}
 
   {#if d.unpriced.length}
     <div class="mt-4">
       <Surface
-        title="Unpriced models"
-        subtitle="No price at their last-seen date, so their cost shows n/a, never $0"
-        info="Checked against the price table at each model's last-seen date (§8), so this can include models outside the selected window."
+        title={$t('models.unpricedTitle')}
+        subtitle={$t('models.unpricedSubtitle', { values: { na } })}
+        info={$t('models.unpricedInfo')}
       >
         <ul class="max-h-72 divide-y divide-line-soft overflow-y-auto">
           {#each d.unpriced as u (modelKey(u.provider, u.model))}
@@ -144,7 +149,7 @@
                 <span class="text-ink-3">· {u.provider || '—'}</span>
               </span>
               <span class="shrink-0 text-xs text-ink-3" title={u.lastSeen ? formatDateTime(u.lastSeen) : undefined}>
-                Last seen <span class="nums">{formatDate(u.lastSeen)}</span>
+                {$t('models.lastSeen')} <span class="nums">{formatDate(u.lastSeen)}</span>
               </span>
             </li>
           {/each}

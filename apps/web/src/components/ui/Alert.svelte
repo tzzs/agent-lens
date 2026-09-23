@@ -2,6 +2,7 @@
   // Inline banner for the §14 header warnings and page-level notes. Dismissal is
   // per browser session (sessionStorage), so a warning comes back next visit.
   import type { Snippet } from 'svelte'
+  import { t } from '../../lib/lang.js'
   import Icon from './Icon.svelte'
   let {
     tone = 'orange',
@@ -43,7 +44,7 @@
       {#if title}<span class="font-semibold">{title}</span>{' '}{/if}<span class="text-ink-2">{@render children()}</span>
     </div>
     {#if id}
-      <button type="button" class="-m-1 grid h-6 w-6 shrink-0 place-items-center rounded-md opacity-70 hover:bg-black/5 hover:opacity-100" onclick={dismiss} aria-label="Dismiss">
+      <button type="button" class="-m-1 grid h-6 w-6 shrink-0 place-items-center rounded-md opacity-70 hover:bg-black/5 hover:opacity-100" onclick={dismiss} aria-label={$t('states.dismiss')}>
         <Icon name="x" size={13} />
       </button>
     {/if}

@@ -38,8 +38,12 @@ export function rankHostShares(counts: readonly HostCount[]): HostShare[] {
     .map((c) => ({ host: c.host, events: c.events, share: total === 0 ? 0 : c.events / total }))
     .sort((a, b) => b.events - a.events || (a.host < b.host ? -1 : 1))
 }
-/** A single-host agent has nothing to split and nothing to warn about. */
-const isDegenerateHost = (agentId: string, host: string) => host === agentId || host === '(none)' || host === ''
+/**
+ * A single-host agent has nothing to split and nothing to warn about. Exported
+ * because the phrasing of the banner depends on it and the rule must not be
+ * re-decided by whichever surface renders the numbers.
+ */
+export const isDegenerateHost = (agentId: string, host: string) => host === agentId || host === '(none)' || host === ''
 
 export interface HostSplit {
   agentId: string

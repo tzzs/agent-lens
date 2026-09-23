@@ -1,6 +1,8 @@
 /**
  * Pure shaping for the overview charts — no DOM, so it is unit-tested directly.
+ * The "Other" fold is the one word here, and it comes from the message catalog.
  */
+import { msg } from '@agentlens/i18n'
 
 export interface Slice {
   label: string
@@ -13,13 +15,13 @@ export interface Slice {
  * donut legend stays readable with dozens of projects. Zero/invalid values are
  * dropped first — they would only add empty legend rows.
  */
-export function topN(rows: Slice[], n: number, otherLabel = 'Other'): (Slice & { other?: number })[] {
+export function topN(rows: Slice[], n: number): (Slice & { other?: number })[] {
   const valid = rows.filter((r) => Number.isFinite(r.value) && r.value > 0).sort((a, b) => b.value - a.value)
   if (valid.length <= n) return valid
   const head = valid.slice(0, n - 1)
   const tail = valid.slice(n - 1)
   const rest = tail.reduce((a, r) => a + r.value, 0)
-  return [...head, { label: `${otherLabel} (${tail.length})`, value: rest, other: tail.length }]
+  return [...head, { label: msg('fmt.otherFold', { n: String(tail.length) }), value: rest, other: tail.length }]
 }
 
 /**

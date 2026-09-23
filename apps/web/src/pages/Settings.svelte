@@ -10,6 +10,8 @@
   import { loader } from '../lib/pagestate.svelte.js'
   import { live } from '../lib/live.svelte.js'
   import { theme, setTheme } from '../lib/theme.svelte.js'
+  import { agentNote, costBasis } from '../lib/notes.ts'
+  import { t } from '../lib/lang.js'
   import { formatDateTime, formatInt } from '../lib/format.ts'
   import Surface from '../components/ui/Surface.svelte'
   import PageHeader from '../components/ui/PageHeader.svelte'
@@ -46,17 +48,25 @@
   // sidebar's switch): two such mirrors ping-pong until Svelte aborts the update.
   const pickTheme = (v: string) => setTheme(v === 'light' || v === 'dark' ? v : 'system')
 
+  // Derived, not const: the pill labels are the viewer's language.
+  const THEME_OPTIONS = $derived([
+    { value: 'system', label: $t('settings.themeSystem'), icon: 'monitor' as const },
+    { value: 'light', label: $t('settings.themeLight'), icon: 'sun' as const },
+    { value: 'dark', label: $t('settings.themeDark'), icon: 'moon' as const },
+  ])
+
   // The §8 declaration editor. The select is uncontrolled — the row's value comes from
   // the server and a write re-reads it, so no local copy can drift from what the cube
   // actually folded (and a refused value snaps back instead of lying on screen).
-  const MODE_LABEL: Record<BillingMode, string> = {
-    api: 'API — tokens x price',
-    subscription: 'Subscription — $0 cash, priced as API equivalent',
-    local: 'Local — $0 cash, priced as API equivalent',
-  }
+  const MODE_LABEL: Record<BillingMode, string> = $derived({
+    api: $t('settings.modeApi'),
+    subscription: $t('settings.modeSubscription'),
+    local: $t('settings.modeLocal'),
+  })
   const agentLabel = (a: BillingAgentRow): string => a.displayName || a.agentId
   let saving = $state<Record<string, boolean>>({})
-  let billingNote = $state<string | null>(null)
+  /** The write's own reply, kept as its parts so the wording is the viewer's. */
+  let billingNote = $state<{ agent: string; mode: string; cleared: boolean } | null>(null)
   let billingError = $state<string | null>(null)
 
   async function declare(agentId: string, value: string): Promise<void> {
@@ -66,9 +76,7 @@
     billingError = null
     try {
       const res = await api.setBilling({ agent: agentId, mode })
-      billingNote =
-        `saved: ${res.agent} = ${res.mode}` +
-        (mode === null ? ' (declaration cleared, so the api default applies again)' : '')
+      billingNote = { agent: res.agent, mode: res.mode, cleared: mode === null }
     } catch (err) {
       billingError = err instanceof Error ? err.message : String(err)
     } finally {
@@ -77,38 +85,38 @@
     }
   }
 
-  const STATUS_LABEL: Record<DoctorAgentRow['status'], string> = {
-    ok: 'OK',
-    'ingested-only': 'Ingested only',
-    'not-detected': 'Not detected',
-    error: 'Error',
-  }
+  const STATUS_LABEL: Record<DoctorAgentRow['status'], string> = $derived({
+    ok: $t('settings.statusOk'),
+    'ingested-only': $t('settings.statusIngestedOnly'),
+    'not-detected': $t('settings.statusNotDetected'),
+    error: $t('settings.statusError'),
+  })
   const STATUS_TONE: Record<DoctorAgentRow['status'], 'neutral' | 'green' | 'red'> = {
     ok: 'green',
     'ingested-only': 'neutral',
     'not-detected': 'neutral',
     error: 'red',
   }
-  const adapterColumns = [
-    { key: 'agent', label: 'Agent', width: '22%' },
-    { key: 'version', label: 'Version', width: '16%' },
-    { key: 'root', label: 'Data root', width: '34%' },
-    { key: 'sources', label: 'Sources', align: 'right' as const, width: '10%' },
-    { key: 'status', label: 'Status', width: '18%' },
-  ]
+  const adapterColumns = $derived([
+    { key: 'agent', label: $t('settings.colAgent'), width: '22%' },
+    { key: 'version', label: $t('settings.colVersion'), width: '16%' },
+    { key: 'root', label: $t('settings.colRoot'), width: '34%' },
+    { key: 'sources', label: $t('settings.colSources'), align: 'right' as const, width: '10%' },
+    { key: 'status', label: $t('settings.colStatus'), width: '18%' },
+  ])
 
   const dlRow = 'flex items-baseline justify-between gap-4 border-b border-line-soft py-2 last:border-0'
 </script>
 
 <PageHeader
-  title="Settings"
-  description="Adapters, pricing, data sources and privacy, as reported by the running server."
-  info="Nothing here is computed in the browser: it is the server's own report from /api/health and /api/doctor. The billing modes below are the one thing you can change here, and they are saved on the server."
+  title={$t('settings.title')}
+  description={$t('settings.pageDesc')}
+  info={$t('settings.pageInfo')}
   refreshing={health.state.refreshing || doctor.state.refreshing}
 />
 
 {#if refreshError}
-  <div class="mb-4"><Alert tone="red" title="Refresh failed.">{refreshError} — showing the last values the server reported.</Alert></div>
+  <div class="mb-4"><Alert tone="red" title={$t('states.refreshFailed')}>{refreshError} — {$t('states.showingLast')}</Alert></div>
 {/if}
 
 <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -119,117 +127,114 @@
         error={failed?.error}
         kind={failed?.kind}
         since={Math.min(health.state.since, doctor.state.since)}
-        loadingText="Reading the server's report"
+        loadingText={$t('settings.loadingServerReport')}
       />
     </div>
   {:else}
     {#if h}
-      <Surface title="Server">
+      <Surface title={$t('settings.server')}>
         <dl class="text-[13px]">
-          <div class={dlRow}><dt class="shrink-0 text-ink-3">Name</dt><dd class="nums min-w-0 truncate text-ink" title={h.server}>{h.server}</dd></div>
+          <div class={dlRow}><dt class="shrink-0 text-ink-3">{$t('settings.serverName')}</dt><dd class="nums min-w-0 truncate text-ink" title={h.server}>{h.server}</dd></div>
           <div class={dlRow}>
-            <dt class="shrink-0 text-ink-3">Status</dt>
-            <dd><Chip tone={h.status === 'ok' ? 'green' : 'orange'}>{h.status === 'ok' ? 'OK' : h.status}</Chip></dd>
+            <dt class="shrink-0 text-ink-3">{$t('settings.status')}</dt>
+            <dd><Chip tone={h.status === 'ok' ? 'green' : 'orange'}>{h.status === 'ok' ? $t('settings.statusOk') : h.status}</Chip></dd>
           </div>
-          <div class={dlRow}><dt class="shrink-0 text-ink-3">Server clock</dt><dd class="nums text-ink">{formatDateTime(h.now)}</dd></div>
+          <div class={dlRow}><dt class="shrink-0 text-ink-3">{$t('settings.serverClock')}</dt><dd class="nums text-ink">{formatDateTime(h.now)}</dd></div>
           <div class={dlRow}>
-            <dt class="shrink-0 text-ink-3">Database path</dt>
-            <dd class="min-w-0 break-all text-right {h.dbPath ? 'nums text-ink' : 'text-ink-2'}">{h.dbPath ?? 'In-memory (not persisted)'}</dd>
+            <dt class="shrink-0 text-ink-3">{$t('settings.dbPath')}</dt>
+            <dd class="min-w-0 break-all text-right {h.dbPath ? 'nums text-ink' : 'text-ink-2'}">{h.dbPath ?? $t('settings.inMemory')}</dd>
           </div>
-          <div class={dlRow}><dt class="shrink-0 text-ink-3">Migrations applied</dt><dd class="nums text-ink">{formatInt(h.migrationsApplied)}</dd></div>
-          <div class={dlRow}><dt class="shrink-0 text-ink-3">Events stored</dt><dd class="nums text-ink">{formatInt(h.events)}</dd></div>
-          <div class={dlRow}><dt class="shrink-0 text-ink-3">Sessions</dt><dd class="nums text-ink">{formatInt(h.sessions)}</dd></div>
+          <div class={dlRow}><dt class="shrink-0 text-ink-3">{$t('settings.migrationsApplied')}</dt><dd class="nums text-ink">{formatInt(h.migrationsApplied)}</dd></div>
+          <div class={dlRow}><dt class="shrink-0 text-ink-3">{$t('settings.eventsStored')}</dt><dd class="nums text-ink">{formatInt(h.events)}</dd></div>
+          <div class={dlRow}><dt class="shrink-0 text-ink-3">{$t('settings.sessions')}</dt><dd class="nums text-ink">{formatInt(h.sessions)}</dd></div>
         </dl>
       </Surface>
 
-      <Surface title="Privacy & local-first">
+      <Surface title={$t('settings.privacyTitle')}>
         <dl class="text-[13px]">
           <div class={dlRow}>
-            <dt class="shrink-0 text-ink-3">Loopback-only bind</dt>
-            <dd>{#if h.loopbackOnly}<Chip tone="green">Yes · same-origin only</Chip>{:else}<Chip tone="red">No</Chip>{/if}</dd>
+            <dt class="shrink-0 text-ink-3">{$t('settings.loopbackBind')}</dt>
+            <dd>{#if h.loopbackOnly}<Chip tone="green">{$t('settings.loopbackYes')}</Chip>{:else}<Chip tone="red">{$t('settings.loopbackNo')}</Chip>{/if}</dd>
           </div>
           <div class={dlRow}>
-            <dt class="shrink-0 text-ink-3">Content layer</dt>
+            <dt class="shrink-0 text-ink-3">{$t('settings.contentLayer')}</dt>
             <dd>
               {#if h.contentAvailable}
-                <Chip tone="orange">On · {formatInt(h.payloads)} payloads stored</Chip>
+                <Chip tone="orange">{$t('settings.contentOn', { values: { n: formatInt(h.payloads) } })}</Chip>
               {:else}
-                <Chip tone="green">Off · metrics only</Chip>
+                <Chip tone="green">{$t('settings.contentOff')}</Chip>
               {/if}
             </dd>
           </div>
         </dl>
         <p class="mt-3 text-xs leading-relaxed text-ink-2">
-          AgentLens reads private local agent logs and serves them without authentication, so the server binds to loopback
-          only and this dashboard never requests anything beyond its own origin — no telemetry, no CDN, and its fonts ship
-          inside the app. The content layer is off by default and stays off unless a scan opts in with
-          <span class="nums text-ink">--content</span>: message and tool text is the only private content it ever copies
-          into this database. Every statistic works without it.
+          {$t('settings.privacyLead')}
+          <span class="nums text-ink">--content</span>{$t('settings.privacyTail')}
         </p>
       </Surface>
     {:else}
       <div class="lg:col-span-2">
-        <StatePanel status={health.state.status} error={health.state.error} kind={health.state.kind} since={health.state.since} loadingText="Asking the server" />
+        <StatePanel status={health.state.status} error={health.state.error} kind={health.state.kind} since={health.state.since} loadingText={$t('settings.loadingAsking')} />
       </div>
     {/if}
 
     {#if doc}
       <Surface
-        title="Adapters"
-        subtitle={doc.adaptersInstalled ? '' : 'No adapters installed in this build — rows come from ingested history'}
-        info="The CLI owns adapter wiring (§5.4). Detection is read-only; hover a status for its note."
+        title={$t('settings.adapters')}
+        subtitle={doc.adaptersInstalled ? '' : $t('settings.noAdapters')}
+        info={$t('settings.adaptersInfo')}
         padded={false}
         class="lg:col-span-2"
       >
-        <DataTable columns={adapterColumns} rows={doc.agents} key={(a: DoctorAgentRow) => a.id} caption="Adapters" empty="No agents detected or ingested yet">
+        <DataTable columns={adapterColumns} rows={doc.agents} key={(a: DoctorAgentRow) => a.id} caption={$t('settings.adaptersCaption')} empty={$t('settings.adaptersEmpty')}>
           {#snippet row(a: DoctorAgentRow)}
             <td><span class="font-medium text-ink" title={a.id}>{a.displayName || a.id}</span></td>
             <td class="nums text-ink-2" title={a.detectedVersion ?? undefined}>{a.detectedVersion ?? '—'}</td>
             <td class="nums text-ink-2" title={a.dataRoot ?? undefined}>{a.dataRoot ?? '—'}</td>
             <td class="nums text-right text-ink">{formatInt(a.sources)}</td>
             <td>
-              <Chip tone={STATUS_TONE[a.status]} dashed={a.status === 'not-detected'} title={a.note ?? ''}>{STATUS_LABEL[a.status] ?? a.status}</Chip>
+              <Chip tone={STATUS_TONE[a.status]} dashed={a.status === 'not-detected'} title={a.noteCode ? agentNote(a.noteCode, a.noteDetail) : ''}>{STATUS_LABEL[a.status] ?? a.status}</Chip>
             </td>
           {/snippet}
         </DataTable>
       </Surface>
 
-      <Surface title="Pricing" info="Costs use the injected price table. An unknown price renders as n/a, never $0 (§8).">
+      <Surface title={$t('settings.pricing')} info={$t('settings.pricingInfo')}>
         <dl class="text-[13px]">
           <div class={dlRow}>
-            <dt class="shrink-0 text-ink-3">Price table</dt>
-            <dd>{#if doc.pricing.pricingConfigured}<Chip tone="green">Configured</Chip>{:else}<Chip tone="orange">Not injected</Chip>{/if}</dd>
+            <dt class="shrink-0 text-ink-3">{$t('settings.priceTable')}</dt>
+            <dd>{#if doc.pricing.pricingConfigured}<Chip tone="green">{$t('settings.priceConfigured')}</Chip>{:else}<Chip tone="orange">{$t('settings.priceNotInjected')}</Chip>{/if}</dd>
           </div>
           <div class={dlRow}>
-            <dt class="shrink-0 text-ink-3">Models priced</dt>
+            <dt class="shrink-0 text-ink-3">{$t('settings.modelsPriced')}</dt>
             <dd class="nums text-ink">{doc.pricing.modelsPriced === null ? '—' : formatInt(doc.pricing.modelsPriced)}</dd>
           </div>
-          <div class={dlRow}><dt class="shrink-0 text-ink-3">Models seen</dt><dd class="nums text-ink">{formatInt(doc.pricing.modelsSeen)}</dd></div>
+          <div class={dlRow}><dt class="shrink-0 text-ink-3">{$t('settings.modelsSeen')}</dt><dd class="nums text-ink">{formatInt(doc.pricing.modelsSeen)}</dd></div>
           <div class={dlRow}>
-            <dt class="shrink-0 text-ink-3">Missing a price</dt>
+            <dt class="shrink-0 text-ink-3">{$t('settings.missingAPrice')}</dt>
             <dd class="min-w-0 break-words text-right">
               {#if !doc.pricing.pricingConfigured}
-                <span class="text-orange">All — cost is n/a</span>
+                <span class="text-orange">{$t('settings.allUnpriced')}</span>
               {:else if doc.pricing.missing.length}
                 <span class="nums text-orange">{doc.pricing.missing.map((m) => m.model).join(', ')}</span>
               {:else}
-                <span class="text-ink">None</span>
+                <span class="text-ink">{$t('settings.none')}</span>
               {/if}
             </dd>
           </div>
         </dl>
-        <p class="mt-3 text-xs leading-relaxed text-ink-3">{doc.cost.basis}</p>
+        <p class="mt-3 text-xs leading-relaxed text-ink-3">{costBasis(doc.cost.basisCode)}</p>
       </Surface>
 
       <Surface
-        title="Billing modes"
-        info="How each agent's tokens become money (§8). Cash and API-equivalent are two different numbers and the app keeps showing both: declaring a mode moves the cash figure, never the token value."
+        title={$t('settings.billing')}
+        info={$t('settings.billingInfo')}
       >
         {#if billingError}
-          <div class="mb-3"><Alert tone="red" title="Declaration rejected.">{billingError}</Alert></div>
+          <div class="mb-3"><Alert tone="red" title={$t('settings.declRejected')}>{billingError}</Alert></div>
         {/if}
         {#if billingNote}
-          <div class="mb-3"><Alert tone="accent" title="Saved.">{billingNote}</Alert></div>
+          <div class="mb-3"><Alert tone="accent" title={$t('settings.saved')}>{$t('settings.savedNote', { values: { agent: billingNote.agent, mode: billingNote.mode } })}{billingNote.cleared ? ` ${$t('settings.clearedTail')}` : ''}</Alert></div>
         {/if}
         {#if b}
           <ul class="text-[13px]">
@@ -237,11 +242,11 @@
               <li class="flex items-center justify-between gap-3 border-b border-line-soft py-2 last:border-0">
                 <div class="min-w-0">
                   <span class="font-medium text-ink" title={a.agentId}>{agentLabel(a)}</span>
-                  <span class="ml-2 text-xs text-ink-3">{a.declared ? 'declared' : 'default'}</span>
+                  <span class="ml-2 text-xs text-ink-3">{a.declared ? $t('settings.declared') : $t('settings.defaultMode')}</span>
                 </div>
                 <select
                   class="h-7 shrink-0 rounded-full bg-hover-2/70 px-3 text-xs text-ink outline-none hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50"
-                  aria-label={`Billing mode for ${a.agentId}`}
+                  aria-label={$t('settings.billingModeAria', { values: { agent: a.agentId } })}
                   value={a.billingMode}
                   disabled={saving[a.agentId] === true}
                   onchange={(e) => void declare(a.agentId, e.currentTarget.value)}
@@ -249,18 +254,16 @@
                   {#each BILLING_MODES as m (m)}
                     <option value={m}>{MODE_LABEL[m]}</option>
                   {/each}
-                  <option value="">Not declared (api default)</option>
+                  <option value="">{$t('settings.notDeclared')}</option>
                 </select>
               </li>
             {/each}
           </ul>
           {#if !b.agents.length}
-            <p class="py-1 text-xs leading-relaxed text-ink-3">No agents known yet — a scan registers them, then a mode can be declared here.</p>
+            <p class="py-1 text-xs leading-relaxed text-ink-3">{$t('settings.noAgentsYet')}</p>
           {/if}
           <p class="mt-3 text-xs leading-relaxed text-ink-3">
-            Saved in <span class="nums text-ink-2">{b.configFile}</span>, the same file <span class="nums text-ink-2">agl</span> reads, so the terminal
-            and this page can never disagree. A model with no price still reads n/a, never $0 — a billing mode is a statement about cash, not a
-            price (§8).
+            {$t('settings.savedInLead')} <span class="nums text-ink-2">{b.configFile}</span>{$t('settings.savedInMid')} <span class="nums text-ink-2">agl</span> {$t('settings.savedInTail')}
           </p>
         {:else}
           <StatePanel
@@ -268,52 +271,48 @@
             error={billing.state.error}
             kind={billing.state.kind}
             since={billing.state.since}
-            loadingText="Reading the billing declarations"
+            loadingText={$t('settings.loadingBilling')}
           />
           {#if billing.state.kind === 'not_implemented'}
             <p class="mt-3 text-xs leading-relaxed text-ink-3">
-              This server was started without a database file, so it has nowhere to keep a declaration. Declare modes with
-              <span class="nums text-ink-2">agl pricing billing set &lt;agent&gt; &lt;mode&gt;</span> instead.
+              {$t('settings.noDbLead')}
+              <span class="nums text-ink-2">agl pricing billing set &lt;agent&gt; &lt;mode&gt;</span> {$t('settings.noDbTail')}
             </p>
           {/if}
         {/if}
       </Surface>
 
-      <Surface title="Data sources" info="Presence checks over the sources the collector has ingested — nothing here is a statistic.">
+      <Surface title={$t('settings.dataSources')} info={$t('settings.dataSourcesInfo')}>
         <dl class="text-[13px]">
-          <div class={dlRow}><dt class="shrink-0 text-ink-3">Sources known</dt><dd class="nums text-ink">{formatInt(doc.coverage.sourcesKnown)}</dd></div>
+          <div class={dlRow}><dt class="shrink-0 text-ink-3">{$t('settings.sourcesKnown')}</dt><dd class="nums text-ink">{formatInt(doc.coverage.sourcesKnown)}</dd></div>
           <div class={dlRow}>
-            <dt class="shrink-0 text-ink-3">Unreachable</dt>
+            <dt class="shrink-0 text-ink-3">{$t('settings.unreachable')}</dt>
             <dd class="nums {doc.coverage.unreachable.length ? 'text-orange' : 'text-ink'}">{formatInt(doc.coverage.unreachable.length)}</dd>
           </div>
           <div class={dlRow}>
-            <dt class="shrink-0 text-ink-3">Dirs emptied by retention</dt>
+            <dt class="shrink-0 text-ink-3">{$t('settings.dirsEmptied')}</dt>
             <dd class="nums {doc.coverage.emptyDirs.length ? 'text-orange' : 'text-ink'}">{formatInt(doc.coverage.emptyDirs.length)}</dd>
           </div>
-          <div class={dlRow}><dt class="shrink-0 text-ink-3">Sessions without events</dt><dd class="nums text-ink">{formatInt(doc.coverage.eventlessSessions)}</dd></div>
+          <div class={dlRow}><dt class="shrink-0 text-ink-3">{$t('settings.eventlessSessions')}</dt><dd class="nums text-ink">{formatInt(doc.coverage.eventlessSessions)}</dd></div>
         </dl>
-        <p class="mt-3 text-xs leading-relaxed text-ink-3">{doc.coverage.limits}</p>
+        <p class="mt-3 text-xs leading-relaxed text-ink-3">{$t('banner.limits')}</p>
       </Surface>
     {:else}
       <div class="lg:col-span-2">
-        <StatePanel status={doctor.state.status} error={doctor.state.error} kind={doctor.state.kind} since={doctor.state.since} loadingText="Checking adapters, pricing and sources" />
+        <StatePanel status={doctor.state.status} error={doctor.state.error} kind={doctor.state.kind} since={doctor.state.since} loadingText={$t('settings.loadingDoctor')} />
       </div>
     {/if}
   {/if}
 
-  <Surface title="Appearance">
+  <Surface title={$t('settings.appearance')}>
     <div class="flex flex-wrap items-center justify-between gap-3">
       <p class="min-w-0 text-xs text-ink-3">
-        Saved in this browser only.{#if theme.pref === 'system'} System follows your OS — currently {theme.resolved}.{/if}
+        {$t('settings.browserOnly')}{#if theme.pref === 'system'} {$t('settings.systemFollow', { values: { resolved: theme.resolved === 'dark' ? $t('settings.resolvedDark') : $t('settings.resolvedLight') } })}{/if}
       </p>
       <Segmented
-        label="Color theme"
+        label={$t('settings.colorTheme')}
         bind:value={() => theme.pref, pickTheme}
-        options={[
-          { value: 'system', label: 'System', icon: 'monitor' },
-          { value: 'light', label: 'Light', icon: 'sun' },
-          { value: 'dark', label: 'Dark', icon: 'moon' },
-        ]}
+        options={THEME_OPTIONS}
       />
     </div>
   </Surface>
