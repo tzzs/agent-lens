@@ -85,6 +85,19 @@ export async function serveDashboard(
     adapters: getAdapters,
     ...(webDistDir() ? { staticDir: webDistDir() } : {}),
   })
+  // The URL is only a fact once the socket owns the port. Announcing it early sends the user to
+  // whatever else is listening there — a different AgentLens, reading different logs.
+  try {
+    await running.ready()
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException
+    await running.close()
+    throw new Error(
+      e.code === 'EADDRINUSE'
+        ? `cannot serve on ${running.url} — another process already owns port ${running.port}. Stop it first: the dashboard that port serves is that process's data, not this store's.`
+        : `cannot serve on ${running.url}: ${e.message}`,
+    )
+  }
   openBrowser(running.url, ctx)
 
   let settle: () => void = () => {}
