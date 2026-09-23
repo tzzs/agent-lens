@@ -497,6 +497,14 @@ export interface AgentsResponse {
 
 export type PriceSource = 'litellm' | 'openrouter' | 'override' | 'manual'
 
+/** §18 row 1: an agent's own cost figure that the price table contradicts by `ratio` (mirror of `CostDrift` server-side). */
+export interface CostDrift {
+  agentId: string
+  reportedUsd: number
+  apiEquivalentUsd: number
+  ratio: number
+}
+
 export interface ModelRow {
   provider: string
   model: string
@@ -571,6 +579,7 @@ export interface DoctorReport {
     modelsPriced: number | null
     modelsSeen: number
     missing: { provider: string; model: string; lastSeen: number | null }[]
+    costDrift: CostDrift[]
   }
   cost: CostView
   permissions: { path: string; readable: boolean }[]

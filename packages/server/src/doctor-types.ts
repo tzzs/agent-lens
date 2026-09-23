@@ -8,7 +8,7 @@
  */
 import type { AggregationMode } from '@agentlens/event-model'
 import type { AgentUsageQuality, ParserVersionDrift, RequestFoldCode, RetentionCounts } from '@agentlens/storage'
-import { costView } from './cost.ts'
+import { costView, type CostDrift } from './cost.ts'
 import { coverageReport } from './coverage.ts'
 import type { AgentNoteCode, CatalogNoteCode, ContentNoteCode } from './notes.ts'
 
@@ -88,7 +88,7 @@ export interface DoctorReport {
   capabilities: { type: string; events: number; errors: number }[]
   capabilitySupport: { agentId: string; recorded: string[] }[]
   catalog: { available: boolean; noteCode: CatalogNoteCode; noteDetail?: string; installed: number; neverUsed: number }
-  pricing: { pricingConfigured: boolean; modelsPriced: number | null; modelsSeen: number; missing: { provider: string; model: string; lastSeen: number | null }[] }
+  pricing: { pricingConfigured: boolean; modelsPriced: number | null; modelsSeen: number; missing: { provider: string; model: string; lastSeen: number | null }[]; costDrift: CostDrift[] }
   cost: ReturnType<typeof costView>
   permissions: { path: string; readable: boolean }[]
   content: { available: boolean; payloads: number; noteCode: ContentNoteCode }

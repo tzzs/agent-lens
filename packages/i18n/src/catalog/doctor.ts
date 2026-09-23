@@ -192,6 +192,9 @@ const en = {
   modelsPriced: 'Models priced',
   modelsSeen: 'Models seen',
   missingPriceAlert: '{n} missing a price — cost n/a:',
+  costDriftTitle: '{n, plural, one {1 agent reported a cost the price table contradicts} other {# agents reported a cost the price table contradicts}}',
+  costDriftBody:
+    '§18 row 1 counts the agent\u2019s own figure wherever it logged one, so these totals are the agent\u2019s arithmetic, not ours. Reported / priced:',
   noPriceTableTitle: 'No price table injected —',
   allCostNa: 'all cost is n/a, never shown as $0.',
   cost: 'Cost',
@@ -368,6 +371,8 @@ const zh = matches(en)({
   modelsPriced: '已定价模型',
   modelsSeen: '出现过的模型',
   missingPriceAlert: '有 {n} 个缺少定价 —— 成本为 未定价：',
+  costDriftTitle: '{n} 个 agent 自报的费用与价格表互相矛盾',
+  costDriftBody: '§18 第 1 行在 agent 自报过的地方一律采用它自己的数字，所以这些合计是 agent 的算法、不是我们的。自报 / 按单价计算：',
   noPriceTableTitle: '未注入价格表 ——',
   allCostNa: '所有成本都是 未定价，绝不会显示为 $0。',
   cost: '成本',
