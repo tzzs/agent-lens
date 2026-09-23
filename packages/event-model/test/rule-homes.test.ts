@@ -128,7 +128,7 @@ const RULES: Rule[] = [
   },
   {
     what: 'which models are unpriced, and which of their buckets lack a price (§8, §11)',
-    home: '@agentlens/server → cost.ts modelSpend / unpricedBuckets / modelPrices / gappedModels',
+    home: '@agentlens/server → cost.ts modelSpend / unpricedBuckets / modelPrices / gappedModels / priceVerdictsByModel',
     statedIn: 'packages/server/src/cost.ts',
     forbidden: [
       { re: /isMissingPrice/, why: 'the per-bucket test is the rule; the server used to ask only "is the entry null", so a gap the cube rendered as n/a went unreported' },
@@ -141,7 +141,7 @@ const RULES: Rule[] = [
       { file: 'apps/cli/src/commands/doctor.ts', symbol: 'unpricedBuckets' },
       { file: 'packages/server/src/models.ts', symbol: 'modelPrices' },
       { file: 'packages/server/src/models.ts', symbol: 'gappedModels' },
-      { file: 'packages/server/src/models.ts', symbol: 'isGapped' },
+      { file: 'packages/server/src/models.ts', symbol: 'priceVerdictsByModel' },
       { file: 'packages/server/src/doctor.ts', symbol: 'missingPriceModels' },
     ],
   },
@@ -229,7 +229,7 @@ describe('§14: one owner per shared rule, surfaces may not re-implement it', ()
       { pkg: 'packages/event-model', names: ['projectLabel'] },
       {
         pkg: 'packages/server',
-        names: ['coverageReport', 'retentionPhrase', 'modelSpend', 'unpricedBuckets', 'modelPrices', 'gappedModels', 'isGapped', 'missingPriceModels', 'actualUsdFor'],
+        names: ['coverageReport', 'retentionPhrase', 'modelSpend', 'unpricedBuckets', 'modelPrices', 'gappedModels', 'isGapped', 'priceVerdictsByModel', 'missingPriceModels', 'actualUsdFor'],
       },
     ]
     for (const { pkg, names } of owners) {
