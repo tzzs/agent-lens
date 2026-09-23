@@ -47,6 +47,11 @@ export const DEFAULT_FOLD_MODE: AggregationMode = DEFAULT_AGGREGATION.mode
  * The folded values stage 1 produces per request row, in table order. The token/duration
  * buckets are `MAX(COALESCE(col, 0))` (NULL is "no data on this row", not a zero group) and
  * `rep_cost` is `MAX(col)` keeping NULL distinct from 0 (§8/§18 row 1).
+ *
+ * `credits` folds the way `rep_cost` does — `MAX(col)`, NULLs skipped — because it is the
+ * same KIND of fact: a per-request quantity the agent logged, where "this agent has no credit
+ * economy" must stay distinguishable from "it burned zero credits". Coalesce it to 0 and every
+ * Claude/Codex row becomes a measured 0.
  */
 export const REQUEST_FOLD_VALUE_COLUMNS = [
   'tokens_input',
@@ -56,6 +61,7 @@ export const REQUEST_FOLD_VALUE_COLUMNS = [
   'tokens_reasoning',
   'duration',
   'rep_cost',
+  'credits',
 ] as const
 export type RequestFoldValueColumn = (typeof REQUEST_FOLD_VALUE_COLUMNS)[number]
 

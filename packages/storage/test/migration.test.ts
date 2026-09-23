@@ -16,6 +16,7 @@ describe('migrations', () => {
       '006_measured_read_paths.sql',
       '007_session_title_index.sql',
       '008_persisted_request_fold.sql',
+      '009_credits_in_the_persisted_fold.sql',
     ])
     expect(migrate(db)).toEqual([])
     const applied = db.prepare('SELECT id FROM schema_migrations').all()
@@ -28,6 +29,7 @@ describe('migrations', () => {
       '006_measured_read_paths.sql',
       '007_session_title_index.sql',
       '008_persisted_request_fold.sql',
+      '009_credits_in_the_persisted_fold.sql',
     ])
     db.close()
   })
@@ -178,6 +180,7 @@ describe('migrations', () => {
       '006_measured_read_paths.sql',
       '007_session_title_index.sql',
       '008_persisted_request_fold.sql',
+      '009_credits_in_the_persisted_fold.sql',
     ])
     const cols = (db.prepare('PRAGMA table_info(sources)').all() as { name: string }[]).map((c) => c.name)
     expect(cols).toContain('sqlite_table')

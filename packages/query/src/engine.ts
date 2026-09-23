@@ -340,7 +340,7 @@ function buildWhere(filter: QueryFilter | undefined, now?: () => number): WhereC
 /** Stage 1's projected columns. `duration` and `rep_cost` are always kept in a materialised
  *  fold so one table can serve every stage-2 shape in the scope; the inline CTE keeps them
  *  conditional so a spec that asks for neither emits exactly the SQL it always did. */
-function foldSelectList(reqs: Reqs, withDuration: boolean, withReported: boolean): string {
+function foldSelectList(reqs: Reqs, withDuration: boolean, withReported: boolean, withCredits = false): string {
   const tokenMaxes = TOKEN_FIELDS.map(
     (f) => `MAX(COALESCE(e.${TOKEN_EVENT_COL[f]}, 0)) AS ${TOKEN_METRIC[f]}`,
   ).join(',\n      ')
@@ -348,14 +348,17 @@ function foldSelectList(reqs: Reqs, withDuration: boolean, withReported: boolean
   // reported" distinct from 0 (§8); under request_max it also folds a duplicate row's
   // copy of the same report so it can be counted twice.
   const reportedFold = withReported ? ',\n      MAX(e.cost_reported) AS rep_cost' : ''
+  // §18 rows 1-2: credits fold the same way — a per-request quantity, NULL meaning "this
+  // agent keeps no credit ledger", which no coalesce may turn into a measured 0.
+  const creditsFold = withCredits ? ',\n      MAX(e.credits) AS credits' : ''
   return `SELECT COALESCE(e.agent_id, '') AS agent_key, ${reqs.fold.sql} AS req_key, MAX(e.id) AS rep_id,
-      ${tokenMaxes}${withDuration ? ',\n      MAX(COALESCE(e.duration_ms, 0)) AS duration' : ''}${reportedFold}`
+      ${tokenMaxes}${withDuration ? ',\n      MAX(COALESCE(e.duration_ms, 0)) AS duration' : ''}${reportedFold}${creditsFold}`
 }
 
 /** Stage 1 (§18): one row per (agent, request key), MAX per token column under `request_max`. */
-function dedupStage(reqs: Reqs, withDuration: boolean, withReported: boolean): string {
+function dedupStage(reqs: Reqs, withDuration: boolean, withReported: boolean, withCredits = false): string {
   return `req AS (
-      ${foldSelectList(reqs, withDuration, withReported)}
+      ${foldSelectList(reqs, withDuration, withReported, withCredits)}
       FROM events e
       ${reqs.joinsModels ? 'LEFT JOIN models m ON m.rowid = e.model_rowid' : ''}
       ${reqs.where.sql}
@@ -379,12 +382,12 @@ function materialiseFoldSql(reqs: Reqs, table: string): Prepared {
   // IS NULL to find the requests that reported nothing, and a NULL has to survive the round
   // trip through the temp table exactly as it does in the CTE (a column declared by
   // expression carries no affinity, so a REAL stays the identical REAL and a NULL stays NULL).
-  const foldCols = [...TOKEN_FIELDS.map((f) => TOKEN_METRIC[f]), 'duration', 'rep_cost']
+  const foldCols = [...TOKEN_FIELDS.map((f) => TOKEN_METRIC[f]), 'duration', 'rep_cost', 'credits']
     .map((c) => `r.${c}`)
     .join(', ')
   return {
     sql: `CREATE TEMP TABLE "${table}" AS
-      WITH ${dedupStage(reqs, true, true)}
+      WITH ${dedupStage(reqs, true, true, true)}
       SELECT r.agent_key, r.req_key, r.rep_id, ${foldCols}, ${repCols}
       FROM req r
       JOIN events e ON e.id = r.rep_id`,
@@ -478,6 +481,9 @@ function requestStageQuery(reqs: Reqs): Prepared | null {
       metricSqls.push(`SUM(r.${m}) AS ${m}`)
     } else if (m === 'duration') {
       metricSqls.push('SUM(r.duration) AS duration')
+    } else if (m === 'credits') {
+      // SUM skips NULLs, so an all-NULL group is NULL: no credit economy, not zero credits.
+      metricSqls.push('SUM(r.credits) AS credits')
     } else if (m === 'cost_total') {
       // Only the reported half of the fusion rides the stage-2 SQL; the priced half
       // goes through the (model, day) buckets below, over the rows that reported nothing.
@@ -488,7 +494,7 @@ function requestStageQuery(reqs: Reqs): Prepared | null {
   const { selects, groupBy } = selectClause(reqs, metricSqls, stageSource(reqs))
   const needsModels = dimsNeedModels(reqs.dims)
   return {
-    sql: `${reqs.foldRelation ? '' : `WITH ${dedupStage(reqs, reqs.metrics.includes('duration'), reqs.metrics.includes('cost_total'))}`}
+    sql: `${reqs.foldRelation ? '' : `WITH ${dedupStage(reqs, reqs.metrics.includes('duration'), reqs.metrics.includes('cost_total'), reqs.metrics.includes('credits'))}`}
       SELECT ${selects}
       ${stage2From(reqs, reqs.dims.length > 0, needsModels)}
       ${groupBy}`,
@@ -724,7 +730,8 @@ export function costPortionsByAgent(
  *  buckets. A spec with none of them must never pay for — or create — one. */
 function usesFold(metrics: Metric[]): boolean {
   return metrics.some(
-    (m) => TOKEN_METRIC_NAMES.includes(m) || m === 'duration' || m === 'cost_api_equiv' || m === 'cost_total',
+    (m) =>
+      TOKEN_METRIC_NAMES.includes(m) || m === 'duration' || m === 'credits' || m === 'cost_api_equiv' || m === 'cost_total',
   )
 }
 
@@ -828,6 +835,9 @@ export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): Quer
     const r = ensure(row)
     for (const m of metrics) {
       if (TOKEN_METRIC_NAMES.includes(m) || m === 'duration') r[m] = num(row[m])
+      // Credits keep NULL distinct from 0 on the way out, the way `cost_reported` does: an
+      // agent with no credit ledger has nothing to report, which is not a measurement of 0.
+      if (m === 'credits') r[m] = nullableNum(row[m])
     }
   }
 

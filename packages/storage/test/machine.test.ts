@@ -98,6 +98,7 @@ describe('machine identity (§2)', () => {
       '006_measured_read_paths.sql',
       '007_session_title_index.sql',
       '008_persisted_request_fold.sql',
+      '009_credits_in_the_persisted_fold.sql',
     ])
     expect(existsSync(`${path}.pre-migration-005_machine.bak`)).toBe(true) // §6: backup before migrating real data
     const after = {

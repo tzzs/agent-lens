@@ -142,6 +142,12 @@
                   <dt class="text-xs text-ink-3">{$t('agents.estCost')}</dt>
                   <dd class="mt-0.5 text-lg font-semibold"><CostFigure value={a.metrics.cost_api_equiv ?? null} basis="est" showLabel={false} /></dd>
                 </div>
+                {#if a.metrics.credits !== null && a.metrics.credits !== undefined}
+                  <div class="min-w-0">
+                    <dt class="text-xs text-ink-3">{$t('agents.credits')}</dt>
+                    <dd class="nums mt-0.5 text-lg font-semibold text-ink" title={$t('agents.creditsTitle')}>{formatCompact(num(a.metrics.credits))}</dd>
+                  </div>
+                {/if}
               </dl>
               <p class="mt-3 flex items-center gap-1.5 text-xs text-ink-3">
                 {$t('agents.active')}

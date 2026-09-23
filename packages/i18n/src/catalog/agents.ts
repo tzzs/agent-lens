@@ -46,6 +46,10 @@ const en = {
   events: 'Events',
   tokens: 'Tokens',
   estCost: 'Est. cost',
+  /* §18 rows 1-2: the agent's own credit ledger. Not money, never converted. */
+  credits: 'Plan credits',
+  creditsTitle:
+    'Credits this agent says it burned, from its own usage records (§18). Credits are not dollars and are never converted into them: beside this figure, every $ number is an API-equivalent, not what the plan cost.',
   active: 'Active',
   noDurations: 'No event durations recorded',
   sessionsTitle: '{n, plural, one {{s} session} other {{s} sessions}}',
@@ -113,6 +117,8 @@ const zh = matches(en)({
   events: '事件',
   tokens: 'token 数',
   estCost: '估算成本',
+  credits: '套餐积分',
+  creditsTitle: '该 agent 自报烧掉的积分，数字来自它自己的用量记录（§18）。积分不是美元，也绝不折算成美元：与这个数字并列的每一个 $ 都只是等价 API 价值，不是套餐的实际花费。',
   active: '活跃时长',
   noDurations: '未记录到事件时长',
   sessionsTitle: '{s} 个会话',

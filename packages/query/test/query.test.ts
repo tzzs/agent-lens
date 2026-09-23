@@ -267,6 +267,34 @@ describe('costPortionsByAgent — the priced half of a window a gap NULLs (§8/�
   })
 })
 
+describe('credits — a plan ledger, not dollars (§18 rows 1-2)', () => {
+  const tokens: Usage = { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 }
+  const db = seeded([
+    hexSeed({ agentId: 'qoder', requestId: 'cr1', usage: tokens, credits: 4 }, 'ca'),
+    // The same request logged twice: credits fold per request like every other quantity.
+    hexSeed({ agentId: 'qoder', requestId: 'cr1', usage: tokens, credits: 4, rawSeq: 2 }, 'cb'),
+    hexSeed({ agentId: 'qoder', requestId: 'cr2', usage: tokens, credits: 1.5 }, 'cc'),
+    // An agent with no credit economy writes NULL, and NULL must survive to the reader.
+    hexSeed({ agentId: 'claude-code', requestId: 'cr3', usage: tokens }, 'cd'),
+  ])
+
+  it('folds one number per request, and keeps "no ledger" apart from "burned zero"', () => {
+    const res = query(db, { metrics: ['credits'], dims: ['agent'] }, { priceResolver: resolver })
+    const byAgent = Object.fromEntries(res.rows.map((r) => [r.agent, r.credits]))
+    expect(byAgent.qoder).toBeCloseTo(5.5, 10) // 4 (one request, not two) + 1.5
+    expect(byAgent['claude-code']).toBeNull()
+    expect(res.totals.credits).toBeCloseTo(5.5, 10)
+  })
+
+  it('stays out of the SQL when no caller asks for it', () => {
+    // The metric is opt-in like `duration` and `rep_cost`: a spec that never mentions credits
+    // must not grow a fold column, or every existing query pays for a number it cannot show.
+    const plain = query(db, { metrics: ['tokens_total'], dims: ['agent'] }, { priceResolver: resolver })
+    expect(plain.rows[0]).not.toHaveProperty('credits')
+    expect(plain.rows.length).toBe(2)
+  })
+})
+
 describe('cost via injected priceResolver', () => {
   const usage: Usage = { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 }
   const events = [

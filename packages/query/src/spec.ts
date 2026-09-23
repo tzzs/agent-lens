@@ -16,8 +16,12 @@ export const METRICS = [
   'tokens_reasoning',
   'cost_api_equiv',
   /**
-   * §18 row 1: the cost the AGENT itself logged (OpenCode `session.cost`, WorkBuddy
-   * `session_usage`). A reported cost and an API-equivalent estimate are different facts
+   * §18 row 1: the cost the AGENT itself logged. Which agents that is changes with the store:
+   * measured on the maintainer's machine, OpenCode and pi are the only writers (647 of
+   * 398,667 events, $1.08), while claude-code, codex, qoder and zcode log none at all — so
+   * "reported first" is the rule and "reported at all" is the exception. WorkBuddy declares
+   * `session_usage.cost_columns` and its store is unreadable, so it writes 'none' rather than
+   * inventing a report (§8). A reported cost and an API-equivalent estimate are different facts
    * about different things, so they are separate metrics and are never added together.
    */
   'cost_reported',
@@ -33,6 +37,15 @@ export const METRICS = [
    * price: never $0 (§8).
    */
   'cost_total',
+  /**
+   * §18 rows 1-2: plan credits an agent says it burned (Qoder's accounting). Credits are NOT
+   * dollars — the agent's own usage objects carry no currency — so this never joins a `$`
+   * column, is never converted into one, and is NULL (not 0) for an agent with no credit
+   * economy. It is the only usage signal such an agent writes about itself, and it folds per
+   * request like `cost_reported` does, for the same reason: one number per request, kept
+   * distinct from "zero".
+   */
+  'credits',
 ] as const
 export type Metric = (typeof METRICS)[number]
 
