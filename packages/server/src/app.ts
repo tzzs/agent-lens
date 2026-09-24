@@ -62,7 +62,13 @@ export function createContext(deps: ServerDeps): ServerCtx {
     ...(deps.scan ? { scan: deps.scan } : {}),
     ...(deps.capabilityCatalog ? { capabilityCatalog: deps.capabilityCatalog } : {}),
     ...(deps.adapters ? { adapters: deps.adapters } : {}),
-    ...(deps.dbPath ? { dbPath: redactHome(deps.dbPath, homedir) } : {}),
+    // The REAL path, because `billingConfigPath` and the price-snapshot lookup derive files
+    // from it. It used to be redacted here for `/api/health`'s sake — and since `serve.ts`
+    // hands this same ctx back to `createApp`, that one redaction turned every derived path
+    // into a literal `~/config.json` that exists nowhere: the Settings route then read and
+    // wrote a different file than the cube. Redaction belongs to the response that displays
+    // it, not to the value other code paths are built from.
+    ...(deps.dbPath ? { dbPath: deps.dbPath } : {}),
     homedir,
     cubeDeps: {
       ...(deps.priceResolver ? { priceResolver: deps.priceResolver } : {}),
@@ -127,7 +133,7 @@ export function createApp(deps: ServerDeps): Hono {
     status: 'ok',
     server: SERVER_NAME,
     now: c.now(),
-    dbPath: c.dbPath ?? null,
+    dbPath: c.dbPath ? redactHome(c.dbPath, c.homedir) : null,
     events: Number(rowsOf(c.db, 'SELECT COUNT(*) AS n FROM events')[0]?.n ?? 0),
     sessions: Number(rowsOf(c.db, 'SELECT COUNT(*) AS n FROM sessions')[0]?.n ?? 0),
     migrationsApplied: migrationCount(),

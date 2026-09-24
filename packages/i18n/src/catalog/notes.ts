@@ -19,7 +19,7 @@ const en = {
   noPriceTable:
     'no price table injected — api-equivalent and actual are n/a (§8: an unknown price must never render as $0); cost_total covers only reported slices',
   fusedFormula:
-    'cost_total (cube, §18 row 1) = agent-reported cost where the agent reported one + priced tokens for the never-reported part, NULL when neither; api-equivalent = all tokens x price (per-agent §18 fold), actual = billing mode applied to it (subscription/local real cash is 0). When a window holds a slice no price table covers, the strict figure is NULL and the surfaces fall back to what IS knowable — the priced portion, re-folded per model — which is why the flags say "partial" and the UI prefixes "at least"',
+    'cost_total (cube, §18 row 1) = agent-reported cost where the agent reported one + priced tokens for the never-reported part, NULL when neither; api-equivalent = all tokens x price (per-agent §18 fold), actual = billing mode applied per model, so a metered model inside a plan still costs its tokens, plus the plan\u2019s declared monthly fee prorated over the window (undeclared: only the marginal $0, and it says so). When a window holds a slice no price table covers, the strict figure is NULL and the surfaces fall back to what IS knowable — the priced portion, re-folded per model — which is why the flags say "partial" and the UI prefixes "at least"',
   notDetected: 'not detected on this machine',
   dataRootUnreadable: 'data root is not readable by this process',
   adapterNotInstalled: 'its adapter package is not installed in this build (history stays queryable)',
@@ -49,7 +49,7 @@ const zh = matches(en)({
   noPriceTable:
     '未注入价格表——api-equivalent 与 actual 都显示为未定价（§8：未知的价格绝不能显示成 $0）；cost_total 只覆盖已上报的那部分',
   fusedFormula:
-    'cost_total（立方体，§18 第 1 行）= agent 自己上报的费用（凡上报过的部分）+ 未上报部分按 token 计价，两者都没有时为 NULL；api-equivalent = 全部 tokens × 单价（按 agent 套用 §18 折叠规则），actual = 在其上应用计费模式（订阅制与本地模型的真实现金支出为 0）。当窗口里存在价格表覆盖不到的切片时，严格值就是 NULL，各界面回退到「确实算得出的那部分」——按模型重折一次的已计价量——这就是标记写着 "partial"、界面冠以"至少"的原因',
+    'cost_total（立方体，§18 第 1 行）= agent 自己上报的费用（凡上报过的部分）+ 未上报部分按 token 计价，两者都没有时为 NULL；api-equivalent = 全部 tokens × 单价（按 agent 套用 §18 折叠规则），actual = 按模型分别套用计费模式（套餐里的按量模型仍然要付 token 钱），再加上已声明的套餐月费按当前窗口摊销；没填月费时就只剩边际 $0，并且界面会说明是这种情况。当窗口里存在价格表覆盖不到的切片时，严格值就是 NULL，各界面回退到「确实算得出的那部分」——按模型重折一次的已计价量——这就是标记写着 "partial"、界面冠以"至少"的原因',
   notDetected: '本机未检测到',
   dataRootUnreadable: '本进程读不到该数据目录',
   adapterNotInstalled: '当前构建里没有安装它的 adapter 包（历史数据仍可查询）',

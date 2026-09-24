@@ -9,8 +9,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { billingConfigPath, billingModeFor as resolveMode, liveBillingModes } from '@agentlens/pricing'
-import { createApp } from '../src/app.ts'
-import { harness, type Response_ } from './helpers.ts'
+import { createApp, createContext } from '../src/app.ts'
+import { harness, seedDb, testPriceResolver, type Response_ } from './helpers.ts'
 
 /** POST bodies need a real request: the shared harness only covers bodyless calls. */
 async function put(app: ReturnType<typeof createApp>, path: string, body: unknown): Promise<Response_> {
@@ -281,6 +281,60 @@ describe('§8 per-model declarations and the plan fee', () => {
       expect(ghost.status).toBe(404)
     } finally {
       h.close()
+    }
+  })
+})
+
+describe('§14 the served path reads the declaration file the cube reads', () => {
+  /**
+   * `serve.ts` does `createContext(deps)` and then `createApp(ctx)` — the ctx, not the deps.
+   * `harness()` above hands `createApp` a fresh deps object, so it cannot see that shape at
+   * all, and for a long time neither could anything else: `ctx.dbPath` was redacted for
+   * `/api/health`, and re-entering createContext turned every path derived from it into a
+   * literal `~/config.json` that exists nowhere. The page then wrote a declaration the cost
+   * figures never read. This is the only test that round-trips a ctx the way the server does.
+   */
+  it('answers the settings route from the same config.json the cost view folds with', async () => {
+    const seeded = seedDb()
+    // A home that really contains the DB: the default `~/.agentlens/agentlens.db` is exactly
+    // this shape, which is why the redaction bit users and not only this test.
+    const home = mkdtempSync(join(tmp, 'served-home-'))
+    const dbPath = join(home, 'agentlens.db')
+    writeFileSync(
+      billingConfigPath(dbPath),
+      JSON.stringify({
+        billing: { 'claude-code': { mode: 'subscription', planUsdPerMonth: 20, models: { 'anthropic/test-model': 'api' } } },
+      }),
+      'utf8',
+    )
+    const ctx = createContext({
+      db: seeded.db,
+      dbPath,
+      // The fixture's own clock: `since=30d` below must still contain its rows.
+      now: () => 1_700_000_100_000,
+      priceResolver: testPriceResolver,
+      homedir: home,
+    })
+    const app = createApp(ctx)
+    try {
+      const res = await app.request('/api/settings/billing')
+      const body = (await res.json()) as { modes: Record<string, unknown>; configFile: string }
+      expect(body.modes).toEqual({
+        'claude-code': { mode: 'subscription', planUsdPerMonth: 20, models: { 'anthropic/test-model': 'api' } },
+      })
+      // The route still shows the redacted form: the fix moves redaction to the response,
+      // it does not leak a home-directory path to a client.
+      expect(body.configFile.startsWith('~')).toBe(true)
+      expect(body.configFile).not.toBe(billingConfigPath(dbPath))
+      // The money agrees with the page, which is the whole §14 promise.
+      const agents = (await (await app.request('/api/agents?since=30d')).json()) as {
+        cost: { perAgent: { agentId: string; planCostUsd: number | null; mixedBilling: boolean }[] }
+      }
+      const slice = agents.cost.perAgent.find((s) => s.agentId === 'claude-code')
+      expect(slice?.mixedBilling).toBe(true)
+      expect(slice?.planCostUsd).not.toBeNull()
+    } finally {
+      seeded.close()
     }
   })
 })
