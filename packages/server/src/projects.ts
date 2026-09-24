@@ -6,7 +6,6 @@
  */
 import { query } from '@agentlens/query'
 import type { ServerCtx } from './types.ts'
-import { costView } from './cost.ts'
 import { metricFields, METRICS } from './metrics.ts'
 import { parseFilter, strParam } from './request-spec.ts'
 import { projectLabelMap, redactHome, rowsOf } from './resolve.ts'
@@ -33,7 +32,6 @@ export interface ProjectsResponse {
   rows: ProjectRow[]
   totals: Record<string, number | null>
   truncated: boolean
-  cost: ReturnType<typeof costView>
   noteCode: ProjectNoteCode
 }
 
@@ -134,7 +132,6 @@ export function projects(ctx: ServerCtx, sp: URLSearchParams): ProjectsResponse 
     rows,
     totals: top.totals,
     truncated: top.truncated,
-    cost: costView(ctx, filter),
     noteCode: 'canonicalRootFold',
   }
 }

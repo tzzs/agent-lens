@@ -466,7 +466,6 @@ export interface ProjectsResponse {
   rows: ProjectRow[]
   totals: Record<string, number | null>
   truncated: boolean
-  cost: CostView
   noteCode: ProjectNoteCode
 }
 
