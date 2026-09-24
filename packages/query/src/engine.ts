@@ -503,20 +503,29 @@ function requestStageQuery(reqs: Reqs): Prepared | null {
   }
 }
 
-/** Request stage grouped additionally by (agent, provider, model, day) so cost is
- *  derived from the DEDUPED totals per (model, date) via the injected price table (§8).
- *  `unreportedOnly` restricts the buckets to request rows whose agent reported nothing:
- *  the priced half of the §18 row 1 fusion, so a report is never priced on top of itself. */
-function costBucketsQuery(reqs: Reqs, unreportedOnly = false): Prepared | null {
-  if (unreportedOnly ? !reqs.metrics.includes('cost_total') : !reqs.metrics.includes('cost_api_equiv')) return null
+/**
+ * Request stage grouped additionally by (agent, provider, model, day, reported?) so cost is
+ * derived from the DEDUPED totals per (model, date) via the injected price table (§8).
+ *
+ * The reported flag is a GROUP BY column rather than a WHERE filter, which is what lets ONE
+ * read serve both halves §18 row 1 needs: `cost_api_equiv` folds every bucket, the fusion's
+ * priced half folds only the buckets whose agent reported nothing (so a report is never
+ * priced on top of itself). Splitting them into two statements priced the same rows twice —
+ * four passes for every `costView` — and folding the two halves out of one row set is the
+ * same arithmetic, because pricing is linear in tokens (pinned by
+ * `test/cost-bucket-linearity.test.ts`).
+ */
+function costBucketsQuery(reqs: Reqs): Prepared | null {
+  if (!reqs.metrics.includes('cost_api_equiv') && !reqs.metrics.includes('cost_total')) return null
   const src = stageSource(reqs)
   const D = dimFor(src)
-  const bucketNames = ['b_agent', 'b_provider', 'b_model', 'b_day']
+  const bucketNames = ['b_agent', 'b_provider', 'b_model', 'b_day', 'b_unreported']
   const bucketSqls = [
     `COALESCE(${src.rep}.agent_id, '') AS b_agent`,
     "COALESCE(m.provider, '') AS b_provider",
     "COALESCE(m.name, '') AS b_model",
     `${D.day} AS b_day`,
+    `CASE WHEN r.rep_cost IS NULL THEN 1 ELSE 0 END AS b_unreported`,
   ]
   const tokenSums = TOKEN_FIELDS.map((f) => `SUM(r.${TOKEN_METRIC[f]}) AS ${TOKEN_METRIC[f]}`).join(', ')
   const dimPart =
@@ -527,10 +536,9 @@ function costBucketsQuery(reqs: Reqs, unreportedOnly = false): Prepared | null {
   const groupStart = reqs.dims.length
   const bucketGroup = bucketNames.map((_, i) => groupStart + i + 1).join(', ')
   return {
-    sql: `${reqs.foldRelation ? '' : `WITH ${dedupStage(reqs, reqs.metrics.includes('duration'), unreportedOnly)}`}
+    sql: `${reqs.foldRelation ? '' : `WITH ${dedupStage(reqs, reqs.metrics.includes('duration'), true)}`}
       SELECT ${dimPart}${bucketSqls.join(', ')}, ${tokenSums}
       ${stage2From(reqs, true, true)}
-      ${unreportedOnly ? 'WHERE r.rep_cost IS NULL' : ''}
       GROUP BY ${dimGroup}${bucketGroup}`,
     params: stageParams(reqs),
   }
@@ -626,10 +634,12 @@ function totalTokens(u: ReturnType<typeof usageOf>): number {
  * price table can hold, because the day pricing grows a non-linear tier the merge stops
  * being free and this file has to be told.
  */
-function readBuckets(db: DatabaseSync, reqs: Reqs, unreportedOnly: boolean): Row[] | null {
-  const cq = costBucketsQuery(reqs, unreportedOnly)
+function readBuckets(db: DatabaseSync, reqs: Reqs): Row[] | null {
+  const cq = costBucketsQuery(reqs)
   if (!cq) return null
   foldServed.costBuckets++
+  const site = `${reqs.dims.join('+') || '(none)'} | ${reqs.metrics.join(',')}`
+  foldServed.costBucketSites[site] = (foldServed.costBucketSites[site] ?? 0) + 1
   return runPrepared(db, cq)
 }
 
@@ -644,13 +654,19 @@ function mergeBucketsOverDims(rows: Row[], dims: Dim[]): Row[] {
   const merged: Row[] = []
   const index = new Map<string, Row>()
   for (const r of rows) {
-    const key = JSON.stringify([r.b_agent, r.b_provider, r.b_model, r.b_day])
+    const key = JSON.stringify([r.b_agent, r.b_provider, r.b_model, r.b_day, r.b_unreported])
     const seen = index.get(key)
     if (seen) {
       for (const f of BUCKET_TOKEN_COLUMNS) seen[f] = num(seen[f]) + num(r[f])
       continue
     }
-    const copy: Row = { b_agent: r.b_agent, b_provider: r.b_provider, b_model: r.b_model, b_day: r.b_day }
+    const copy: Row = {
+      b_agent: r.b_agent,
+      b_provider: r.b_provider,
+      b_model: r.b_model,
+      b_day: r.b_day,
+      b_unreported: r.b_unreported,
+    }
     for (const f of BUCKET_TOKEN_COLUMNS) copy[f] = r[f]
     index.set(key, copy)
     merged.push(copy)
@@ -658,20 +674,31 @@ function mergeBucketsOverDims(rows: Row[], dims: Dim[]): Row[] {
   return merged
 }
 
-/** Prices every deduped bucket and folds one cost field up into one accumulator per dim-key
- *  ('' key = grand total). `field` is what makes §8's two numbers separable:
- *  `apiEquivalentUsd` is the API-equivalent view, `actualUsd` is the cash a declared billing
- *  mode really costs. Pure over the rows it is handed: the read is `readBuckets`'s job. */
-function priceBucketRows(
+/** NULL dominates, never $0 (§8: an unknown price must not read as free). */
+function nullDominant(prev: number | null | undefined, next: number | null): number | null {
+  return prev === null || next === null ? null : (prev ?? 0) + next
+}
+
+/**
+ * Both cost folds a call needs, out of ONE bucket read: `api` is §8's API-equivalent view over
+ * every bucket, `unreportedCash` is the priced half of §18 row 1 over only the buckets whose
+ * agent reported nothing. Each key is the caller's dim tuple, so the group-level numbers are
+ * the same arithmetic the two separate statements used to produce — one row set, one pass over
+ * the price table, and no report priced on top of itself.
+ *
+ * Without an injected price table the API view is not computed at all (the caller leaves it
+ * null), but the fusion still has to learn that an unreported slice is UNPRICEABLE, which is a
+ * gap and not a zero — so it resolves through a table that finds nothing (§8).
+ */
+function foldBuckets(
   rows: Row[],
   dims: Dim[],
   deps: QueryDeps,
-  field: 'apiEquivalentUsd' | 'actualUsd',
-): Map<string, number | null> {
-  const priceResolver = deps.priceResolver
+): { api: Map<string, number | null>; unreportedCash: Map<string, number | null> } {
+  const api = new Map<string, number | null>()
+  const unreportedCash = new Map<string, number | null>()
+  const priceResolver = deps.priceResolver ?? (() => null)
   const billingModeFor = deps.billingModeFor ?? (() => 'api' as BillingMode)
-  const costs = new Map<string, number | null>()
-  if (!priceResolver) return costs
   for (const row of rows) {
     const usage = usageOf(row)
     if (totalTokens(usage) === 0) continue // zero-token rows must not manufacture price gaps
@@ -683,20 +710,10 @@ function priceBucketRows(
       billingModeFor(String(row.b_agent), String(row.b_provider), String(row.b_model)),
     )
     const key = rowKey(row, dims)
-    const priced = cost[field]
-    // NULL dominates, never $0 (§8: unknown price must not read as free).
-    costs.set(key, costs.get(key) === null || priced === null ? null : (costs.get(key) ?? 0) + priced)
+    if (deps.priceResolver) api.set(key, nullDominant(api.get(key), cost.apiEquivalentUsd))
+    if (num(row.b_unreported) === 1) unreportedCash.set(key, nullDominant(unreportedCash.get(key), cost.actualUsd))
   }
-  return costs
-}
-
-/** The priced half of the fusion over rows that reported nothing, priced as CASH: what a
- *  request actually costs follows the declared billing mode (§8), while `cost_api_equiv`
- *  keeps showing the API-equivalent value of the same tokens. Without an injected
- *  price table an unreported token slice is simply unpriceable, so resolve it through a
- *  resolver that finds no price: the gap rule turns it into NULL instead of a silent drop. */
-function unreportedPriced(buckets: Row[], dims: Dim[], deps: QueryDeps): Map<string, number | null> {
-  return priceBucketRows(buckets, dims, { ...deps, priceResolver: deps.priceResolver ?? (() => null) }, 'actualUsd')
+  return { api, unreportedCash }
 }
 
 /**
@@ -818,12 +835,17 @@ export interface FoldPassCounters {
    * cost column it asks for, which is the number to watch when a route grows another.
    */
   costBuckets: number
+  /**
+   * Where those passes came from, keyed by `dims|metrics|u=<unreported-half>`. The count says
+   * a page is slow; this says which call to fix, and it costs one string per pass.
+   */
+  costBucketSites: Record<string, number>
 }
 
-const foldServed: FoldPassCounters = { inline: 0, materialised: 0, persisted: 0, costBuckets: 0 }
+const foldServed: FoldPassCounters = { inline: 0, materialised: 0, persisted: 0, costBuckets: 0, costBucketSites: {} }
 
 export function foldPasses(): FoldPassCounters {
-  return { ...foldServed }
+  return { ...foldServed, costBucketSites: { ...foldServed.costBucketSites } }
 }
 
 export function resetFoldPasses(): void {
@@ -831,6 +853,7 @@ export function resetFoldPasses(): void {
   foldServed.materialised = 0
   foldServed.persisted = 0
   foldServed.costBuckets = 0
+  foldServed.costBucketSites = {}
 }
 
 export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): QueryResult {
@@ -914,12 +937,14 @@ export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): Quer
   // One bucket read per cost metric, shared with the totals below: the totals are the same
   // buckets with the caller's dims merged away, and re-running the statement for a coarser
   // grouping of rows already in hand is the doubling this replaced.
-  const pricedBuckets = metrics.includes('cost_api_equiv') && deps?.priceResolver ? readBuckets(db, reqs, false) : null
-  const unreportedBuckets = metrics.includes('cost_total') ? readBuckets(db, reqs, true) : null
+  const buckets =
+    (metrics.includes('cost_api_equiv') && deps?.priceResolver) || metrics.includes('cost_total')
+      ? readBuckets(db, reqs)
+      : null
+  const folded = buckets ? foldBuckets(buckets, dims, deps ?? {}) : null
 
-  if (pricedBuckets) {
-    const costs = priceBucketRows(pricedBuckets, dims, deps ?? {}, 'apiEquivalentUsd')
-    for (const [key, api] of costs) {
+  if (folded && metrics.includes('cost_api_equiv') && deps?.priceResolver) {
+    for (const [key, api] of folded.api) {
       const row = merged.get(key)
       if (row) row.cost_api_equiv = api
     }
@@ -927,7 +952,7 @@ export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): Quer
 
   // Fusion last so both halves read the same stage-1 fold; keys are still raw dim values.
   if (metrics.includes('cost_total')) {
-    const priced = unreportedPriced(unreportedBuckets ?? [], dims, deps ?? {})
+    const priced = folded?.unreportedCash ?? new Map<string, number | null>()
     const reportedByDim = new Map<string, number | null>()
     for (const row of tokenRows) reportedByDim.set(rowKey(row, dims), nullableNum(row.reported_folded))
     for (const [key, r] of merged) r.cost_total = fuseCost(reportedByDim.get(key) ?? null, priced.get(key))
@@ -956,7 +981,7 @@ export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): Quer
   }
 
   const columns = [...dims, ...metrics]
-  const totals = spec.totals === false ? {} : computeTotals(db, reqs, deps, { priced: pricedBuckets, unreported: unreportedBuckets })
+  const totals = spec.totals === false ? {} : computeTotals(db, reqs, deps, buckets)
   return { rows, columns, totals, truncated }
 }
 
@@ -971,7 +996,7 @@ function computeTotals(
   db: DatabaseSync,
   reqs: Reqs,
   deps: QueryDeps | undefined,
-  buckets: { priced: Row[] | null; unreported: Row[] | null },
+  buckets: Row[] | null,
 ): Record<string, number | null> {
   const totalsReq: Reqs = { ...reqs, dims: [] }
   const totals: Record<string, number | null> = {}
@@ -986,13 +1011,16 @@ function computeTotals(
     else if (m === 'cost_total') totals.cost_total = null // filled from the fusion below
     else totals[m] = num(tk[m])
   }
-  if (reqs.metrics.includes('cost_api_equiv') && deps?.priceResolver && buckets.priced) {
-    const costs = priceBucketRows(mergeBucketsOverDims(buckets.priced, reqs.dims), [], deps, 'apiEquivalentUsd')
-    totals.cost_api_equiv = costs.get('[]') ?? null
-  }
-  if (reqs.metrics.includes('cost_total') && buckets.unreported) {
-    const priced = unreportedPriced(mergeBucketsOverDims(buckets.unreported, reqs.dims), [], deps ?? {})
-    totals.cost_total = fuseCost(nullableNum(tk.reported_folded), priced.get('[]'))
+  if (buckets) {
+    // The totals are the same buckets with the caller's dims merged away, folded by the same
+    // `foldBuckets` the rows used — never a second read.
+    const folded = foldBuckets(mergeBucketsOverDims(buckets, reqs.dims), [], deps ?? {})
+    if (reqs.metrics.includes('cost_api_equiv') && deps?.priceResolver) {
+      totals.cost_api_equiv = folded.api.get('[]') ?? null
+    }
+    if (reqs.metrics.includes('cost_total')) {
+      totals.cost_total = fuseCost(nullableNum(tk.reported_folded), folded.unreportedCash.get('[]'))
+    }
   }
   return totals
 }

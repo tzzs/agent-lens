@@ -130,10 +130,10 @@ describe('a cost read prices one bucket pass, however many grains ask for it (§
     const deps: QueryDeps = { priceResolver: priced, billingModeFor: () => 'api' }
     resetFoldPasses()
     query(db, { metrics: [...COST_METRICS], dims: ['project'] }, deps)
-    expect(foldPasses().costBuckets, 'api-equiv + the unreported half, once each').toBe(2)
+    expect(foldPasses().costBuckets, 'both cost halves come out of one bucket read').toBe(1)
     resetFoldPasses()
     query(db, { metrics: [...COST_METRICS], dims: ['project', 'model'] }, deps)
-    expect(foldPasses().costBuckets, 'a finer grain costs no extra pass').toBe(2)
+    expect(foldPasses().costBuckets, 'a finer grain costs no extra pass').toBe(1)
     db.close()
   })
 })

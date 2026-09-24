@@ -8,9 +8,12 @@
  * route that grows one has to say why here.
  *
  * The counts are asserted, not printed, because a number nobody has to defend drifts. They
- * were re-measured after the totals stopped re-pricing the buckets the rows already had
- * (`projects` 3 → 2, `agents` 7 → 6, `models` 6 → 5, `sessions` 2 → 1): a call that asks for
- * rows AND totals now prices once, while a call that asks only rows always did.
+ * were re-measured twice over: first when the totals stopped re-pricing the buckets the rows
+ * already had (`projects` 3 → 2, `agents` 7 → 6, `models` 6 → 5, `sessions` 2 → 1), then when
+ * one read started serving both cost halves instead of one apiece (`overview` 8 → 6,
+ * `agents` 6 → 4, `models` 5 → 3, `doctor` 4 → 2). What is left is one priced pass per
+ * cost-asking read — the count a route grows by when it adds a cost column, which is the
+ * point of writing the numbers down.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { foldPasses, resetFoldPasses } from '@agentlens/query'
@@ -18,10 +21,10 @@ import { harness } from './helpers.ts'
 
 const CASES: [string, number, number][] = [
   // route, stage-2 reads, priced bucket passes
-  ['/api/overview?since=30d', 9, 8],
+  ['/api/overview?since=30d', 9, 6],
   ['/api/projects?since=30d', 3, 2],
-  ['/api/agents?since=30d', 4, 6],
-  ['/api/models?since=30d', 3, 5],
+  ['/api/agents?since=30d', 4, 4],
+  ['/api/models?since=30d', 3, 3],
   ['/api/sessions?since=30d', 1, 1],
   ['/api/capabilities?since=30d', 2, 2],
 ]
