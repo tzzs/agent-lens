@@ -63,20 +63,48 @@
     subscription: $t('settings.modeSubscription'),
     local: $t('settings.modeLocal'),
   })
+  // One pill shape for the default, the per-model overrides and the fee submit, so the three
+  // controls that answer the same question do not look like three different questions.
+  const MODE_SELECT =
+    'h-7 shrink-0 rounded-full bg-hover-2/70 px-3 text-xs text-ink outline-none hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50'
   const agentLabel = (a: BillingAgentRow): string => a.displayName || a.agentId
   let saving = $state<Record<string, boolean>>({})
+  /** Which agents show their per-model rows. Disclosure only — the modes come from the server. */
+  let openModels = $state<Record<string, boolean>>({})
   /** The write's own reply, kept as its parts so the wording is the viewer's. */
-  let billingNote = $state<{ agent: string; mode: string; cleared: boolean } | null>(null)
+  let billingNote = $state<{ agent: string; mode: string; cleared: boolean; model?: string } | null>(null)
   let billingError = $state<string | null>(null)
 
-  async function declare(agentId: string, value: string): Promise<void> {
+  /** One submit path for all three writes, so a row can never hold a value the server refused. */
+  async function declare(
+    agentId: string,
+    value: string,
+    target: { model?: string; fee?: boolean } = {},
+  ): Promise<void> {
+    // Uncontrolled inputs answer with strings; '' and a non-number are the two ways a fee
+    // write means "undeclare", and the mode select means it with ''.
     const mode = value === '' ? null : (value as BillingMode)
+    const fee = target.fee ? (value.trim() === '' ? null : Number(value)) : undefined
+    if (fee !== undefined && fee !== null && !Number.isFinite(fee)) {
+      billingError = $t('settings.feeNotNumber')
+      return
+    }
     saving[agentId] = true
     billingNote = null
     billingError = null
     try {
-      const res = await api.setBilling({ agent: agentId, mode })
-      billingNote = { agent: res.agent, mode: res.mode, cleared: mode === null }
+      const body = target.fee
+        ? { agent: agentId, planUsdPerMonth: fee }
+        : target.model
+          ? { agent: agentId, model: target.model, mode }
+          : { agent: agentId, mode }
+      const res = await api.setBilling(body)
+      billingNote = {
+        agent: res.agent,
+        mode: target.model ? res.model?.mode ?? mode ?? 'api' : res.mode,
+        cleared: target.fee ? fee === null : mode === null,
+        ...(target.model ? { model: target.model } : {}),
+      }
     } catch (err) {
       billingError = err instanceof Error ? err.message : String(err)
     } finally {
@@ -234,28 +262,99 @@
           <div class="mb-3"><Alert tone="red" title={$t('settings.declRejected')}>{billingError}</Alert></div>
         {/if}
         {#if billingNote}
-          <div class="mb-3"><Alert tone="accent" title={$t('settings.saved')}>{$t('settings.savedNote', { values: { agent: billingNote.agent, mode: billingNote.mode } })}{billingNote.cleared ? ` ${$t('settings.clearedTail')}` : ''}</Alert></div>
+          <div class="mb-3"><Alert tone="accent" title={$t('settings.saved')}>{billingNote.model ? $t('settings.savedModelNote', { values: { agent: billingNote.agent, model: billingNote.model } }) : $t('settings.savedNote', { values: { agent: billingNote.agent, mode: billingNote.mode } })}{billingNote.cleared ? ` ${$t('settings.clearedTail')}` : ''}</Alert></div>
         {/if}
         {#if b}
           <ul class="text-[13px]">
             {#each b.agents as a (a.agentId)}
-              <li class="flex items-center justify-between gap-3 border-b border-line-soft py-2 last:border-0">
-                <div class="min-w-0">
-                  <span class="font-medium text-ink" title={a.agentId}>{agentLabel(a)}</span>
-                  <span class="ml-2 text-xs text-ink-3">{a.declared ? $t('settings.declared') : $t('settings.defaultMode')}</span>
+              <li class="border-b border-line-soft py-2 last:border-0">
+                <div class="flex items-center justify-between gap-3">
+                  <div class="flex min-w-0 items-baseline gap-2">
+                    <span class="font-medium text-ink" title={a.agentId}>{agentLabel(a)}</span>
+                    <span class="text-xs text-ink-3">{a.declared ? $t('settings.declared') : $t('settings.defaultMode')}</span>
+                  </div>
+                  <div class="flex shrink-0 items-center gap-2">
+                    {#if a.models.length}
+                      <button
+                        class="text-xs text-ink-3 underline decoration-dotted underline-offset-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-accent"
+                        aria-expanded={openModels[a.agentId] === true}
+                        onclick={() => (openModels[a.agentId] = !(openModels[a.agentId] ?? false))}
+                      >
+                        {$t('settings.modelsCount', { values: { n: a.models.length, overridden: a.models.filter((m) => m.overridden).length } })}
+                      </button>
+                    {/if}
+                    <select
+                      class={MODE_SELECT}
+                      aria-label={$t('settings.billingModeAria', { values: { agent: a.agentId } })}
+                      value={a.billingMode}
+                      disabled={saving[a.agentId] === true}
+                      onchange={(e) => void declare(a.agentId, e.currentTarget.value)}
+                    >
+                      {#each BILLING_MODES as m (m)}
+                        <option value={m}>{MODE_LABEL[m]}</option>
+                      {/each}
+                      <option value="">{$t('settings.notDeclared')}</option>
+                    </select>
+                  </div>
                 </div>
-                <select
-                  class="h-7 shrink-0 rounded-full bg-hover-2/70 px-3 text-xs text-ink outline-none hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50"
-                  aria-label={$t('settings.billingModeAria', { values: { agent: a.agentId } })}
-                  value={a.billingMode}
-                  disabled={saving[a.agentId] === true}
-                  onchange={(e) => void declare(a.agentId, e.currentTarget.value)}
-                >
-                  {#each BILLING_MODES as m (m)}
-                    <option value={m}>{MODE_LABEL[m]}</option>
-                  {/each}
-                  <option value="">{$t('settings.notDeclared')}</option>
-                </select>
+
+                {#if a.billingMode === 'subscription' || a.models.some((m) => m.effectiveMode === 'subscription')}
+                  <!-- The fee is the only way a plan stops reading as free: without it the
+                       cash figure stays at its true marginal $0 and says so. -->
+                  <form
+                    class="mt-2 flex items-center gap-2"
+                    onsubmit={(e) => {
+                      e.preventDefault()
+                      const input = new FormData(e.currentTarget).get('fee')
+                      void declare(a.agentId, String(input ?? ''), { fee: true })
+                    }}
+                  >
+                    <label class="text-xs text-ink-3" for="fee-{a.agentId}">{$t('settings.planFee')}</label>
+                    <input
+                      id="fee-{a.agentId}"
+                      class="h-7 w-24 rounded-full border border-line bg-transparent px-3 text-xs text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent"
+                      name="fee"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={a.planUsdPerMonth ?? ''}
+                      disabled={saving[a.agentId] === true}
+                    />
+                    <span class="text-xs text-ink-3">{$t('settings.perMonth')}</span>
+                    <button class={MODE_SELECT} type="submit" disabled={saving[a.agentId] === true}>
+                      {$t('settings.saveFee')}
+                    </button>
+                    {#if a.planUsdPerMonth === null}
+                      <span class="text-xs text-ink-3">{$t('settings.feeUnknownHint')}</span>
+                    {/if}
+                  </form>
+                {/if}
+
+                {#if openModels[a.agentId] && a.models.length}
+                  <ul class="mt-2 space-y-1 rounded-md bg-hover-2/40 p-2">
+                    {#each a.models as m (m.key)}
+                      <li class="flex items-center justify-between gap-3">
+                        <span class="min-w-0 truncate text-xs text-ink-2" title={m.key}>
+                          {m.model}
+                          {#if m.overridden}<span class="ml-1 text-ink-3">{$t('settings.modelOverridden')}</span>{/if}
+                        </span>
+                        <select
+                          class={MODE_SELECT}
+                          aria-label={$t('settings.billingModelAria', { values: { agent: a.agentId, model: m.key } })}
+                          value={m.overridden ? m.effectiveMode : ''}
+                          disabled={saving[a.agentId] === true}
+                          onchange={(e) => void declare(a.agentId, e.currentTarget.value, { model: m.key })}
+                        >
+                          <option value="">{$t('settings.inheritAgent', { values: { mode: MODE_LABEL[a.billingMode] } })}</option>
+                          {#each BILLING_MODES as mode (mode)}
+                            <option value={mode}>{MODE_LABEL[mode]}</option>
+                          {/each}
+                        </select>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
               </li>
             {/each}
           </ul>

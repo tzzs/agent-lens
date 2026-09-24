@@ -27,7 +27,8 @@ const en = {
   agentReported: 'Agent-reported',
   noPricing: 'No price table — cost is {na}.',
   noPriceFor: 'No price for {agents}',
-  noPriceForTitle: "These agents' tokens are excluded from the totals, which are therefore a floor.",
+  noPriceForTitle:
+    'The tokens these agents spent on models with no price are left out of the totals, which are therefore a floor — the priced part of the same window is still counted.',
   noPrice: 'no price',
 
   // Sessions and events cards
@@ -88,7 +89,7 @@ const zh = matches(en)({
   agentReported: 'agent 上报',
   noPricing: '没有价格表——费用只能显示为{na}。',
   noPriceFor: '{agents} 无价格',
-  noPriceForTitle: '这些 agent 的 token 未计入合计，因此合计只是一个下限。',
+  noPriceForTitle: '这些 agent 花在「没有价格的模型」上的 token 未计入合计，因此合计只是一个下限——同一窗口里能计价的部分仍然算在内。',
   noPrice: '无价格',
 
   sessions: '会话',

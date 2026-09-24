@@ -48,6 +48,8 @@ export interface RunningServer {
   host: string
   url: string
   ctx: ServerCtx
+  /** Resolves once the socket is listening; rejects with the bind error. Await before announcing `url`. */
+  ready: () => Promise<void>
   close: () => Promise<void>
 }
 
@@ -99,12 +101,20 @@ export function startServer(options: StartOptions = {}): RunningServer {
   // `serve()` returns before the socket is listening, and closing a server that never
   // listened wedges it permanently (`Server is not running.` on every later close). A
   // SIGINT in the first tick would take down `agl --serve` that way, so `close` waits
-  // for the bind — or for its error, which surfaces from `server.close` as usual.
+  // for the bind — and `ready()` below waits for it too, instead of resolving the failure
+  // into silence: a server that never bound answers nothing, while the port still answers
+  // for whoever owns it. A caller that printed the URL anyway sends the user to that other
+  // process's data — measured, not hypothetical: this repo's own browser check read four
+  // models out of a stranger AgentLens instance and looked like a pass.
+  let bindFailure: Error | null = null
   const bound = new Promise<void>((resolve) => {
     if (server.listening) resolve()
     else {
       server.once('listening', () => resolve())
-      server.once('error', () => resolve())
+      server.once('error', (err) => {
+        bindFailure = err instanceof Error ? err : new Error(String(err))
+        resolve()
+      })
     }
   })
   const url = `http://${host}:${port}`
@@ -113,9 +123,18 @@ export function startServer(options: StartOptions = {}): RunningServer {
     host,
     url,
     ctx,
+    /** Await this before announcing `url`; rejects with the bind error (EADDRINUSE, EACCES). */
+    ready: async () => {
+      await bound
+      if (bindFailure) throw bindFailure
+    },
     close: async () => {
       await bound
-      await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())))
+      // A socket that never bound has nothing to close, and asking it to close rejects with
+      // `ERR_SERVER_NOT_RUNNING` — the wedge the note above is about, now on the cleanup path.
+      if (!bindFailure) {
+        await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())))
+      }
       if (ownsDb) db.close()
     },
   }

@@ -35,9 +35,14 @@ const en = {
   billingLocal: 'Local',
   billingApiNote: 'billed per token, so est. cost is the cash figure',
   billingSubscriptionNote:
-    'flat plan: actual cash is $0, while est. cost prices the same tokens as an API call',
+    'flat plan: the tokens add no cash, and actual cash carries the monthly fee declared in Settings (prorated over this window)',
   billingLocalNote:
     'nothing bills per token: actual cash is $0, while est. cost prices the same tokens as an API call (§8)',
+  /* The agent-level label is only a DEFAULT once a model overrides it; naming one mode then
+     would promise a plan costs nothing on a card whose usage also bills per token. */
+  billingMixedSuffix: ' (mixed)',
+  billingMixedNote:
+    'default, and one of its models bills differently — actual cash adds the two, per model. See Settings › Billing modes',
   billingFallbackNote: 'est. cost is the API equivalent',
   billingTitle: 'Billing mode these figures use — declare it in Settings › Billing modes. {note}',
 
@@ -46,6 +51,10 @@ const en = {
   events: 'Events',
   tokens: 'Tokens',
   estCost: 'Est. cost',
+  /* §18 rows 1-2: the agent's own credit ledger. Not money, never converted. */
+  credits: 'Plan credits',
+  creditsTitle:
+    'Credits this agent says it burned, from its own usage records (§18). Credits are not dollars and are never converted into them: beside this figure, every $ number is an API-equivalent, not what the plan cost.',
   active: 'Active',
   noDurations: 'No event durations recorded',
   sessionsTitle: '{n, plural, one {{s} session} other {{s} sessions}}',
@@ -104,8 +113,10 @@ const zh = matches(en)({
   billingSubscription: '订阅制',
   billingLocal: '本地',
   billingApiNote: '按 token 计费，因此估算成本就是现金支出',
-  billingSubscriptionNote: '固定套餐：实际现金支出为 $0，而估算成本按同样的 tokens 调用 API 的价格计',
+  billingSubscriptionNote: '固定套餐：这些 token 不额外产生现金，实际现金支出计入“设置”里声明的月费（按当前时间窗摊销）',
   billingLocalNote: '没有任何东西按 token 计费：实际现金支出为 $0，而估算成本按同样的 tokens 调用 API 的价格计（§8）',
+  billingMixedSuffix: '（混合）',
+  billingMixedNote: '默认方式，且它有一个模型按别的方式计费——实际现金按模型分别相加。请到“设置 › 计费模式”查看',
   billingFallbackNote: '估算成本为其 API 等价金额',
   billingTitle: '这些数字所用的计费模式——请在“设置 › 计费模式”中声明。{note}',
 
@@ -113,6 +124,8 @@ const zh = matches(en)({
   events: '事件',
   tokens: 'token 数',
   estCost: '估算成本',
+  credits: '套餐积分',
+  creditsTitle: '该 agent 自报烧掉的积分，数字来自它自己的用量记录（§18）。积分不是美元，也绝不折算成美元：与这个数字并列的每一个 $ 都只是等价 API 价值，不是套餐的实际花费。',
   active: '活跃时长',
   noDurations: '未记录到事件时长',
   sessionsTitle: '{s} 个会话',

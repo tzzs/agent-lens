@@ -1,20 +1,62 @@
-import { normalizeLitellmEntries, type PriceSnapshot } from './snapshot.ts'
+import { normalizeLitellmEntries, normalizeOpenRouterEntries, type OpenRouterSnapshot, type PriceSnapshot } from './snapshot.ts'
 import type { PriceEntry } from './price-types.ts'
 
 /**
  * Keys agents put in logs are messier than litellm ids: bracket forms
  * (`claude-opus-4-8[1m]`) and tier suffixes (`gpt-5:low`). Strip them for
  * matching; the raw `entry.model` is kept for display.
+ *
+ * Both passes are scans rather than regexes: `/\[[^\]]*\]/g` and `/[:@].*$/` each restart
+ * their inner run at every candidate position, so each costs quadratic time on a name made
+ * mostly of that character, and CodeQL flagged both as high-severity findings on untrusted
+ * input. That input stopped being hypothetical with the fallback source -- model ids now
+ * also arrive from a fetched price list, which this table cannot trust the way it trusts
+ * this machine's own logs.
  */
 export function normalizeModelName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/\[[^\]]*\]/g, '')
-    .replace(/[:@].*$/, '')
-    .trim()
+  const lowered = name.toLowerCase()
+  let stripped = ''
+  let i = 0
+  while (i < lowered.length) {
+    const ch = lowered[i]!
+    if (ch === '[') {
+      const close = lowered.indexOf(']', i + 1)
+      if (close === -1) {
+        stripped += lowered.slice(i) // an unclosed `[` is not a tier marker; keep it verbatim
+        break
+      }
+      i = close + 1
+      continue
+    }
+    stripped += ch
+    i++
+  }
+  // Cut in a second pass, not the same loop: a `:` inside brackets leaves with the brackets
+  // (`a[b:c]d` names `ad`, not `a`), because the regex version cut after the strip.
+  // Fuzzed equivalent to `/[:@].*$/` over 300k random names; the one shape where they
+  // differ is a newline after the marker, where `$` declined to match and kept the tail.
+  for (let j = 0; j < stripped.length; j++) {
+    const ch = stripped[j]!
+    if (ch === ':' || ch === '@') return stripped.slice(0, j).trim()
+  }
+  return stripped.trim()
 }
 
-const SOURCE_PRIORITY: Record<PriceEntry['source'], number> = { litellm: 0, manual: 1, override: 2 }
+/**
+ * Highest wins among entries effective at the same date. `openrouter` sits below
+ * `litellm` because its published rate is a reseller route price, not the vendor list
+ * price §8's API-equivalent is quoted at — it is a fallback, and `withGapFill` is what
+ * keeps it out of litellm's way even before this tie-break is reached.
+ */
+const SOURCE_PRIORITY: Record<PriceEntry['source'], number> = {
+  openrouter: 0,
+  litellm: 1,
+  manual: 2,
+  override: 3,
+}
+
+/** Sources that come from an upstream price file rather than from the user. */
+const SNAPSHOT_SOURCES: ReadonlySet<PriceEntry['source']> = new Set(['litellm', 'openrouter'])
 
 function candidateKey(provider: string, model: string): string {
   return `${provider.toLowerCase()}|${normalizeModelName(model)}`
@@ -39,6 +81,12 @@ export class PricingTable {
   static fromSnapshot(snapshot: PriceSnapshot, opts: { generatedAt?: number } = {}): PricingTable {
     return new PricingTable(
       normalizeLitellmEntries(snapshot, { generatedAt: opts.generatedAt ?? snapshot.fetchedAt }),
+    )
+  }
+
+  static fromOpenRouterSnapshot(snapshot: OpenRouterSnapshot, opts: { generatedAt?: number } = {}): PricingTable {
+    return new PricingTable(
+      normalizeOpenRouterEntries(snapshot, { generatedAt: opts.generatedAt ?? snapshot.fetchedAt }),
     )
   }
 
@@ -73,7 +121,24 @@ export class PricingTable {
 
   /** Immutable: returns a new table where `entry` wins ties against litellm data. */
   withOverride(entry: PriceEntry): PricingTable {
-    return new PricingTable([...this.allEntries(), { ...entry, source: entry.source === 'litellm' ? 'override' : entry.source }])
+    // A line from the overrides file is the user's own statement, even when they pasted it
+    // out of a snapshot with its source label still attached.
+    const source = SNAPSHOT_SOURCES.has(entry.source) ? 'override' : entry.source
+    return new PricingTable([...this.allEntries(), { ...entry, source }])
+  }
+
+  /**
+   * Immutable: admit `fallback`'s entries ONLY for models this table has no price for (§8).
+   *
+   * Matching is by model name rather than the (provider, model) key because `lookup` already
+   * falls back to a name-only match when the log's provider disagrees, so a second provider
+   * for an already-priced name would both override litellm through that path and trip its
+   * ambiguity guard (>1 provider → no price), turning priced history into gaps.
+   */
+  withGapFill(fallback: PricingTable): { table: PricingTable; added: number } {
+    const priced = new Set(this.byModel.keys())
+    const added = [...fallback.allEntries()].filter((e) => !priced.has(normalizeModelName(e.model)))
+    return { table: new PricingTable([...this.allEntries(), ...added]), added: added.length }
   }
 
   private *allEntries(): Generator<PriceEntry> {

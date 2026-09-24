@@ -11,17 +11,27 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { PriceEntry } from './price-types.ts'
-import { bundledSnapshot, type PriceSnapshot } from './snapshot.ts'
+import {
+  bundledSnapshot,
+  type OpenRouterSnapshot,
+  type PriceSnapshot,
+  type RawOpenRouterEntry,
+} from './snapshot.ts'
 import { PricingTable } from './table.ts'
 import { readSnapshotFile } from './update.ts'
 
 /** File-name convention, shared so no caller re-spells it. */
 export const PRICE_SNAPSHOT_FILENAME = 'price-snapshot.json'
+export const OPENROUTER_SNAPSHOT_FILENAME = 'price-snapshot-openrouter.json'
 export const PRICING_OVERRIDES_FILENAME = 'pricing-overrides.jsonl'
 
 export interface MergedPricing {
   table: PricingTable
   snapshot: PriceSnapshot
+  /** The §8 fallback snapshot when one has been fetched; null when it is absent or unreadable. */
+  fallback: OpenRouterSnapshot | null
+  /** Models the fallback priced and the primary snapshot did not; 0 without a fallback file. */
+  fallbackAdded: number
   /** Overrides actually merged into the table; what `agl doctor` prints as "(M overrides)". */
   overrideCount: number
 }
@@ -29,6 +39,8 @@ export interface MergedPricing {
 export interface LoadMergedPricingOptions {
   /** Point at a snapshot file elsewhere than the convention (mirrors, tests). */
   snapshotFile?: string
+  /** Point at the OpenRouter fallback file elsewhere than the convention. */
+  fallbackFile?: string
   /** Point at an overrides file elsewhere than the convention. */
   overridesFile?: string
 }
@@ -54,7 +66,7 @@ export function pricingStoreDir(store: string): string {
 }
 
 const PRICE_FIELDS = ['inputPerMTok', 'outputPerMTok', 'cacheReadPerMTok', 'cacheWritePerMTok'] as const
-const SOURCES = new Set(['litellm', 'override', 'manual'])
+const SOURCES = new Set(['litellm', 'openrouter', 'override', 'manual'])
 
 /**
  * A line is a usable override iff it would merge without silently corrupting the
@@ -87,7 +99,9 @@ function invalidReason(value: unknown): string | null {
  *
  * Snapshot layer: an absent *or unreadable/invalid* snapshot file falls back to the
  * bundled one (this is `readSnapshotFile`'s documented contract, and what both callers
- * did before the merge moved here).
+ * did before the merge moved here). The OpenRouter fallback sits on top of it and may only
+ * price models the primary snapshot has no price for (§8: its rate is a reseller route
+ * price, so it fills gaps and never overrides).
  *
  * Overrides layer — the §5.2 rule, unified from the two sides' raw `JSON.parse` crashes:
  * blank lines are skipped; every other line must pass `invalidReason`. Malformed lines
@@ -99,10 +113,19 @@ function invalidReason(value: unknown): string | null {
 export function loadMergedPricing(store?: string, opts: LoadMergedPricingOptions = {}): MergedPricing {
   const dir = store === undefined ? null : pricingStoreDir(store)
   const snapshotFile = opts.snapshotFile ?? (dir === null ? null : join(dir, PRICE_SNAPSHOT_FILENAME))
+  const fallbackFile = opts.fallbackFile ?? (dir === null ? null : join(dir, OPENROUTER_SNAPSHOT_FILENAME))
   const overridesFile = opts.overridesFile ?? (dir === null ? null : join(dir, PRICING_OVERRIDES_FILENAME))
 
   const snapshot = (snapshotFile ? readSnapshotFile(snapshotFile) : null) ?? bundledSnapshot()
   let table = PricingTable.fromSnapshot(snapshot)
+
+  const fallback = fallbackFile === null ? null : readSnapshotFile<RawOpenRouterEntry>(fallbackFile)
+  let fallbackAdded = 0
+  if (fallback) {
+    const filled = table.withGapFill(PricingTable.fromOpenRouterSnapshot(fallback))
+    table = filled.table
+    fallbackAdded = filled.added
+  }
 
   let overrideCount = 0
   const malformed: string[] = []
@@ -123,8 +146,8 @@ export function loadMergedPricing(store?: string, opts: LoadMergedPricingOptions
         malformed.push(`line ${i + 1}: ${reason}`)
         continue
       }
-      // `withOverride` owns the 'litellm' → 'override' promotion; absent source means the
-      // user wrote it by hand, which is an override.
+      // `withOverride` owns the snapshot-source → 'override' promotion; absent source means
+      // the user wrote it by hand, which is an override.
       const raw = parsed as { source?: PriceEntry['source'] }
       table = table.withOverride({ ...raw, source: raw.source ?? 'override' } as PriceEntry)
       overrideCount++
@@ -136,5 +159,5 @@ export function loadMergedPricing(store?: string, opts: LoadMergedPricingOptions
         malformed.map((m) => `  ${m}`).join('\n'),
     )
   }
-  return { table, snapshot, overrideCount }
+  return { table, snapshot, fallback, fallbackAdded, overrideCount }
 }

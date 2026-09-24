@@ -3,7 +3,7 @@
  * which is why no per-dimension subcommands are needed.
  */
 import type { DatabaseSync } from 'node:sqlite'
-import { assertDim, costFloor, describeQuery, query, type Dim, type Metric } from '@agentlens/query'
+import { assertDim, costFloor, costPortionsByAgent, describeQuery, query, type CostPortion, type Dim, type Metric } from '@agentlens/query'
 import { UsageError, type FlagView } from '../args.ts'
 import type { Ctx } from '../context.ts'
 import { queryDeps } from '../context.ts'
@@ -79,7 +79,8 @@ export function cmdUsage(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath: st
     limit: flags.num('limit'),
   }
   if (flags.bool('explain')) ctx.out(describeQuery(spec) + '\n')
-  const res = query(db, spec, queryDeps(db, dbPath, ctx))
+  const deps = queryDeps(db, dbPath, ctx)
+  const res = query(db, spec, deps)
 
   const headers = [...dims.map((d) => HEADER[d] ?? d), ...USAGE_METRICS.map((m) => HEADER[m] ?? m)]
   const rows = res.rows.map((r) => [
@@ -92,19 +93,38 @@ export function cmdUsage(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath: st
   ctx.out(table(headers, rows, aligns))
   const subagentBasis =
     cubeFilter.includeSubagentThreads === false ? ' · subagent threads excluded (--no-subagents)' : ''
-  // §8: a NULL fused total means "some tokens we could not price", not "nothing is known" — the
-  // agent's own reported money is still a floor. Printing `n/a` there would hide a number the
-  // store already has, and printing the sum without the qualifier would claim it is complete.
+  // §8: a NULL fused total means "some tokens we could not price", not "nothing is known". The
+  // floor therefore has three rungs: the complete answer, the priced portion of the window
+  // (§14: `costPortionsByAgent` is the same fold the dashboard's cost view uses, so the terminal
+  // cannot print a smaller "at least" than the browser for one store), and the agent's own
+  // reported money. Printing `n/a` would hide a number the store already has; printing the sum
+  // without the qualifier would claim it is complete.
   const strictCost = res.totals.cost_total ?? null
-  const floorCost = costFloor(strictCost, res.totals.cost_reported ?? null)
+  const strictApi = res.totals.cost_api_equiv ?? null
+  const portion =
+    strictCost === null || strictApi === null ? costPortionsByAgent(db, cubeFilter, deps) : null
+  const portionSum = (pick: (p: CostPortion) => number | null): number | null => {
+    let acc: number | null = null
+    for (const share of portion?.values() ?? []) {
+      const v = pick(share)
+      if (v !== null) acc = (acc ?? 0) + v
+    }
+    return acc
+  }
+  const floorCost = costFloor(costFloor(strictCost, portionSum((p) => p.total)), res.totals.cost_reported ?? null)
+  const floorApi = costFloor(strictApi, portionSum((p) => p.api))
   const costText =
     strictCost === null && floorCost !== null
       ? `≥ ${formatUsd(floorCost)} cost (partly unpriced)`
       : `${formatUsd(strictCost)} cost`
+  const apiText =
+    strictApi === null && floorApi !== null
+      ? `≥ ${formatUsd(floorApi)} api-equiv (partly unpriced)`
+      : `${formatUsd(strictApi)} api-equiv`
   ctx.out(
     `total: ${formatCount(res.totals.events ?? 0)} events · ${formatCount(res.totals.sessions ?? 0)} sessions · ` +
       `${formatTokens(res.totals.tokens_total)} tokens (deduped) · ${costText}` +
-      ` · ${formatUsd(res.totals.cost_api_equiv)} api-equiv` +
+      ` · ${apiText}` +
       subagentBasis,
   )
   if (res.truncated) ctx.out(`! truncated to ${spec.limit} rows — order: ${dims.join(',')}; use --limit or filters`)

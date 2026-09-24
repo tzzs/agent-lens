@@ -8,9 +8,9 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { billingConfigPath, liveBillingModes } from '@agentlens/pricing'
-import { createApp } from '../src/app.ts'
-import { harness, type Response_ } from './helpers.ts'
+import { billingConfigPath, billingModeFor as resolveMode, liveBillingModes } from '@agentlens/pricing'
+import { createApp, createContext } from '../src/app.ts'
+import { harness, seedDb, testPriceResolver, type Response_ } from './helpers.ts'
 
 /** POST bodies need a real request: the shared harness only covers bodyless calls. */
 async function put(app: ReturnType<typeof createApp>, path: string, body: unknown): Promise<Response_> {
@@ -38,7 +38,7 @@ function billingHarness() {
   // directory would leak one test's declaration into the next.
   const dbPath = join(mkdtempSync(join(tmp, 'case-')), 'agentlens.db')
   const modes = liveBillingModes(billingConfigPath(dbPath))
-  const h = harness({ dbPath, billingModeFor: (agentId) => modes[agentId] ?? 'api' })
+  const h = harness({ dbPath, billingModeFor: (agentId, provider, model) => resolveMode(modes, agentId, provider, model) })
   return { h, dbPath, modes }
 }
 
@@ -49,9 +49,22 @@ describe('GET /api/settings/billing', () => {
       writeFileSync(billingConfigPath(dbPath), JSON.stringify({ billing: { 'claude-code': 'subscription' } }), 'utf8')
       const res = await h.get('/api/settings/billing')
       expect(res.status).toBe(200)
-      expect(res.body.modes).toEqual({ 'claude-code': 'subscription' })
+      expect(res.body.modes).toEqual({
+        'claude-code': { mode: 'subscription', planUsdPerMonth: null, models: {} },
+      })
       expect(res.body.agents).toEqual([
-        { agentId: 'claude-code', displayName: 'Claude Code', billingMode: 'subscription', declared: true },
+        {
+          agentId: 'claude-code',
+          displayName: 'Claude Code',
+          billingMode: 'subscription',
+          declared: true,
+          planUsdPerMonth: null,
+          models: expect.arrayContaining([
+            // Every model the store has events for is offered, priced at the agent default
+            // until something narrower is declared for it.
+            expect.objectContaining({ provider: 'anthropic', effectiveMode: 'subscription', overridden: false }),
+          ]),
+        },
       ])
     } finally {
       h.close()
@@ -78,11 +91,16 @@ describe('POST /api/settings/billing', () => {
       expect(modes['claude-code']).toBeUndefined()
       const res = await put(h.app, '/api/settings/billing', { agent: 'claude-code', mode: 'local' })
       expect(res.status).toBe(200)
-      expect(res.body).toEqual({ agent: 'claude-code', mode: 'local', modes: { 'claude-code': 'local' } })
+      expect(res.body).toEqual({
+        agent: 'claude-code',
+        mode: 'local',
+        planUsdPerMonth: null,
+        modes: { 'claude-code': { mode: 'local', planUsdPerMonth: null, models: {} } },
+      })
       // The file the CLI reads, in the documented shape:
       expect(JSON.parse(readFileSync(billingConfigPath(dbPath), 'utf8'))).toEqual({ billing: { 'claude-code': 'local' } })
       // ...and the same view the cost routes fold through:
-      expect(modes['claude-code']).toBe('local')
+      expect(modes['claude-code']).toEqual({ mode: 'local', planUsdPerMonth: null, models: {} })
       // The fixture's other session uses an unpriced model, so the window is pinned to
       // the priced one: an unpriced slice must stay n/a, which would hide this assert.
       const agents = await h.get('/api/agents?model=test-model')
@@ -134,14 +152,18 @@ describe('POST /api/settings/billing', () => {
       await put(h.app, '/api/settings/billing', { agent: 'claude-code', mode: 'local' })
       const cleared = await put(h.app, '/api/settings/billing', { agent: 'claude-code', mode: null })
       expect(cleared.status).toBe(200)
-      expect(cleared.body).toEqual({ agent: 'claude-code', mode: 'api', modes: {} })
+      expect(cleared.body).toEqual({ agent: 'claude-code', mode: 'api', planUsdPerMonth: null, modes: {} })
       expect(modes['claude-code']).toBeUndefined()
+      // A cleared agent still lists, because the store has its events; what changed is that
+      // nothing is declared for it any more.
       const res = await h.get('/api/settings/billing')
       expect(res.body.agents[0]).toEqual({
         agentId: 'claude-code',
         displayName: 'Claude Code',
         billingMode: 'api',
         declared: false,
+        planUsdPerMonth: null,
+        models: expect.any(Array),
       })
       // Clearing keeps the user's other settings in the same file.
       writeFileSync(billingConfigPath(dbPath), JSON.stringify({ retentionDays: 30, billing: { x: 'local' } }), 'utf8')
@@ -149,6 +171,170 @@ describe('POST /api/settings/billing', () => {
       expect(JSON.parse(readFileSync(billingConfigPath(dbPath), 'utf8')).retentionDays).toBe(30)
     } finally {
       h.close()
+    }
+  })
+})
+
+describe('§8 per-model declarations and the plan fee', () => {
+  it('narrowing one model leaves the agent default and the other models alone', async () => {
+    const { h } = billingHarness()
+    try {
+      await put(h.app, '/api/settings/billing', { agent: 'claude-code', mode: 'subscription' })
+      const res = await put(h.app, '/api/settings/billing', {
+        agent: 'claude-code',
+        model: 'anthropic/test-model',
+        mode: 'api',
+      })
+      expect(res.status).toBe(200)
+      // The reply reports both halves, because a caller that only learned the default would
+      // render the agent as still fully on the plan.
+      expect(res.body.model).toEqual({ key: 'anthropic/test-model', mode: 'api' })
+      expect(res.body.mode).toBe('subscription')
+      const view = await h.get('/api/settings/billing')
+      const row = view.body.agents.find((a: { agentId: string }) => a.agentId === 'claude-code')
+      expect(row.billingMode).toBe('subscription')
+      expect(row.models.find((m: { key: string }) => m.key === 'anthropic/test-model')).toEqual({
+        key: 'anthropic/test-model',
+        provider: 'anthropic',
+        model: 'test-model',
+        effectiveMode: 'api',
+        overridden: true,
+      })
+      // The file holds one declaration, not a default rewritten to the model's mode.
+      expect(res.body.modes['claude-code']).toEqual({
+        mode: 'subscription',
+        planUsdPerMonth: null,
+        models: { 'anthropic/test-model': 'api' },
+      })
+    } finally {
+      h.close()
+    }
+  })
+
+  it('the metered model costs cash inside a plan-covered agent, and the pair is reported as mixed', async () => {
+    const { h } = billingHarness()
+    try {
+      const plain = await h.get('/api/agents')
+      const before = plain.body.cost.perAgent.find((s: { agentId: string }) => s.agentId === 'claude-code')
+      // Undeclared, so this is the `api` default: cash and API-equivalent are the same number.
+      expect(before.mixedBilling).toBe(false)
+      expect(before.actualUsd).toBeCloseTo(before.apiEquivalentUsd, 10)
+
+      await put(h.app, '/api/settings/billing', { agent: 'claude-code', mode: 'subscription' })
+      await put(h.app, '/api/settings/billing', { agent: 'claude-code', model: 'anthropic/test-model', mode: 'api' })
+      const after = (await h.get('/api/agents')).body.cost.perAgent.find(
+        (s: { agentId: string }) => s.agentId === 'claude-code',
+      )
+      // Folding the agent at its default would have kept this $0; the model-level answer pays
+      // for the one model the user said is metered.
+      expect(after.mixedBilling).toBe(true)
+      expect(after.actualUsd).toBeGreaterThan(0)
+      expect(after.apiEquivalentUsd).toBeCloseTo(after.actualUsd, 10)
+    } finally {
+      h.close()
+    }
+  })
+
+  it('prorates a declared plan fee over the window, and counts it once however many models ride the plan', async () => {
+    const { h } = billingHarness()
+    try {
+      await put(h.app, '/api/settings/billing', { agent: 'claude-code', mode: 'subscription' })
+      const unfilled = await h.get('/api/agents')
+      const u = unfilled.body.cost.perAgent.find((s: { agentId: string }) => s.agentId === 'claude-code')
+      // No fee yet: the marginal $0 stands and nothing is invented.
+      expect(u.planCostUsd).toBeNull()
+      expect(u.actualUsd).toBe(0)
+
+      expect((await put(h.app, '/api/settings/billing', { agent: 'claude-code', planUsdPerMonth: 30.4375 })).status).toBe(200)
+      const month = await h.get('/api/agents?since=30d')
+      const m = month.body.cost.perAgent.find((s: { agentId: string }) => s.agentId === 'claude-code')
+      // $30.4375/month over a 30-day window is one month of the fee, to the cent.
+      expect(m.planCostUsd).toBeCloseTo(30.4375 * (30 / (365.25 / 12)), 4)
+      expect(m.actualUsd).toBeGreaterThan(0)
+      // The fee is the plan's price, not a per-model one: adding a second model on the same
+      // plan must not charge it twice.
+      const doubled = await put(h.app, '/api/settings/billing', {
+        agent: 'claude-code',
+        model: 'anthropic/second-model',
+        mode: 'subscription',
+      })
+      expect(doubled.status).toBe(200)
+      const again = (await h.get('/api/agents?since=30d')).body.cost.perAgent.find(
+        (s: { agentId: string }) => s.agentId === 'claude-code',
+      )
+      expect(again.planCostUsd).toBeCloseTo(m.planCostUsd, 10)
+    } finally {
+      h.close()
+    }
+  })
+
+  it('refuses a fee that is not money, and keeps the declaration it would have replaced', async () => {
+    const { h, dbPath } = billingHarness()
+    try {
+      await put(h.app, '/api/settings/billing', { agent: 'claude-code', mode: 'local' })
+      const bad = await put(h.app, '/api/settings/billing', { agent: 'claude-code', planUsdPerMonth: -1 })
+      expect(bad.status).toBe(400)
+      expect(bad.body.error.message).toContain('non-negative')
+      expect(JSON.parse(readFileSync(billingConfigPath(dbPath), 'utf8')).billing['claude-code']).toBe('local')
+      // An unknown agent still cannot be declared into, fee included.
+      const ghost = await put(h.app, '/api/settings/billing', { agent: 'nope', planUsdPerMonth: 5 })
+      expect(ghost.status).toBe(404)
+    } finally {
+      h.close()
+    }
+  })
+})
+
+describe('§14 the served path reads the declaration file the cube reads', () => {
+  /**
+   * `serve.ts` does `createContext(deps)` and then `createApp(ctx)` — the ctx, not the deps.
+   * `harness()` above hands `createApp` a fresh deps object, so it cannot see that shape at
+   * all, and for a long time neither could anything else: `ctx.dbPath` was redacted for
+   * `/api/health`, and re-entering createContext turned every path derived from it into a
+   * literal `~/config.json` that exists nowhere. The page then wrote a declaration the cost
+   * figures never read. This is the only test that round-trips a ctx the way the server does.
+   */
+  it('answers the settings route from the same config.json the cost view folds with', async () => {
+    const seeded = seedDb()
+    // A home that really contains the DB: the default `~/.agentlens/agentlens.db` is exactly
+    // this shape, which is why the redaction bit users and not only this test.
+    const home = mkdtempSync(join(tmp, 'served-home-'))
+    const dbPath = join(home, 'agentlens.db')
+    writeFileSync(
+      billingConfigPath(dbPath),
+      JSON.stringify({
+        billing: { 'claude-code': { mode: 'subscription', planUsdPerMonth: 20, models: { 'anthropic/test-model': 'api' } } },
+      }),
+      'utf8',
+    )
+    const ctx = createContext({
+      db: seeded.db,
+      dbPath,
+      // The fixture's own clock: `since=30d` below must still contain its rows.
+      now: () => 1_700_000_100_000,
+      priceResolver: testPriceResolver,
+      homedir: home,
+    })
+    const app = createApp(ctx)
+    try {
+      const res = await app.request('/api/settings/billing')
+      const body = (await res.json()) as { modes: Record<string, unknown>; configFile: string }
+      expect(body.modes).toEqual({
+        'claude-code': { mode: 'subscription', planUsdPerMonth: 20, models: { 'anthropic/test-model': 'api' } },
+      })
+      // The route still shows the redacted form: the fix moves redaction to the response,
+      // it does not leak a home-directory path to a client.
+      expect(body.configFile.startsWith('~')).toBe(true)
+      expect(body.configFile).not.toBe(billingConfigPath(dbPath))
+      // The money agrees with the page, which is the whole §14 promise.
+      const agents = (await (await app.request('/api/agents?since=30d')).json()) as {
+        cost: { perAgent: { agentId: string; planCostUsd: number | null; mixedBilling: boolean }[] }
+      }
+      const slice = agents.cost.perAgent.find((s) => s.agentId === 'claude-code')
+      expect(slice?.mixedBilling).toBe(true)
+      expect(slice?.planCostUsd).not.toBeNull()
+    } finally {
+      seeded.close()
     }
   })
 })

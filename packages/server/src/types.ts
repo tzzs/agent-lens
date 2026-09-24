@@ -49,8 +49,10 @@ export interface ServerDeps {
    * (§8 forbids reading an unknown price as free).
    */
   priceResolver?: PriceResolver
-  /** §8 billing mode declaration per agent; default 'api'. */
-  billingModeFor?: (agentId: string) => BillingMode
+  /** §8 billing mode per agent, optionally narrowed to one model; default 'api'. */
+  billingModeFor?: (agentId: string, provider?: string, model?: string) => BillingMode
+  /** What an agent's plan actually costs per calendar month; null = undeclared (so actual is unknown, not $0). */
+  billingPlanFor?: (agentId: string) => number | null
   /**
    * §18 row 2: the per-agent fold each adapter declares, passed straight to the cube.
    * Absent means the cube's most conservative default (`request_max`).
@@ -85,7 +87,8 @@ export interface ServerCtx {
   readonly db: DatabaseSync
   readonly now: () => number
   readonly priceResolver?: PriceResolver
-  readonly billingModeFor?: (agentId: string) => BillingMode
+  readonly billingModeFor?: (agentId: string, provider?: string, model?: string) => BillingMode
+  readonly billingPlanFor?: (agentId: string) => number | null
   readonly aggregation?: Record<string, AggregationPolicy>
   readonly priceTableSize?: () => number | null
   readonly cubeDeps: QueryDeps

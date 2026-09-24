@@ -27,7 +27,7 @@ import {
   setAgentAggregations,
   updateSourceProgress,
 } from '@agentlens/storage'
-import { writeSnapshot } from '../src/pricing-store.ts'
+import { openRouterSnapshotPath, writeSnapshot } from '../src/pricing-store.ts'
 import type { Ctx } from '../src/context.ts'
 import {
   accessOf,
@@ -767,7 +767,9 @@ describe('Pricing', () => {
     const out = recordingCtx(HOME)
     renderPricing(db, out, dbPath)
     const text = out.text()
-    expect(text).toContain('✓ 2 models priced (source: updated snapshot)')
+    // 2026-09-21 minus the epoch, in days: the fixture snapshot is fetchedAt 0, and the
+    // panel now has to say how old the table behind every $ figure is.
+    expect(text).toContain('✓ 2 models priced (source: updated snapshot, fetched 20717d ago)')
     expect(text).toContain('! 2 of 3 ingested models unpriced → cost = "n/a", never $0')
     expect(text).toContain('test-unpriced')
     expect(text).toContain('price entry')
@@ -789,6 +791,32 @@ describe('Pricing', () => {
     renderPricing(empty, out, emptyPath)
     expect(out.text()).toContain('no models ingested yet')
     empty.close()
+  })
+
+  it('names the OpenRouter fallback and the gap it closed (§8)', () => {
+    const fallback = openRouterSnapshotPath(dbPath)
+    try {
+      writeFileSync(
+        fallback,
+        JSON.stringify({
+          schemaVersion: 1,
+          fetchedAt: 0,
+          source: 'test-openrouter',
+          entries: [{ model: 'testprovider/test-unpriced', pricing: { prompt: '0.0000002', completion: '0.000001' }, effective_from: 0 }],
+        }),
+        'utf8',
+      )
+      const out = recordingCtx(HOME)
+      renderPricing(db, out, dbPath)
+      const text = out.text()
+      expect(text).toContain('1 of them priced by the OpenRouter fallback (test-openrouter, fetched 20717d ago)')
+      expect(text).toContain('a gap-filler only: it never overrides a model the primary snapshot prices')
+      // One gap closed: the panel counts the remaining unpriced models, not the fixture's two.
+      expect(text).toContain('! 1 of 3 ingested models unpriced')
+      expect(text).not.toContain('test-unpriced')
+    } finally {
+      rmSync(fallback, { force: true })
+    }
   })
 })
 

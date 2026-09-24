@@ -74,3 +74,90 @@ describe('PricingTable metadata', () => {
     expect(PricingTable.empty().size()).toBe(0)
   })
 })
+
+describe('normalizeModelName', () => {
+  /**
+   * Pinned against the behaviour of the `/\[[^\]]*\]/g` pass this replaced, including the
+   * cases a reader would guess wrong: an unclosed `[` is NOT a tier marker, a lone `]` is
+   * not either, and the bracket pass runs before the `:`/`@` cut.
+   */
+  const CASES: [string, string][] = [
+    ['Claude-Opus-4-8[1m]', 'claude-opus-4-8'],
+    ['gpt-5:low', 'gpt-5'],
+    ['a[b[c]d', 'ad'],
+    ['a]b[c]d', 'a]bd'],
+    ['deepseek[', 'deepseek['],
+    ['[a]', ''],
+    ['[a]b[c', 'b[c'],
+    ['x@y[1m]', 'x'],
+    ['a[b:c]d', 'ad'],
+    ['gpt-5@beta', 'gpt-5'],
+    ['  spaced [tier] name ', 'spaced  name'],
+  ]
+  for (const [input, want] of CASES) {
+    it(`${JSON.stringify(input)} -> ${JSON.stringify(want)}`, () => {
+      expect(normalizeModelName(input)).toBe(want)
+    })
+  }
+})
+
+describe('PricingTable.withGapFill (§8: openrouter is a fallback, not an override)', () => {
+  const primary = PricingTable.fromSnapshot(
+    {
+      fetchedAt: JAN_2026,
+      source: 'test-litellm',
+      entries: [
+        { model: 'anthropic/claude-sonnet-5', input_cost_per_token: 2e-6, output_cost_per_token: 1e-5 },
+        { model: 'deepseek/deepseek-flash', input_cost_per_token: 2.5e-7, output_cost_per_token: 1e-6 },
+      ],
+    },
+    { generatedAt: JAN_2026 },
+  )
+
+  function fallbackOf(...prices: [string, string, string][]): PricingTable {
+    return PricingTable.fromOpenRouterSnapshot(
+      {
+        fetchedAt: JAN_2026,
+        source: 'test-openrouter',
+        entries: prices.map(([model, prompt, completion]) => ({
+          model,
+          pricing: { prompt, completion },
+          effective_from: 0,
+        })),
+      },
+      { generatedAt: JAN_2026 },
+    )
+  }
+
+  it('prices a model the primary snapshot has no entry for', () => {
+    const { table, added } = primary.withGapFill(fallbackOf(['z-ai/glm-5.3-flash', '1.5e-7', '5e-7']))
+    expect(added).toBe(1)
+    // The agent log names the model but not OpenRouter's vendor, so this is the name fallback.
+    expect(table.lookup('builtin:bigmodel-start-plan', 'GLM-5.3-Flash', SEP_2026)).toMatchObject({
+      inputPerMTok: 0.15,
+      source: 'openrouter',
+    })
+  })
+
+  it('never overrides a model the primary prices, even at a different rate', () => {
+    const { table, added } = primary.withGapFill(fallbackOf(['anthropic/claude-sonnet-5', '4e-6', '2e-5']))
+    expect(added).toBe(0)
+    expect(table.lookup('anthropic', 'claude-sonnet-5', SEP_2026)).toMatchObject({ inputPerMTok: 2, source: 'litellm' })
+  })
+
+  it('keeps a name-only lookup unambiguous when the fallback repeats a priced name', () => {
+    // `lookup` returns null when >1 provider prices one name; admitting the fallback's
+    // second `deepseek-flash` would have turned priced history into gaps.
+    const { table, added } = primary.withGapFill(fallbackOf(['volcano/deepseek-flash', '1e-6', '2e-6']))
+    expect(added).toBe(0)
+    expect(table.lookup('unknown', 'deepseek-flash', SEP_2026)?.source).toBe('litellm')
+  })
+
+  it('is immutable, and fills everything when the primary prices nothing', () => {
+    const before = primary.size()
+    const { table, added } = PricingTable.empty().withGapFill(fallbackOf(['a/x', '1e-6', '2e-6'], ['b/y', '1e-6', '2e-6']))
+    expect(added).toBe(2)
+    expect(table.size()).toBe(2)
+    expect(primary.size()).toBe(before)
+  })
+})

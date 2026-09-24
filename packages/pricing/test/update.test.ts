@@ -4,12 +4,21 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   fetchLitellmSnapshot,
+  fetchOpenRouterSnapshot,
   PricingFetchError,
   readSnapshotFile,
   writeSnapshotFile,
   LITELLM_PRICES_URL,
+  OPENROUTER_PRICES_URL,
 } from '../src/update.ts'
-import { normalizeLitellmEntries, type PriceSnapshot } from '../src/snapshot.ts'
+import {
+  normalizeLitellmEntries,
+  normalizeOpenRouterEntries,
+  type OpenRouterSnapshot,
+  type PriceSnapshot,
+  type RawOpenRouterEntry,
+} from '../src/snapshot.ts'
+import { PricingTable } from '../src/table.ts'
 
 const RAW_LITELLM = {
   sample_model_names: 'a,b',
@@ -48,6 +57,32 @@ describe('fetchLitellmSnapshot', () => {
     ])
   })
 
+  /** Fetch a body as if it were litellm's map, as of `now`. */
+  async function fetchMap(body: string, now: number) {
+    return fetchLitellmSnapshot('x', { fetchImpl: async () => fakeResponse(body), now: () => now })
+  }
+
+  it('stamps a fetched rate undated, so refreshing does not unprice history (§8)', async () => {
+    // Litellm publishes no price history, so dating the fetched rows to the fetch moment made
+    // `pickEffective` find no entry for any earlier event: one `agl pricing update` turned every
+    // historical cost into n/a, with hundreds of confidently-dated rows on disk to show for it.
+    const fetched = Date.UTC(2026, 8, 21)
+    const table = PricingTable.fromSnapshot(await fetchMap(JSON.stringify(RAW_LITELLM), fetched))
+    for (const at of [Date.UTC(2020, 0, 1), fetched, fetched + 365 * 86_400_000]) {
+      expect(table.lookup('anthropic', 'claude-sonnet-5', at)?.inputPerMTok, new Date(at).toISOString()).toBe(3)
+    }
+    expect(table.lookup('anthropic', 'claude-sonnet-5', fetched)?.source).toBe('litellm')
+  })
+
+  it('keeps a per-model effective_from a curated snapshot pins', async () => {
+    const pinned = {
+      'claude-sonnet-5': { input_cost_per_token: 3e-6, output_cost_per_token: 1.5e-5, effective_from: Date.UTC(2026, 0, 1) },
+    }
+    const table = PricingTable.fromSnapshot(await fetchMap(JSON.stringify(pinned), Date.UTC(2026, 8, 21)))
+    expect(table.lookup('anthropic', 'claude-sonnet-5', Date.UTC(2025, 11, 31))).toBeNull()
+    expect(table.lookup('anthropic', 'claude-sonnet-5', Date.UTC(2026, 0, 1))?.inputPerMTok).toBe(3)
+  })
+
   it('surfaces a network rejection as PricingFetchError instead of crashing', async () => {
     await expect(
       fetchLitellmSnapshot(LITELLM_PRICES_URL, {
@@ -63,6 +98,41 @@ describe('fetchLitellmSnapshot', () => {
       /HTTP 500/,
     )
     await expect(fetchLitellmSnapshot('x', { fetchImpl: async () => fakeResponse('not json') })).rejects.toThrow(PricingFetchError)
+  })
+})
+
+const RAW_OPENROUTER = {
+  data: [
+    { id: 'z-ai/glm-5.3-flash', pricing: { prompt: '0.00000015', completion: '0.0000005' } },
+    { id: 'z-ai/glm-5.3-flash:batch', pricing: { prompt: '0.00000006', completion: '0.0000002' } },
+  ],
+}
+
+describe('fetchOpenRouterSnapshot (§8 fallback source)', () => {
+  it('normalizes the keyless models list, and defaults to the live endpoint', async () => {
+    const urls: string[] = []
+    const snapshot = await fetchOpenRouterSnapshot(undefined, {
+      fetchImpl: async (url) => {
+        urls.push(url)
+        return fakeResponse(JSON.stringify(RAW_OPENROUTER))
+      },
+      now: () => 1758506400000,
+    })
+    // A literal, not OPENROUTER_PRICES_URL: a typo in the constant must not pass its own test.
+    expect(urls).toEqual(['https://openrouter.ai/api/v1/models'])
+    expect(snapshot.source).toBe(urls[0])
+    expect(
+      normalizeOpenRouterEntries(snapshot, { generatedAt: snapshot.fetchedAt }).map((e) => `${e.provider}/${e.model}`),
+    ).toEqual(['z-ai/glm-5.3-flash'])
+  })
+
+  it('a body that parses but carries no data array is reported, not taken as an empty fallback', async () => {
+    await expect(fetchOpenRouterSnapshot('x', { fetchImpl: async () => fakeResponse('{"models":[]}') })).rejects.toThrow(
+      /"data" array/,
+    )
+    await expect(fetchOpenRouterSnapshot('x', { fetchImpl: async () => fakeResponse('', false, 503) })).rejects.toThrow(
+      /HTTP 503/,
+    )
   })
 })
 
@@ -82,6 +152,27 @@ describe('snapshot file cache (~/.agentlens/pricing/snapshot.json)', () => {
       const read = readSnapshotFile(path)!
       expect(read.entries[0]?.model).toBe('claude-haiku-4-5')
       expect(read.fetchedAt).toBe(snapshot.fetchedAt)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('the fallback file rides the same envelope, so the store keeps one file format', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentlens-pricing-or-'))
+    try {
+      const path = join(dir, 'price-snapshot-openrouter.json')
+      const snapshot: OpenRouterSnapshot = {
+        fetchedAt: 1758506400000,
+        source: 'unit-test',
+        entries: [{ model: 'z-ai/glm-5.3-flash', pricing: { prompt: '0.00000015' }, effective_from: 0 }],
+      }
+      writeSnapshotFile(path, snapshot)
+      const read = readSnapshotFile<RawOpenRouterEntry>(path)!
+      expect(read.entries[0]?.pricing).toEqual({ prompt: '0.00000015' })
+      expect(normalizeOpenRouterEntries(read, { generatedAt: 999 })[0]).toMatchObject({
+        source: 'openrouter',
+        effectiveFrom: 0,
+      })
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
