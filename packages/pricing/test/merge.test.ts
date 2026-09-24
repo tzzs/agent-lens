@@ -13,9 +13,11 @@ import {
   loadMergedPricing,
   pricingStoreDir,
   PricingTable,
+  OPENROUTER_SNAPSHOT_FILENAME,
   PRICE_SNAPSHOT_FILENAME,
   PRICING_OVERRIDES_FILENAME,
   PricingOverrideFileError,
+  type OpenRouterSnapshot,
   type PriceEntry,
   type PriceSnapshot,
 } from '../src/index.ts'
@@ -29,6 +31,17 @@ const SNAPSHOT: PriceSnapshot = {
   entries: [
     { model: 'anthropic/alpha', litellm_provider: 'anthropic', input_cost_per_token: 3e-6, output_cost_per_token: 15e-6 },
     { model: 'anthropic/beta', litellm_provider: 'anthropic', input_cost_per_token: 1e-6, output_cost_per_token: 5e-6 },
+  ],
+}
+
+/** `alpha` is the disagreement case (§8: the reseller rate loses); `omega` is a litellm gap. */
+const FALLBACK: OpenRouterSnapshot = {
+  schemaVersion: 1,
+  fetchedAt: NOW,
+  source: 'test-openrouter',
+  entries: [
+    { model: 'anthropic/alpha', pricing: { prompt: '0.000009', completion: '0.000036' }, effective_from: 0 },
+    { model: 'z-ai/omega', pricing: { prompt: '0.00000015', completion: '0.0000005' }, effective_from: 0 },
   ],
 }
 
@@ -46,12 +59,76 @@ const override = (model: string, input: number, over: Partial<PriceEntry> = {}):
   ...over,
 })
 
-function store(files: { snapshot?: string; overrides?: string } = {}): { dir: string; dbPath: string } {
+function store(files: { snapshot?: string; fallback?: string; overrides?: string } = {}): { dir: string; dbPath: string } {
   const dir = mkdtempSync(join(tmpdir(), 'agentlens-merge-'))
   if (files.snapshot !== undefined) writeFileSync(join(dir, PRICE_SNAPSHOT_FILENAME), files.snapshot, 'utf8')
+  if (files.fallback !== undefined) writeFileSync(join(dir, OPENROUTER_SNAPSHOT_FILENAME), files.fallback, 'utf8')
   if (files.overrides !== undefined) writeFileSync(join(dir, PRICING_OVERRIDES_FILENAME), files.overrides, 'utf8')
   return { dir, dbPath: join(dir, 'agentlens.db') }
 }
+
+describe('loadMergedPricing: the OpenRouter fallback layer (§8)', () => {
+  it('adds only the models the primary snapshot lacks, and counts them', () => {
+    const { dir, dbPath } = store({ snapshot: JSON.stringify(SNAPSHOT), fallback: JSON.stringify(FALLBACK) })
+    try {
+      const merged = loadMergedPricing(dbPath)
+      expect(merged.fallback?.source).toBe('test-openrouter')
+      expect(merged.fallbackAdded).toBe(1)
+      expect(merged.table.lookup('anthropic', 'alpha', NOW)).toMatchObject({ inputPerMTok: 3, source: 'litellm' })
+      expect(merged.table.lookup('z-ai', 'omega', NOW)).toMatchObject({ inputPerMTok: 0.15, source: 'openrouter' })
+      // Undated, so an event from before the fetch is still priced (§19).
+      expect(merged.table.lookup('z-ai', 'omega', Date.UTC(2020, 0, 1))?.source).toBe('openrouter')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('an absent fallback is reported as absent, and a broken one is ignored like a broken snapshot', () => {
+    const none = store({ snapshot: JSON.stringify(SNAPSHOT) })
+    try {
+      const merged = loadMergedPricing(none.dbPath)
+      expect(merged.fallback).toBeNull()
+      expect(merged.fallbackAdded).toBe(0)
+    } finally {
+      rmSync(none.dir, { recursive: true, force: true })
+    }
+
+    const broken = store({ snapshot: JSON.stringify(SNAPSHOT), fallback: '<html>rate limited</html>' })
+    try {
+      const merged = loadMergedPricing(broken.dbPath)
+      expect(merged.fallback).toBeNull()
+      expect(merged.snapshot.source).toBe('test-snapshot')
+    } finally {
+      rmSync(broken.dir, { recursive: true, force: true })
+    }
+  })
+
+  it('an override line still wins over both snapshot sources', () => {
+    const { dir, dbPath } = store({
+      snapshot: JSON.stringify(SNAPSHOT),
+      fallback: JSON.stringify(FALLBACK),
+      overrides: JSON.stringify(override('omega', 12, { provider: 'z-ai' })) + '\n',
+    })
+    try {
+      const merged = loadMergedPricing(dbPath)
+      expect(merged.table.lookup('z-ai', 'omega', NOW)).toMatchObject({ inputPerMTok: 12, source: 'override' })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('a pasted fallback row in the overrides file is promoted to an override, not left below litellm', () => {
+    const { dir, dbPath } = store({ snapshot: JSON.stringify(SNAPSHOT), overrides: JSON.stringify(override('alpha', 1, { source: 'openrouter' })) + '\n' })
+    try {
+      expect(loadMergedPricing(dbPath).table.lookup('anthropic', 'alpha', NOW)).toMatchObject({
+        inputPerMTok: 1,
+        source: 'override',
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('loadMergedPricing: snapshot + overrides (§8, §14)', () => {
   it('merges overrides over the snapshot file, counting what was applied', () => {
@@ -116,13 +193,17 @@ describe('loadMergedPricing: path convention (§5.3, one spelling)', () => {
   it('db file, data dir and snapshot file all resolve to the same store', () => {
     const { dir, dbPath } = store({
       snapshot: JSON.stringify(SNAPSHOT),
+      fallback: JSON.stringify(FALLBACK),
       overrides: JSON.stringify(override('gamma', 7)) + '\n',
     })
     try {
       const byDb = loadMergedPricing(dbPath)
       expect(loadMergedPricing(dir)).toEqual(byDb)
       expect(loadMergedPricing(join(dir, PRICE_SNAPSHOT_FILENAME))).toEqual(byDb)
+      // The fallback file is found the same way from every spelling of the store.
+      expect(loadMergedPricing(join(dir, OPENROUTER_SNAPSHOT_FILENAME))).toEqual(byDb)
       expect(byDb.overrideCount).toBe(1)
+      expect(byDb.fallbackAdded).toBe(1)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

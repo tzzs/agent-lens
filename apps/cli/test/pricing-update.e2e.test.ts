@@ -13,7 +13,7 @@ import { insertEvents, migrate, openDatabase } from '@agentlens/storage'
 import { runCli } from '../src/index.ts'
 import type { Ctx } from '../src/context.ts'
 import { cmdPricingUpdate } from '../src/commands/admin.ts'
-import { snapshotPath } from '../src/pricing-store.ts'
+import { openRouterSnapshotPath, snapshotPath } from '../src/pricing-store.ts'
 
 const tmp = mkdtempSync(join(tmpdir(), 'agentlens-pricing-'))
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
@@ -168,5 +168,103 @@ describe('agl pricing update (§9, §8)', () => {
     expect(await cmdPricingUpdate(dbPath, ctx, throwing('socket hang up'))).toBe(1)
     expect(lines.join('\n')).toContain('failed to fetch price snapshot')
     expect(lines.join('\n')).toContain('socket hang up')
+  })
+})
+
+/**
+ * §8: OpenRouter is a gap-filler. The fixture keeps the three cases that matter: a model
+ * only it prices, a model litellm already prices at a different (lower) rate, and the
+ * `:batch` / rolling-alias rows that would collide with the base id.
+ */
+const FIXTURE_OR = JSON.stringify({
+  data: [
+    { id: 'testprovider/test-gap-model', pricing: { prompt: '0.0000002', completion: '0.000001' } },
+    { id: 'testprovider/test-priced-model', pricing: { prompt: '0.000009', completion: '0.00009' } },
+    { id: 'testprovider/test-priced-model:batch', pricing: { prompt: '0', completion: '0' } },
+    { id: '~testprovider/test-priced-model-latest', pricing: { prompt: '0.000009', completion: '0.00009' } },
+  ],
+})
+
+/** Two requests: one model the litellm fixture prices, one only OpenRouter does. */
+function seedPair(dbPath: string): void {
+  const event = (n: string, model: string): AgentEvent => ({
+    id: n.repeat(64),
+    schemaVersion: 1,
+    agentId: 'claude-code',
+    hostId: 'claude-code',
+    sourceId: `src-${n}`,
+    sessionId: `sess-${n}`,
+    projectId: `proj-${n}`,
+    timestamp: T0,
+    type: 'generation.end',
+    usageSource: 'reported',
+    status: 'ok',
+    rawSeq: 1,
+    rawOffset: 0,
+    requestId: `req-${n}`,
+    model: { provider: 'testprovider', name: model, tier: null },
+    usage: { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 },
+  })
+  const db = openDatabase(dbPath)
+  migrate(db)
+  insertEvents(db, [event('a', 'test-priced-model'), event('b', 'test-gap-model')])
+  db.close()
+}
+
+describe('agl pricing update --source openrouter (§8 fallback)', () => {
+  it('fills the gap model without repricing what litellm already priced, in its own file', async () => {
+    const dbPath = dbIn('or-fallback')
+    seedPair(dbPath)
+    // No `now`: the fetch is stamped today, which is AFTER these events, and the costs still
+    // have to come out -- a fetched snapshot is undated (§8), not dated to its fetch moment.
+    const litellm = await cmdPricingUpdate(dbPath, makeCtx(dbPath).ctx, { fetchImpl: seam(FIXTURE_MAP).fetchImpl })
+    expect(litellm).toBe(0)
+    const primaryBefore = readFileSync(snapshotPath(dbPath), 'utf8')
+
+    const fetch = seam(FIXTURE_OR)
+    const { ctx, lines } = makeCtx(dbPath)
+    const code = await cmdPricingUpdate(dbPath, ctx, { source: 'openrouter', fetchImpl: fetch.fetchImpl })
+    const out = lines.join('\n')
+    expect(code, out).toBe(0)
+    expect(out).toContain('openrouter price snapshot updated: 4 entries')
+    // A literal: the fallback URL is the one thing a typo here could not survive.
+    expect(fetch.urls).toEqual(['https://openrouter.ai/api/v1/models'])
+    expect(existsSync(openRouterSnapshotPath(dbPath))).toBe(true)
+    expect(readFileSync(snapshotPath(dbPath), 'utf8')).toBe(primaryBefore)
+
+    const usage = makeCtx(dbPath, ['usage', '--by', 'model', '--db', dbPath])
+    expect(await runCli(usage.ctx)).toBe(0)
+    const rows = usage.lines.join('\n')
+    // 1000 x $2/M + 500 x $10/M from the litellm fixture — not OpenRouter's 9/90.
+    expect(rows).toMatch(/test-priced-model.*\$0\.0070/)
+    // 1000 x $0.2/M + 500 x $1/M, from the fallback.
+    expect(rows).toMatch(/test-gap-model.*\$0\.0007/)
+    expect(rows).not.toContain('n/a')
+  })
+
+  it('an unknown --source is a usage error, and no file is written', async () => {
+    const dbPath = dbIn('or-bad-source')
+    const { ctx, lines } = makeCtx(dbPath, ['pricing', 'update', '--source', 'coingecko', '--db', dbPath])
+    expect(await runCli(ctx)).toBe(2)
+    expect(lines.join('\n')).toContain('unknown price source "coingecko" — use litellm | openrouter')
+    expect(existsSync(openRouterSnapshotPath(dbPath))).toBe(false)
+  })
+
+  it('a fallback file that arrives empty of usable models changes nothing', async () => {
+    const dbPath = dbIn('or-empty')
+    seedPair(dbPath)
+    const { ctx } = makeCtx(dbPath)
+    expect(await cmdPricingUpdate(dbPath, ctx, { fetchImpl: seam(FIXTURE_MAP).fetchImpl })).toBe(0)
+    const before = makeCtx(dbPath, ['usage', '--by', 'model', '--db', dbPath])
+    expect(await runCli(before.ctx)).toBe(0)
+    expect(before.lines.join('\n')).toMatch(/test-gap-model.*n\/a/)
+    expect(before.lines.join('\n')).toMatch(/test-priced-model.*\$0\.0070/)
+
+    const after = makeCtx(dbPath)
+    const empty = seam('{"data":[]}')
+    expect(await cmdPricingUpdate(dbPath, after.ctx, { source: 'openrouter', fetchImpl: empty.fetchImpl })).toBe(0)
+    const usage = makeCtx(dbPath, ['usage', '--by', 'model', '--db', dbPath])
+    expect(await runCli(usage.ctx)).toBe(0)
+    expect(usage.lines.join('\n')).toBe(before.lines.join('\n'))
   })
 })

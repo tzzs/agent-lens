@@ -70,6 +70,7 @@ const RULES: Rule[] = [
     forbidden: [
       { re: /pricing-overrides\.jsonl/, why: 'the override filename belongs to the merge, and a copy diverges from the file the other surface reads' },
       { re: /price-snapshot\.json/, why: 'same reason, for the snapshot path' },
+      { re: /price-snapshot-openrouter\.json/, why: 'same reason, for the §8 fallback snapshot: a surface that spells it reads a file the update command may not have written' },
       { re: /\.withOverride\(/, why: 'merging line-by-line here is how the CLI and served doctor came apart (433/6 vs 432/11)' },
     ],
   },
@@ -83,14 +84,17 @@ const RULES: Rule[] = [
   },
   {
     what: 'what a NULL fused cost leaves as a floor (§8)',
-    home: '@agentlens/query → costFloor',
+    home: '@agentlens/query → costFloor / costPortionsByAgent',
     forbidden: [
       { re: /cost_total\)\s*\?\?\s*numOrNull\(r\.cost_reported/, why: 'the fallback is the floor rule; a surface that writes it inline drifts from the one that prints "at least" vs n/a' },
       { re: /totals\.cost_total\s*\?\?\s*totals\.cost_reported/, why: 'same rule, CLI side' },
+      { re: /costPortionsByAgent\([^)]*\)\s*\.\s*reduce/, why: 'the portion map folds inside the owner; summing it again in a surface is a second floor' },
     ],
     calls: [
       { file: 'packages/server/src/cost.ts', symbol: 'costFloor' },
+      { file: 'packages/server/src/cost.ts', symbol: 'costPortionsByAgent' },
       { file: 'apps/cli/src/commands/usage.ts', symbol: 'costFloor' },
+      { file: 'apps/cli/src/commands/usage.ts', symbol: 'costPortionsByAgent' },
     ],
   },
   {
@@ -124,30 +128,55 @@ const RULES: Rule[] = [
   },
   {
     what: 'which models are unpriced, and which of their buckets lack a price (§8, §11)',
-    home: '@agentlens/server → cost.ts modelSpend / unpricedBuckets / missingPriceModels',
+    home: '@agentlens/server → cost.ts modelSpend / unpricedBuckets / modelPrices / gappedModels / priceVerdictsByModel',
     statedIn: 'packages/server/src/cost.ts',
     forbidden: [
       { re: /isMissingPrice/, why: 'the per-bucket test is the rule; the server used to ask only "is the entry null", so a gap the cube rendered as n/a went unreported' },
       { re: /PRICE_MISSING/, why: 'the same rule in its sentinel form' },
       { re: /FROM models m LEFT JOIN events/, why: 'one model-spend read; the two copies differed in how they filled `last_seen`, which is the price lookup date' },
+      { re: /\.buckets\.length/, why: '"is this row a gap" is `isGapped`/`gappedModels`; a surface re-writing the predicate is a second verdict on the same resolution' },
     ],
     calls: [
       { file: 'apps/cli/src/commands/doctor.ts', symbol: 'modelSpend' },
       { file: 'apps/cli/src/commands/doctor.ts', symbol: 'unpricedBuckets' },
-      { file: 'packages/server/src/models.ts', symbol: 'missingPriceModels' },
+      { file: 'packages/server/src/models.ts', symbol: 'modelPrices' },
+      { file: 'packages/server/src/models.ts', symbol: 'gappedModels' },
+      { file: 'packages/server/src/models.ts', symbol: 'priceVerdictsByModel' },
+      { file: 'packages/server/src/doctor.ts', symbol: 'missingPriceModels' },
     ],
   },
   {
-    what: "the §8 fold from an API-equivalent amount to actual cash for a declared mode",
-    home: "@agentlens/pricing → computeCost, projected per agent by @agentlens/server → actualUsdFor",
-    statedIn: 'packages/server/src/cost.ts',
+    // There used to be a `statedIn` exemption here: @agentlens/server kept its own copy of
+    // the mode table because a per-agent aggregate has no single PriceEntry to hand
+    // `computeCost`, and a test compared the two copies. The aggregate now folds per
+    // (agent, model) and calls the owner, so no surface states the rule and nothing is
+    // exempt — which makes the forbidden set below strictly wider than it was.
+    what: "the §8 fold from an API-equivalent amount to actual cash, and the §8 plan-fee proration",
+    home: '@agentlens/pricing → computeCost / actualUsdFor / planCostFor',
     forbidden: [
-      {
-        re: /=== 'api' \?/,
-        why: "the mode table is pricing's; this file holds the only surface-side projection of it (a per-agent aggregate has no single PriceEntry to hand computeCost), and packages/server/test/cost.test.ts asserts the two agree for every mode",
-      },
+      { re: /=== 'api' \?/, why: "the mode table is pricing's; a surface that re-reads it can disagree with the request-grain number the cube already stored" },
+      { re: /mode === 'subscription'/, why: "which modes pay what is §8's table, not a surface's if-chain" },
+      { re: /\/\s*30\.4|\*\s*30\.4|DAYS_PER_MONTH/, why: 'a month is one constant; a surface that hard-codes its length prorates the same fee to a different number than the terminal prints' },
+      { re: /planUsdPerMonth\s*\*/, why: 'prorating the fee is planCostFor\u2019s, and twice prorated is twice charged' },
     ],
-    calls: [{ file: 'packages/server/src/cost.ts', symbol: 'actualUsdFor(' }],
+    calls: [
+      { file: 'packages/server/src/cost.ts', symbol: 'actualUsdFor(' },
+      { file: 'packages/server/src/cost.ts', symbol: 'planCostFor(' },
+    ],
+  },
+  {
+    what: 'which billing mode applies to a row, and what its plan costs (§8 declarations)',
+    home: '@agentlens/pricing → billingModeFor / planFeeFor / billingModelKey',
+    forbidden: [
+      { re: /\?\s*\{\s*mode\b.*\bbilling\[/, why: 'reading the config document is the store\u2019s job' },
+      { re: /\.billing\b\[/, why: 'the `billing` key inside config.json belongs to billing-config.ts' },
+      { re: /modes\[\w+\]\s*\.\s*mode/, why: 'a declaration is resolved through billingModeFor, never indexed and unwrapped in two places' },
+    ],
+    calls: [
+      { file: 'apps/cli/src/context.ts', symbol: 'billingModeForOwner(' },
+      { file: 'packages/server/src/app.ts', symbol: 'billingModeForOwner(' },
+      { file: 'packages/server/src/settings.ts', symbol: 'billingModeFor(' },
+    ],
   },
   {
     what: 'whether the materialised stage 1 still describes `events`, and what that costs (§11/§19)',
@@ -216,12 +245,12 @@ describe('§14: one owner per shared rule, surfaces may not re-implement it', ()
     // Guards the guard: the failure message tells people to "use the owner", which is only a
     // fix if the owner really publishes the symbol.
     const owners: { pkg: string; names: string[] }[] = [
-      { pkg: 'packages/pricing', names: ['loadMergedPricing'] },
+      { pkg: 'packages/pricing', names: ['loadMergedPricing', 'actualUsdFor', 'planCostFor', 'computeCost', 'billingModeFor', 'planFeeFor', 'writeBillingModelMode', 'writeBillingPlanFee'] },
       { pkg: 'packages/storage', names: ['hostSplitFor', 'pickHostWarning', 'pickHostSplit', 'loadSessionEvents', 'SESSION_EVENT_SQL'] },
       { pkg: 'packages/event-model', names: ['projectLabel'] },
       {
         pkg: 'packages/server',
-        names: ['coverageReport', 'retentionPhrase', 'modelSpend', 'unpricedBuckets', 'missingPriceModels', 'actualUsdFor'],
+        names: ['coverageReport', 'retentionPhrase', 'modelSpend', 'unpricedBuckets', 'modelPrices', 'gappedModels', 'isGapped', 'priceVerdictsByModel', 'missingPriceModels'],
       },
     ]
     for (const { pkg, names } of owners) {

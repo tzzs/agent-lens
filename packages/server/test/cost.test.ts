@@ -287,4 +287,68 @@ describe('§8 the headline floor does not fall below a reported cost', () => {
     expect(whole.totalUsd).toBeCloseTo(1.5, 10)
     expect(whole.totalPartial).toBe(false)
   })
+
+  /**
+   * The same under-read with nothing reported: the agent-grain fusion is NULL, so the headline
+   * printed `≥ $0.00` — "we know it cost at least nothing" — while the Models table of the very
+   * same store showed the priced half. An agent that reported nothing is not an agent that
+   * cost nothing, and §8 forbids the number from reading lower than the knowable amount.
+   */
+  it('counts the priced half of a window no agent reported anything for', () => {
+    const half = openDatabase(':memory:')
+    migrate(half)
+    insertEvents(
+      half,
+      [
+        ev('half-priced', { agentId: 'opencode', requestId: 'hp-1', model: MODEL, usage: usage(1_000_000) }),
+        ev('half-gap', {
+          agentId: 'opencode',
+          requestId: 'hp-2',
+          model: { provider: 'nope', name: 'unobtainium' },
+          usage: usage(1_000_000),
+        }),
+      ],
+      { contentEnabled: false },
+    )
+    try {
+      const view = costView(createContext({ db: half, now: () => 1_700_000_100_000, priceResolver: testPriceResolver }))
+      const oc = view.perAgent.find((s) => s.agentId === 'opencode')
+      // §18 row 1 stays intact where it is the answer to a question: per agent, the fused cost
+      // is still unknown. The fallback belongs to the floor, not to the figure.
+      expect(oc?.totalUsd).toBeNull()
+      expect(oc?.reportedUsd).toBeNull()
+      // TEST_PRICE is $1 per 1M tokens, so the priced model is exactly $1 of the $2 window.
+      expect(oc?.apiEquivalentUsd).toBeCloseTo(1, 10)
+      expect(view.apiEquivalentUsd).toBeCloseTo(1, 10)
+      expect(view.apiEquivalentPartial).toBe(true)
+      expect(view.totalUsd).toBeCloseTo(1, 10)
+      expect(view.totalPartial).toBe(true)
+      expect(view.actualUsd).toBeCloseTo(1, 10) // `api` mode: the estimate is the cash
+      expect(view.unpricedAgents).toEqual(['opencode'])
+    } finally {
+      half.close()
+    }
+  })
+
+  it('leaves a fully unpriced agent with no floor to invent', () => {
+    const dark = openDatabase(':memory:')
+    migrate(dark)
+    insertEvents(
+      dark,
+      [ev('dark-1', { agentId: 'opencode', requestId: 'dk-1', model: { provider: 'nope', name: 'unobtainium' }, usage: usage(1_000_000) })],
+      { contentEnabled: false },
+    )
+    try {
+      const view = costView(createContext({ db: dark, now: () => 1_700_000_100_000, priceResolver: testPriceResolver }))
+      // Nothing is knowable: the agent's own figures stay NULL (no invented money, §8) and the
+      // headline is flagged partial, which is what tells the UI to say "at least" / "No price".
+      expect(view.perAgent[0]?.totalUsd).toBeNull()
+      expect(view.perAgent[0]?.apiEquivalentUsd).toBeNull()
+      expect(view.totalPartial).toBe(true)
+      expect(view.apiEquivalentPartial).toBe(true)
+      expect(view.unpricedAgents).toEqual(['opencode'])
+    } finally {
+      dark.close()
+    }
+  })
 })

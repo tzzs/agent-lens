@@ -213,9 +213,13 @@ export interface CostView {
   perAgent: {
     agentId: string
     billingMode: string
+    /** True when one of this agent's models bills at another mode, so `billingMode` is only its default. */
+    mixedBilling: boolean
     apiEquivalentUsd: number | null
     totalUsd: number | null
     actualUsd: number | null
+    /** Cash from a declared plan fee, prorated over the window; null when there is nothing to count. */
+    planCostUsd: number | null
     reportedUsd: number | null
   }[]
   basisCode: CostBasisCode
@@ -478,6 +482,8 @@ export interface AgentRow {
   displayName: string | null
   recorded: boolean
   billingMode: string
+  /** True when some of this agent's models bill at another mode, so `billingMode` is only its default. */
+  mixedBilling: boolean
   hosts: { host: string; events: number; sessions: number }[]
   capabilities: { type: string; events: number; errors: number }[]
   models: { model: string; events: number; tokensTotal: number; costApiEquiv: number | null }[]
@@ -494,6 +500,8 @@ export interface AgentsResponse {
  * Models
  * ------------------------------------------------------------------ */
 
+export type PriceSource = 'litellm' | 'openrouter' | 'override' | 'manual'
+
 export interface ModelRow {
   provider: string
   model: string
@@ -502,6 +510,8 @@ export interface ModelRow {
   tokensTotal: number
   costApiEquiv: number | null
   priced: boolean | null
+  /** Which price source stands behind `costApiEquiv` (§8); null when pricing is off. Mirror of `ModelRow` server-side. */
+  priceSource: PriceSource | null
 }
 export interface ModelsResponse {
   filter: Filter
@@ -580,6 +590,20 @@ export interface DoctorReport {
 export type BillingMode = 'api' | 'subscription' | 'local'
 export const BILLING_MODES: readonly BillingMode[] = ['api', 'subscription', 'local']
 
+export interface BillingModelRow {
+  /** The `"<provider>/<name>"` key a per-model declaration is stored under. */
+  key: string
+  provider: string
+  model: string
+  effectiveMode: BillingMode
+  /** False when this model is priced by the agent's default rather than its own entry. */
+  overridden: boolean
+}
+export interface BillingDeclaration {
+  mode: BillingMode | null
+  planUsdPerMonth: number | null
+  models: Record<string, BillingMode>
+}
 export interface BillingAgentRow {
   agentId: string
   displayName: string | null
@@ -587,17 +611,24 @@ export interface BillingAgentRow {
   billingMode: BillingMode
   /** False when the agent simply has no declaration and inherits the `api` default. */
   declared: boolean
+  /** What the plan is declared to cost per month; null means actual cash stays at its marginal $0. */
+  planUsdPerMonth: number | null
+  /** Only the models this agent has events for — a declaration against another name is inert. */
+  models: BillingModelRow[]
 }
 export interface BillingSettingsResponse {
   configFile: string
-  modes: Record<string, BillingMode>
+  modes: Record<string, BillingDeclaration>
   agents: BillingAgentRow[]
 }
 export interface BillingWriteResponse {
   agent: string
   /** Effective mode after the write: clearing returns the agent to `api`. */
   mode: BillingMode
-  modes: Record<string, BillingMode>
+  planUsdPerMonth: number | null
+  /** Present only when the write targeted one model. */
+  model?: { key: string; mode: BillingMode }
+  modes: Record<string, BillingDeclaration>
 }
 
 /* ------------------------------------------------------------------ *
@@ -628,7 +659,15 @@ export const api = {
   doctor: (params?: FilterParams) => getJSON<DoctorReport>('/api/doctor', params),
   coverage: () => getJSON<CoverageReport>('/api/coverage'),
   billingSettings: () => getJSON<BillingSettingsResponse>('/api/settings/billing'),
-  /** `mode: null` drops the declaration, so the agent falls back to the `api` default. */
-  setBilling: (body: { agent: string; mode: BillingMode | null }) =>
-    postJSON<BillingWriteResponse>('/api/settings/billing', body),
+  /**
+   * One route for three writes: `{agent, mode}` sets the default, `{agent, model, mode}`
+   * narrows one model, and `{agent, planUsdPerMonth}` declares the fee. `null` on any of
+   * them undeclares that one thing and leaves the rest standing.
+   */
+  setBilling: (body: {
+    agent: string
+    mode?: BillingMode | null
+    model?: string
+    planUsdPerMonth?: number | null
+  }) => postJSON<BillingWriteResponse>('/api/settings/billing', body),
 }

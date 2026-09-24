@@ -5,7 +5,7 @@
  * both has and has no price.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { harness } from './helpers.ts'
+import { harness, TEST_PRICE, testPriceResolver } from './helpers.ts'
 
 /** The fixture's own gap set: one priced model, one unpriced one. */
 const PRICED = { provider: 'anthropic', model: 'test-model' }
@@ -33,6 +33,33 @@ describe('GET /api/models prices each row exactly like the unpriced list', () =>
     expect(res.body.unpriced).toEqual([expect.objectContaining(UNPRICED)])
   })
 
+  it('says which source stands behind each price (§8)', async () => {
+    const res = await h.get('/api/models')
+    // The fixture prices `test-model` with a hand-written entry, and answers nothing for the
+    // gap model — provenance is the entry's own label, so "no price" has none to invent.
+    expect(rowFor(res.body.rows, PRICED.provider, PRICED.model).priceSource).toBe('manual')
+    expect(rowFor(res.body.rows, UNPRICED.provider, UNPRICED.model).priceSource).toBeNull()
+  })
+
+  it('marks a gap the fallback source filled, without hiding that it was a gap', async () => {
+    const filled = harness({
+      priceResolver: (provider: string, model: string) =>
+        provider === UNPRICED.provider && model === UNPRICED.model
+          ? { ...TEST_PRICE, model, source: 'openrouter' as const }
+          : testPriceResolver(provider, model),
+    })
+    try {
+      const res = await filled.get('/api/models')
+      const row = rowFor(res.body.rows, UNPRICED.provider, UNPRICED.model)
+      expect(row.priced).toBe(true) // it is priced now…
+      expect(row.priceSource).toBe('openrouter') // …by the source whose rate is a reseller route price
+      expect(res.body.unpriced).toEqual([])
+      expect(rowFor(res.body.rows, PRICED.provider, PRICED.model).priceSource).toBe('manual')
+    } finally {
+      filled.close()
+    }
+  })
+
   it('never lists a row as priced that `unpriced` names, or the other way round', async () => {
     const res = await h.get('/api/models')
     const isGap = (r: any) => res.body.unpriced.some((u: any) => u.provider === r.provider && u.model === r.model)
@@ -50,6 +77,7 @@ describe('GET /api/models prices each row exactly like the unpriced list', () =>
       expect(res.body.pricingConfigured).toBe(false)
       expect(res.body.unpriced).toEqual([])
       for (const r of res.body.rows) expect(r.priced).toBeNull()
+      for (const r of res.body.rows) expect(r.priceSource).toBeNull()
     } finally {
       unconfigured.close()
     }

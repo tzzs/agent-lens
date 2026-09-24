@@ -64,12 +64,17 @@ export {
 export {
   actualUsdFor,
   costView,
+  gappedModels,
+  isGapped,
   missingPriceModels,
+  modelPrices,
+  priceVerdictsByModel,
   modelSpend,
   unpricedBuckets,
   unpricedModelKey,
   unpricedModels,
   type CostView,
+  type ModelPrice,
   type ModelSpend,
   type UnpricedModel,
 } from './cost.ts'

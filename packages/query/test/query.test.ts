@@ -5,7 +5,7 @@ import { aggregateRequestTokens, aggregateUsage, UnknownAggregationError } from 
 import { hexSeed } from './fixtures.ts'
 import { insertEvents, migrate, openDatabase } from '@agentlens/storage'
 import type { PriceEntry } from '@agentlens/pricing'
-import { bucketTs, costFloor, query, resolveSince, UnknownDimError, UnknownMetricError, type QuerySpec } from '@agentlens/query'
+import { bucketTs, costFloor, costPortionsByAgent, query, resolveSince, UnknownDimError, UnknownMetricError, type QuerySpec } from '@agentlens/query'
 
 function seeded(events: AgentEvent[]): DatabaseSync {
   const db = openDatabase(':memory:')
@@ -243,6 +243,80 @@ describe('whitelist validation', () => {
   })
   it('unknown dim throws UnknownDimError', () => {
     expect(() => query(db, { dims: ['moon' as never] })).toThrow(UnknownDimError)
+  })
+})
+
+describe('costPortionsByAgent — the priced half of a window a gap NULLs (§8/§14)', () => {
+  const usage: Usage = { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 }
+  const db = seeded([
+    hexSeed({ agentId: 'a1', requestId: 'p1', usage, model: { provider: 'anthropic', name: 'test-model' } }, 'p1'),
+    hexSeed({ agentId: 'a1', requestId: 'p2', usage, model: { provider: 'anthropic', name: 'unpriced-model' } }, 'p2'),
+    hexSeed({ agentId: 'a2', requestId: 'p3', usage, model: { provider: 'anthropic', name: 'unpriced-model' } }, 'p3'),
+  ])
+
+  it('sums what prices out, per agent, and invents nothing where nothing prices', () => {
+    const portions = costPortionsByAgent(db, {}, { priceResolver: resolver })
+    // a1's window is half priced: the gap drops out of the floor, the $3 does not.
+    expect(portions.get('a1')).toEqual({
+      api: 3,
+      total: 3,
+      models: new Map([
+        ['anthropic/test-model', { api: 3, total: 3 }],
+        ['anthropic/unpriced-model', { api: null, total: null }],
+      ]),
+    })
+    expect(portions.get('a2'), 'an agent with no priced slice has no floor').toEqual({
+      api: null,
+      total: null,
+      models: new Map([['anthropic/unpriced-model', { api: null, total: null }]]),
+    })
+    // The complete answer stays NULL at agent grain — this map is a floor, not a relaxed §18 row 1.
+    expect(query(db, { metrics: ['cost_api_equiv'], dims: ['agent'] }, { priceResolver: resolver }).rows).toEqual([
+      { agent: 'a1', cost_api_equiv: null },
+      { agent: 'a2', cost_api_equiv: null },
+    ])
+  })
+
+  /**
+   * The model rows are the whole point of the second half of this function's contract: a
+   * billing mode is declared per model, so a surface that folded the agent first would price
+   * a metered model at whatever the agent's default happened to be.
+   */
+  it('keeps the per-model rows separable, so a mode can be resolved per model', () => {
+    const portions = costPortionsByAgent(db, {}, { priceResolver: resolver })
+    const a1 = portions.get('a1')!.models
+    expect(a1.get('anthropic/test-model')).toEqual({ api: 3, total: 3 })
+    // The gap belongs to ONE model; carrying it up is what the agent rollup does, and that
+    // is exactly the information a per-model mode needs to not lose.
+    expect(a1.get('anthropic/unpriced-model')).toEqual({ api: null, total: null })
+  })
+})
+
+describe('credits — a plan ledger, not dollars (§18 rows 1-2)', () => {
+  const tokens: Usage = { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 }
+  const db = seeded([
+    hexSeed({ agentId: 'qoder', requestId: 'cr1', usage: tokens, credits: 4 }, 'ca'),
+    // The same request logged twice: credits fold per request like every other quantity.
+    hexSeed({ agentId: 'qoder', requestId: 'cr1', usage: tokens, credits: 4, rawSeq: 2 }, 'cb'),
+    hexSeed({ agentId: 'qoder', requestId: 'cr2', usage: tokens, credits: 1.5 }, 'cc'),
+    // An agent with no credit economy writes NULL, and NULL must survive to the reader.
+    hexSeed({ agentId: 'claude-code', requestId: 'cr3', usage: tokens }, 'cd'),
+  ])
+
+  it('folds one number per request, and keeps "no ledger" apart from "burned zero"', () => {
+    const res = query(db, { metrics: ['credits'], dims: ['agent'] }, { priceResolver: resolver })
+    const byAgent = Object.fromEntries(res.rows.map((r) => [r.agent, r.credits]))
+    expect(byAgent.qoder).toBeCloseTo(5.5, 10) // 4 (one request, not two) + 1.5
+    expect(byAgent['claude-code']).toBeNull()
+    expect(res.totals.credits).toBeCloseTo(5.5, 10)
+  })
+
+  it('stays out of the SQL when no caller asks for it', () => {
+    // The metric is opt-in like `duration` and `rep_cost`: a spec that never mentions credits
+    // must not grow a fold column, or every existing query pays for a number it cannot show.
+    const plain = query(db, { metrics: ['tokens_total'], dims: ['agent'] }, { priceResolver: resolver })
+    expect(plain.rows[0]).not.toHaveProperty('credits')
+    expect(plain.rows.length).toBe(2)
   })
 })
 

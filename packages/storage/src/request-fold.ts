@@ -200,10 +200,13 @@ export function foldStatement(scope: FoldScope, conflictSql: string): { sql: str
     params.push(...scope.keys)
   }
   const valCols = [...REQUEST_FOLD_VALUE_COLUMNS, 'member_count', 'ts_count', 'min_ts', 'max_ts']
+  // Qualified, because `credits` is also a column of `events`, and the outer SELECT joins the
+  // representative row: a bare name there is ambiguous SQL rather than a fold value.
+  const foldedSelect = valCols.map((c) => `r.${c}`)
   const repCols = REQUEST_FOLD_DIM_COLUMNS.map((c) => `rep.${c}`)
   return {
     sql: `INSERT INTO main.requests (${FOLD_COLUMNS.join(', ')})
-      SELECT ${['r.agent_key', 'r.req_key', 'r.rep_id', ...valCols, ...repCols].join(', ')}
+      SELECT ${['r.agent_key', 'r.req_key', 'r.rep_id', ...foldedSelect, ...repCols].join(', ')}
       FROM (
         SELECT COALESCE(e.agent_id, '') AS agent_key,
         ${requestKeySql('e', mode)} AS req_key,
@@ -211,6 +214,7 @@ export function foldStatement(scope: FoldScope, conflictSql: string): { sql: str
         ${tokenMaxes},
         MAX(COALESCE(e.duration_ms, 0)) AS duration,
         MAX(e.cost_reported) AS rep_cost,
+        MAX(e.credits) AS credits,
         COUNT(*) AS member_count,
         COUNT(e.timestamp) AS ts_count,
         MIN(e.timestamp) AS min_ts,

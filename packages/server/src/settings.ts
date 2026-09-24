@@ -10,12 +10,31 @@
 import type { DatabaseSync } from 'node:sqlite'
 import {
   assertBillingMode,
+  billingModeFor,
+  billingModelKey,
+  isBillingMode,
   liveBillingModes,
+  parseModelKey,
+  planFeeFor,
   writeBillingMode,
+  writeBillingModelMode,
+  writeBillingPlanFee,
+  type BillingDeclaration,
   type BillingMode,
 } from '@agentlens/pricing'
 import { ApiError } from './errors.ts'
 import { redactHome, rowsOf } from './resolve.ts'
+
+export interface BillingModelRow {
+  /** The `"<provider>/<name>"` key the declaration is stored under. */
+  key: string
+  provider: string
+  model: string
+  /** What a cost figure for THIS model folds with: its override, else the agent default. */
+  effectiveMode: BillingMode
+  /** False when the row answers with the agent default — the UI must not paint that as a choice. */
+  overridden: boolean
+}
 
 export interface BillingAgentRow {
   agentId: string
@@ -24,23 +43,30 @@ export interface BillingAgentRow {
   billingMode: BillingMode
   /** False for the unset ones: the UI must tell a default apart from a declaration. */
   declared: boolean
+  /** What the plan is declared to cost per calendar month; null = undeclared. */
+  planUsdPerMonth: number | null
+  /** The models this agent actually has events for, each with the mode that prices it. */
+  models: BillingModelRow[]
 }
 
 export interface BillingView {
   configFile: string
-  modes: Record<string, BillingMode>
+  modes: Record<string, BillingDeclaration>
   agents: BillingAgentRow[]
 }
 
 export interface BillingWriteResult {
   agent: string
-  /** The effective mode after the write: clearing lands back on the `api` default. */
+  /** The effective default after the write: clearing lands back on the `api` default. */
   mode: BillingMode
-  modes: Record<string, BillingMode>
+  planUsdPerMonth: number | null
+  /** Present only when the write targeted one model. */
+  model?: { key: string; mode: BillingMode }
+  modes: Record<string, BillingDeclaration>
 }
 
 export class BillingSettings {
-  private readonly modes: Record<string, BillingMode>
+  private readonly modes: Record<string, BillingDeclaration>
 
   constructor(
     private readonly db: DatabaseSync,
@@ -59,24 +85,56 @@ export class BillingSettings {
     const meta = new Map(
       rowsOf(this.db, 'SELECT id, display_name FROM agents').map((r) => [String(r.id), r.display_name ? String(r.display_name) : null]),
     )
+    // Only models the store has events for are offered: a declaration against a name nobody
+    // ever ran is inert, and offering it invites the user to spend a choice on nothing.
+    const seen = new Map<string, { provider: string; model: string }[]>()
+    for (const r of rowsOf(
+      this.db,
+      `SELECT DISTINCT e.agent_id AS a, m.provider AS p, m.name AS n
+         FROM events e JOIN models m ON m.rowid = e.model_rowid
+        WHERE e.agent_id IS NOT NULL AND m.name IS NOT NULL
+        ORDER BY p, n`,
+    )) {
+      const list = seen.get(String(r.a)) ?? []
+      list.push({ provider: String(r.p ?? ''), model: String(r.n ?? '') })
+      seen.set(String(r.a), list)
+    }
     return {
       configFile: redactHome(this.configPath, this.homedir),
       modes: { ...this.modes },
-      agents: [...ids].sort().map((agentId) => ({
-        agentId,
-        displayName: meta.get(agentId) ?? null,
-        billingMode: this.modes[agentId] ?? 'api',
-        declared: agentId in this.modes,
-      })),
+      agents: [...ids].sort().map((agentId) => {
+        const declaration = this.modes[agentId]
+        const defaultMode = billingModeFor(this.modes, agentId)
+        return {
+          agentId,
+          displayName: meta.get(agentId) ?? null,
+          billingMode: defaultMode,
+          declared: declaration?.mode != null || Object.keys(declaration?.models ?? {}).length > 0,
+          planUsdPerMonth: planFeeFor(this.modes, agentId),
+          models: (seen.get(agentId) ?? []).map(({ provider, model }) => ({
+            key: billingModelKey(provider, model),
+            provider,
+            model,
+            effectiveMode: billingModeFor(this.modes, agentId, provider, model),
+            overridden: billingModeFor(this.modes, agentId, provider, model) !== defaultMode,
+          })),
+        }
+      }),
     }
   }
 
-  /** Declare (`mode`) or undeclare (`mode: null`); throws ApiError for anything unsupported. */
+  /**
+   * Declare a default (`mode`), a plan fee (`planUsdPerMonth`) or one model
+   * (`model` + `mode`); `null` on any of them undeclares that one thing and leaves the rest.
+   * Throws ApiError for anything unsupported.
+   */
   declare(body: unknown): BillingWriteResult {
     if (body === null || typeof body !== 'object' || Array.isArray(body)) {
-      throw ApiError.badRequest('body must be a JSON object: {"agent": "<id>", "mode": "api | subscription | local" | null}')
+      throw ApiError.badRequest(
+        'body must be a JSON object: {"agent": "<id>", "mode": "api | subscription | local" | null} (optionally "model": "<provider>/<name>", or "planUsdPerMonth": <number> | null)',
+      )
     }
-    const raw = body as { agent?: unknown; mode?: unknown }
+    const raw = body as { agent?: unknown; mode?: unknown; model?: unknown; planUsdPerMonth?: unknown }
     if (typeof raw.agent !== 'string' || raw.agent.trim() === '') {
       throw ApiError.badRequest('"agent" must be a non-empty agent id')
     }
@@ -88,20 +146,51 @@ export class BillingSettings {
         hint: 'declare only agents AgentLens knows; a typo would silently change no number',
       })
     }
+    const isModelWrite = typeof raw.model === 'string'
+    const isFeeWrite = raw.planUsdPerMonth !== undefined
+    if (isModelWrite && !isBillingMode(raw.mode)) {
+      throw ApiError.badRequest('a model write needs "mode": one of api | subscription | local, or null to drop that model\'s override')
+    }
     // The union lives in @agentlens/pricing; catching its error lets the message name the
     // legal set while the status stays a 400 the UI can show (§9's error contract).
-    let mode: BillingMode | null
-    if (raw.mode === null || raw.mode === undefined) {
-      mode = null
-    } else {
-      try {
-        mode = assertBillingMode(raw.mode)
-      } catch (err) {
-        throw ApiError.badRequest(`${(err as Error).message}, or null to drop the declaration`)
+    let mode: BillingMode | null = null
+    if (!isFeeWrite) {
+      if (raw.mode === null || raw.mode === undefined) {
+        mode = null
+      } else {
+        try {
+          mode = assertBillingMode(raw.mode)
+        } catch (err) {
+          throw ApiError.badRequest(`${(err as Error).message}, or null to drop the declaration`)
+        }
       }
     }
-    const modes = writeBillingMode(this.configPath, agent, mode)
-    return { agent, mode: modes[agent] ?? 'api', modes }
+    try {
+      if (isFeeWrite) {
+        const fee = raw.planUsdPerMonth
+        if (fee !== null && (typeof fee !== 'number' || !Number.isFinite(fee) || fee < 0)) {
+          throw ApiError.badRequest('"planUsdPerMonth" must be a non-negative number, or null to undeclare the fee')
+        }
+        const modes = writeBillingPlanFee(this.configPath, agent, fee as number | null)
+        return { agent, mode: billingModeFor(modes, agent), planUsdPerMonth: planFeeFor(modes, agent), modes }
+      }
+      if (isModelWrite) {
+        const key = (raw.model as string).trim()
+        const modes = writeBillingModelMode(this.configPath, agent, key, mode)
+        return {
+          agent,
+          mode: billingModeFor(modes, agent),
+          planUsdPerMonth: planFeeFor(modes, agent),
+          model: { key, mode: billingModeFor(modes, agent, ...parseModelKey(key)) },
+          modes,
+        }
+      }
+      const modes = writeBillingMode(this.configPath, agent, mode)
+      return { agent, mode: billingModeFor(modes, agent), planUsdPerMonth: planFeeFor(modes, agent), modes }
+    } catch (err) {
+      if (err instanceof ApiError) throw err
+      throw ApiError.badRequest((err as Error).message)
+    }
   }
 }
 

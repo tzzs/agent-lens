@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Usage } from '@agentlens/event-model'
-import { computeCost, formatUsd } from '../src/cost.ts'
+import { actualUsdFor, computeCost, DAYS_PER_MONTH, formatUsd, planCostFor } from '../src/cost.ts'
 import { PRICE_MISSING, type PriceEntry } from '../src/price-types.ts'
 
 const usage: Usage = {
@@ -36,11 +36,44 @@ describe('computeCost billing modes (§8)', () => {
     expect(c.pricedAt).toBe(sonnet.effectiveFrom)
   })
 
-  it('subscription: actual is $0 (flat plan fee), api-equivalent still computed', () => {
+  // The $0 here is real, not a shrug: a flat plan charges nothing for these particular tokens,
+  // and `cost_total` prices an unreported slice of a plan-covered request at exactly this. A
+  // plan's COST is its fee, which is a period amount and lives in `planCostFor` below — proving
+  // the two halves stay separate, because merging them would NULL the §18 fusion for every
+  // subscription agent on this machine.
+  it('subscription: no marginal cash per request, with the api-equivalent still computed', () => {
     const c = computeCost(usage, sonnet, 'subscription')
     expect(c.actualUsd).toBe(0)
     expect(c.apiEquivalentUsd).toBeCloseTo(API_EQUIVALENT, 10)
     expect(c.gap).toBe(false)
+  })
+
+  describe('§8 the plan fee over a window', () => {
+    const plan = { planUsdPerMonth: 20, windowDays: 15 }
+    it('prorates a declared fee across the window it covers', () => {
+      expect(planCostFor('subscription', plan)).toBeCloseTo((20 * 15) / DAYS_PER_MONTH, 10)
+      expect(planCostFor('subscription', { ...plan, windowDays: DAYS_PER_MONTH })).toBeCloseTo(20, 10)
+    })
+    it('answers nothing at all until BOTH the fee and the window are known', () => {
+      expect(planCostFor('subscription', { planUsdPerMonth: null, windowDays: 15 })).toBeNull()
+      expect(planCostFor('subscription', { planUsdPerMonth: 20, windowDays: null })).toBeNull()
+      expect(planCostFor('subscription')).toBeNull()
+      // A fee belongs to a plan and to nothing else.
+      for (const mode of ['api', 'local'] as const) expect(planCostFor(mode, plan)).toBeNull()
+    })
+    it('rides on top of the marginal cash, and never replaces it', () => {
+      expect(actualUsdFor(100, 'subscription', plan)).toBeCloseTo((20 * 15) / DAYS_PER_MONTH, 10)
+      // Undeclared fee: the marginal $0 stands, and the surface says the fee is missing.
+      expect(actualUsdFor(100, 'subscription', { planUsdPerMonth: null, windowDays: 15 })).toBe(0)
+      expect(actualUsdFor(100, 'subscription')).toBe(0)
+    })
+    it('leaves api and local alone, and an unpriced amount alone in every mode', () => {
+      expect(actualUsdFor(7, 'api', plan)).toBe(7)
+      expect(actualUsdFor(7, 'local', plan)).toBe(0)
+      for (const mode of ['api', 'subscription', 'local'] as const) {
+        expect(actualUsdFor(null, mode, plan)).toBeNull()
+      }
+    })
   })
 
   // §8 table, `local` row: "tokens have a price, cost is always $0" — the two halves

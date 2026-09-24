@@ -18,6 +18,8 @@ export interface AgentRow {
   /** False when the agent is known but has no events in the window: "not recorded", not zeros. */
   recorded: boolean
   billingMode: string
+  /** True when some of this agent's models bill at another mode, so `billingMode` is only its default. */
+  mixedBilling: boolean
   hosts: { host: string; events: number; sessions: number }[]
   capabilities: { type: string; events: number; errors: number }[]
   models: { model: string; events: number; tokensTotal: number; costApiEquiv: number | null }[]
@@ -51,14 +53,20 @@ export function agents(ctx: ServerCtx, sp: URLSearchParams): AgentsResponse {
   // the literal 'api' only covers a DB-less in-process ctx.
   const modeFor = ctx.billingModeFor ?? ((): string => 'api')
 
+  // Computed before the rows because a billing label is only honest next to the per-model
+  // modes the cost fold already resolved — a second read of the same cube would be a second
+  // vintage of the same rows (§14).
+  const cost = costView(ctx, filter)
   const rows: AgentRow[] = perAgent.rows.map((r) => {
     const agentId = String(r.agent)
+    const slice = cost.perAgent.find((s) => s.agentId === agentId)
     const m = meta.find((x) => String(x.id) === agentId)
     return {
       agentId,
       displayName: m?.display_name ? String(m.display_name) : null,
       recorded: true,
       billingMode: modeFor(agentId),
+      mixedBilling: slice?.mixedBilling ?? false,
       hosts: hosts.rows
         .filter((h) => String(h.agent) === agentId)
         .map((h) => ({ host: String(h.host), events: Number(h.events ?? 0), sessions: Number(h.sessions ?? 0) })),
@@ -94,6 +102,7 @@ export function agents(ctx: ServerCtx, sp: URLSearchParams): AgentsResponse {
       displayName: m.display_name ? String(m.display_name) : null,
       recorded: false,
       billingMode: modeFor(agentId),
+      mixedBilling: false,
       hosts: [],
       capabilities: [],
       models: [],
@@ -101,5 +110,5 @@ export function agents(ctx: ServerCtx, sp: URLSearchParams): AgentsResponse {
     })
   }
 
-  return { filter, rows, totals: perAgent.totals, cost: costView(ctx, filter) }
+  return { filter, rows, totals: perAgent.totals, cost }
 }

@@ -241,7 +241,8 @@ export interface QueryDeps {
    */
   priceResolver?: (provider: string, model: string, occurredAt: number) => PriceEntry | null
   /** Default 'api' (§8). */
-  billingModeFor?: (agentId: string) => BillingMode
+  /** §8 mode for a row: the agent, narrowed by its provider+model when the caller can say them. */
+  billingModeFor?: (agentId: string, provider?: string, model?: string) => BillingMode
   /**
    * §18 row 2: how each adapter's rows fold into token totals, keyed by `agent_id` —
    * the same declaration `Adapter.aggregation` carries, so the CLI wires adapters straight
@@ -340,7 +341,7 @@ function buildWhere(filter: QueryFilter | undefined, now?: () => number): WhereC
 /** Stage 1's projected columns. `duration` and `rep_cost` are always kept in a materialised
  *  fold so one table can serve every stage-2 shape in the scope; the inline CTE keeps them
  *  conditional so a spec that asks for neither emits exactly the SQL it always did. */
-function foldSelectList(reqs: Reqs, withDuration: boolean, withReported: boolean): string {
+function foldSelectList(reqs: Reqs, withDuration: boolean, withReported: boolean, withCredits = false): string {
   const tokenMaxes = TOKEN_FIELDS.map(
     (f) => `MAX(COALESCE(e.${TOKEN_EVENT_COL[f]}, 0)) AS ${TOKEN_METRIC[f]}`,
   ).join(',\n      ')
@@ -348,14 +349,17 @@ function foldSelectList(reqs: Reqs, withDuration: boolean, withReported: boolean
   // reported" distinct from 0 (§8); under request_max it also folds a duplicate row's
   // copy of the same report so it can be counted twice.
   const reportedFold = withReported ? ',\n      MAX(e.cost_reported) AS rep_cost' : ''
+  // §18 rows 1-2: credits fold the same way — a per-request quantity, NULL meaning "this
+  // agent keeps no credit ledger", which no coalesce may turn into a measured 0.
+  const creditsFold = withCredits ? ',\n      MAX(e.credits) AS credits' : ''
   return `SELECT COALESCE(e.agent_id, '') AS agent_key, ${reqs.fold.sql} AS req_key, MAX(e.id) AS rep_id,
-      ${tokenMaxes}${withDuration ? ',\n      MAX(COALESCE(e.duration_ms, 0)) AS duration' : ''}${reportedFold}`
+      ${tokenMaxes}${withDuration ? ',\n      MAX(COALESCE(e.duration_ms, 0)) AS duration' : ''}${reportedFold}${creditsFold}`
 }
 
 /** Stage 1 (§18): one row per (agent, request key), MAX per token column under `request_max`. */
-function dedupStage(reqs: Reqs, withDuration: boolean, withReported: boolean): string {
+function dedupStage(reqs: Reqs, withDuration: boolean, withReported: boolean, withCredits = false): string {
   return `req AS (
-      ${foldSelectList(reqs, withDuration, withReported)}
+      ${foldSelectList(reqs, withDuration, withReported, withCredits)}
       FROM events e
       ${reqs.joinsModels ? 'LEFT JOIN models m ON m.rowid = e.model_rowid' : ''}
       ${reqs.where.sql}
@@ -379,12 +383,12 @@ function materialiseFoldSql(reqs: Reqs, table: string): Prepared {
   // IS NULL to find the requests that reported nothing, and a NULL has to survive the round
   // trip through the temp table exactly as it does in the CTE (a column declared by
   // expression carries no affinity, so a REAL stays the identical REAL and a NULL stays NULL).
-  const foldCols = [...TOKEN_FIELDS.map((f) => TOKEN_METRIC[f]), 'duration', 'rep_cost']
+  const foldCols = [...TOKEN_FIELDS.map((f) => TOKEN_METRIC[f]), 'duration', 'rep_cost', 'credits']
     .map((c) => `r.${c}`)
     .join(', ')
   return {
     sql: `CREATE TEMP TABLE "${table}" AS
-      WITH ${dedupStage(reqs, true, true)}
+      WITH ${dedupStage(reqs, true, true, true)}
       SELECT r.agent_key, r.req_key, r.rep_id, ${foldCols}, ${repCols}
       FROM req r
       JOIN events e ON e.id = r.rep_id`,
@@ -478,6 +482,9 @@ function requestStageQuery(reqs: Reqs): Prepared | null {
       metricSqls.push(`SUM(r.${m}) AS ${m}`)
     } else if (m === 'duration') {
       metricSqls.push('SUM(r.duration) AS duration')
+    } else if (m === 'credits') {
+      // SUM skips NULLs, so an all-NULL group is NULL: no credit economy, not zero credits.
+      metricSqls.push('SUM(r.credits) AS credits')
     } else if (m === 'cost_total') {
       // Only the reported half of the fusion rides the stage-2 SQL; the priced half
       // goes through the (model, day) buckets below, over the rows that reported nothing.
@@ -488,7 +495,7 @@ function requestStageQuery(reqs: Reqs): Prepared | null {
   const { selects, groupBy } = selectClause(reqs, metricSqls, stageSource(reqs))
   const needsModels = dimsNeedModels(reqs.dims)
   return {
-    sql: `${reqs.foldRelation ? '' : `WITH ${dedupStage(reqs, reqs.metrics.includes('duration'), reqs.metrics.includes('cost_total'))}`}
+    sql: `${reqs.foldRelation ? '' : `WITH ${dedupStage(reqs, reqs.metrics.includes('duration'), reqs.metrics.includes('cost_total'), reqs.metrics.includes('credits'))}`}
       SELECT ${selects}
       ${stage2From(reqs, reqs.dims.length > 0, needsModels)}
       ${groupBy}`,
@@ -626,7 +633,11 @@ function priceBuckets(
     if (totalTokens(usage) === 0) continue // zero-token rows must not manufacture price gaps
     const dayMs = Date.parse(`${String(row.b_day)}T00:00:00Z`) + DAY_MS / 2 // price at noon UTC of the bucket day
     const entry = priceResolver(String(row.b_provider), String(row.b_model), dayMs)
-    const cost = computeCost(usage, entry, billingModeFor(String(row.b_agent)))
+    const cost = computeCost(
+      usage,
+      entry,
+      billingModeFor(String(row.b_agent), String(row.b_provider), String(row.b_model)),
+    )
     const key = rowKey(row, reqs.dims)
     const priced = cost[field]
     // NULL dominates, never $0 (§8: unknown price must not read as free).
@@ -674,12 +685,72 @@ export function costFloor(strict: number | null, reported: number | null): numbe
   return strict ?? reported
 }
 
+/** The knowable part of an agent's cost, per agent: `null` means that column has nothing to say. */
+export interface CostPortion {
+  api: number | null
+  total: number | null
+}
+
+/**
+ * §8/§14: what a cost slice is worth once its complete answer came back NULL.
+ *
+ * A group is NULLed by its worst gap — one unpriced model, or one never-reported slice with no
+ * price — so the agent-level figures throw away every token that DID price out. This refolds the
+ * same metrics one level finer (per model, where §18 row 1's NULL can only be caused by that
+ * model's own window) and sums what survives, so a surface can print the largest claim the store
+ * actually supports instead of the smallest one it can prove.
+ *
+ * The per-model rows come back with the agent rollup rather than as a second call, because a
+ * billing mode is now resolved per (agent, model) and the two answers must come from ONE fold —
+ * a second query would be a second vintage of the same rows, which is exactly what §14 forbids.
+ *
+ * It lives next to `costFloor` because the two are one rule: `strict ?? portion ?? reported`, and
+ * both surfaces that print a cost figure call it, so the terminal and the dashboard cannot
+ * disagree about what "at least $x" means (§14). No `limit`: this is a fold, and a truncated
+ * one would under-read silently.
+ */
+export function costPortionsByAgent(
+  db: DatabaseSync,
+  filter: QueryFilter | undefined,
+  deps?: QueryDeps,
+): Map<string, CostPortion & { models: Map<string, CostPortion> }> {
+  const res = query(
+    db,
+    {
+      metrics: ['cost_api_equiv', 'cost_reported', 'cost_total'],
+      dims: ['agent', 'provider', 'model'],
+      filter,
+      totals: false,
+    },
+    deps,
+  )
+  const add = (share: CostPortion, api: number | null, total: number | null): CostPortion => ({
+    api: api === null ? share.api : (share.api ?? 0) + api,
+    total: total === null ? share.total : (share.total ?? 0) + total,
+  })
+  const out = new Map<string, CostPortion & { models: Map<string, CostPortion> }>()
+  for (const row of res.rows) {
+    const agentId = String(row.agent ?? '')
+    const api = row.cost_api_equiv == null ? null : Number(row.cost_api_equiv)
+    const reported = row.cost_reported == null ? null : Number(row.cost_reported)
+    const fused = costFloor(row.cost_total == null ? null : Number(row.cost_total), reported)
+    const entry = out.get(agentId) ?? { api: null, total: null, models: new Map<string, CostPortion>() }
+    const modelKey = `${String(row.provider ?? '')}/${String(row.model ?? '')}`
+    const modelShare = entry.models.get(modelKey) ?? { api: null, total: null }
+    entry.models.set(modelKey, add(modelShare, api, fused))
+    const rolled = add({ api: entry.api, total: entry.total }, api, fused)
+    out.set(agentId, { ...rolled, models: entry.models })
+  }
+  return out
+}
+
 /** Metrics that make stage 1 run at all: token/duration read the fold, `cost_api_equiv`
  *  prices its buckets, and `cost_total` needs both the folded report and the unreported
  *  buckets. A spec with none of them must never pay for — or create — one. */
 function usesFold(metrics: Metric[]): boolean {
   return metrics.some(
-    (m) => TOKEN_METRIC_NAMES.includes(m) || m === 'duration' || m === 'cost_api_equiv' || m === 'cost_total',
+    (m) =>
+      TOKEN_METRIC_NAMES.includes(m) || m === 'duration' || m === 'credits' || m === 'cost_api_equiv' || m === 'cost_total',
   )
 }
 
@@ -783,6 +854,9 @@ export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): Quer
     const r = ensure(row)
     for (const m of metrics) {
       if (TOKEN_METRIC_NAMES.includes(m) || m === 'duration') r[m] = num(row[m])
+      // Credits keep NULL distinct from 0 on the way out, the way `cost_reported` does: an
+      // agent with no credit ledger has nothing to report, which is not a measurement of 0.
+      if (m === 'credits') r[m] = nullableNum(row[m])
     }
   }
 

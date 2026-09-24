@@ -163,13 +163,16 @@ describe('materialised stage 1 (§19)', () => {
   it('backfills an existing store during the upgrade, with no rescan (§6)', () => {
     const db = store(fixture())
     const before = dump(db)
-    // Become, faithfully, a store that has not seen 007 yet.
-    db.exec("DELETE FROM schema_migrations WHERE id = '008_persisted_request_fold.sql'")
+    // Become, faithfully, a store that has not seen 008 yet — which also un-rolls 009, since
+    // that migration only alters the table 008 creates. Rewinding one and leaving the other
+    // recorded is not a state a real store can reach, and it is the state that makes the
+    // re-fold insert a column its own migration never created.
+    db.exec("DELETE FROM schema_migrations WHERE id IN ('008_persisted_request_fold.sql', '009_credits_in_the_persisted_fold.sql')")
     db.exec('DROP TABLE requests')
     db.exec('DROP TABLE requests_state')
     expect(requestFoldState(db)).toBeNull()
 
-    expect(migrate(db)).toEqual(['008_persisted_request_fold.sql'])
+    expect(migrate(db)).toEqual(['008_persisted_request_fold.sql', '009_credits_in_the_persisted_fold.sql'])
     expect(requestFoldIsConsistent(db)).toBe(true)
     expect(requestFoldState(db)?.policyFingerprint).toBe(requestFoldFingerprint(db))
     // Re-folded from the rows already on disk: identical to what the write path built.
