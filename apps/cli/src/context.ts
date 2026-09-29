@@ -12,6 +12,7 @@ import type { FlagView } from './args.ts'
 import type { ServeHandle } from './serve.ts'
 import { ensureMachineId, loadAgentAggregations, type MachineIdentity } from '@agentlens/storage'
 import { billingModeFor as billingModeForOwner } from '@agentlens/pricing'
+import { createFoldCache } from '@agentlens/query'
 import type { BillingMode, QueryFilter, QueryDeps } from './types.ts'
 import { loadBillingModes, loadPricing } from './pricing-store.ts'
 
@@ -142,6 +143,16 @@ export function machineLines(machine: MachineIdentity | null): string[] {
   ]
 }
 
+/**
+ * The cube dependencies for one CLI command, including its **fold scope**: the server creates
+ * one per request (`app.ts`), and without it every statement of `agl usage` folded the window
+ * again on its own — six full-history folds for one table.
+ *
+ * The scope is safe here precisely because no command writes through these deps: `scan` builds
+ * them after its last `insertEvents`, and `watch`/`prune` never call this at all. `--serve`
+ * does not inherit it either — it wires its own cube dependencies per request, which is what
+ * keeps a dashboard scan from reading a fold materialised before it.
+ */
 export function queryDeps(db: DatabaseSync, dbPath: string, ctx: Ctx): QueryDeps {
   const { table } = loadPricing(dbPath)
   const modes = loadBillingModes(dbPath)
@@ -151,6 +162,7 @@ export function queryDeps(db: DatabaseSync, dbPath: string, ctx: Ctx): QueryDeps
     // §18 row 2: read the fold rule back from the rows' own agents, so a query never has to
     // know which adapter version wrote them.
     aggregation: loadAgentAggregations(db),
+    foldCache: createFoldCache(db),
   }
 }
 
