@@ -69,6 +69,17 @@
     measure()
     return { update: measure, destroy: () => { observer.disconnect(); node.removeEventListener('scroll', measure) } }
   }
+  /**
+   * A scrollable region is only reachable by keyboard if the role, the name and the tab stop
+   * are ALL present; any one of them alone is worse than none. They were three parallel
+   * `scrollable ? …` ternaries, which says the same thing but in three places — and
+   * `svelte-check` cannot prove a conditional role covers a conditional tabindex, so it filed
+   * `a11y_no_noninteractive_tabindex` against correct markup. One derived object states the
+   * invariant once and makes it unrepresentable to break it.
+   */
+  const scrollAttrs = $derived(
+    scrollable ? { role: 'region', 'aria-label': $t('comps.scrollTable'), tabindex: 0 } : {},
+  )
 </script>
 
 <div class="relative">
@@ -78,9 +89,7 @@
     class:scrollable
     style={maxHeight ? `max-height:${maxHeight}px` : ''}
     use:trackScroll
-    role={scrollable ? 'region' : undefined}
-    aria-label={scrollable ? $t('comps.scrollTable') : undefined}
-    tabindex={scrollable ? 0 : undefined}
+    {...scrollAttrs}
   >
   <table class="w-full table-fixed border-separate border-spacing-0 text-left text-[13px]" style="min-width:{minWidth}px">
     {#if caption}<caption class="sr-only">{caption}</caption>{/if}
