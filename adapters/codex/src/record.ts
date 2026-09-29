@@ -84,11 +84,16 @@ const KNOWN_HOSTS: readonly string[] = [HOST_DESKTOP, HOST_TUI, HOST_EXEC, HOST_
 
 /** Lower-case, `-`-separated slug; `Codex Desktop`/`codex_exec`/`codex_cli_rs` all land well. */
 export function slugOriginator(originator: string): string {
-  return originator
+  const slug = originator
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+  // The leading/trailing dashes are cut by index, not with /^-+|-+$/g : the anchored
+  // `-+` restarts at every position of a long '-' run (alert #6). After the replace above
+  // a run of dashes is always a single '-', so one check per end is enough.
+  const from = slug[0] === '-' ? 1 : 0
+  const to = slug.length > from && slug[slug.length - 1] === '-' ? slug.length - 1 : slug.length
+  return slug.slice(from, to)
 }
 
 /**

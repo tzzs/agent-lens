@@ -617,7 +617,12 @@ function sidechainClose(s: Scope, resultToolUseIds: readonly (string | null)[]):
 }
 
 function skillNameFromPath(path: string): string {
-  const clean = path.replace(/\/+$/, '')
+  // Trailing separators are trimmed by walking back, not with /\/+$/ : an anchored
+  // quantifier re-tries at every start position of a long '/' run, which CodeQL scored
+  // as polynomial (alert #2). Same result, one pass, no regex to reason about.
+  let end = path.length
+  while (path[end - 1] === '/') end--
+  const clean = end === path.length ? path : path.slice(0, end)
   const last = clean.split('/').pop() ?? clean
   return last.replace(/^SKILL$/, 'skill') || clean
 }
@@ -731,14 +736,52 @@ function fromAttachment(s: Scope): AgentEvent[] {
   }
 }
 
-function parseTokenCount(text: string | null): number | null {
+/**
+ * The digit-and-punctuation run sitting immediately before a whole-word `tokens`, or null.
+ * Leftmost-first and case-insensitive, like the `([\d][\d,.]*)\s+tokens\b` it replaces.
+ *
+ * It is a scan rather than a regex because that form's quadratic case needs no second start
+ * position at all: one long digit run retried against one long space run is already O(n²)
+ * inside a single attempt, and the runtime has no atomic groups to make it commit.
+ */
+function numberBeforeTokens(text: string): string | null {
+  const lowered = text.toLowerCase()
+  const TOKENS = 'tokens'.length
+  for (let at = lowered.indexOf('tokens'); at >= 0; at = lowered.indexOf('tokens', at + TOKENS)) {
+    // `\b` demanded a whole word: no word character may follow it.
+    const next = lowered[at + TOKENS]
+    if (next !== undefined && /\w/.test(next)) continue
+    // Then optional whitespace, then the maximal [0-9,.] run, which must start with a digit.
+    let i = at
+    while (i > 0 && /\s/.test(text.charAt(i - 1))) i--
+    if (i === at) continue // `tokens` with no room for a number before it
+    let start = i
+    while (start > 0 && /[\d,.]/.test(text.charAt(start - 1))) start--
+    // The regex anchored its capture on `[\d]`, not on the run's beginning: in `.5 tokens`
+    // it matches the "5" and simply leaves the dot out of the group. So the value is the
+    // run from its leftmost digit, and a run with no digit at all is not a match.
+    let digit = start
+    while (digit < i && !/\d/.test(text.charAt(digit))) digit++
+    if (digit === i) continue
+    return text.slice(digit, i)
+  }
+  return null
+}
+
+/** Exported for `test/redos-patterns.test.ts`, which compares it against the old pipeline. */
+export function parseTokenCount(text: string | null): number | null {
   if (!text) return null
   // §2.6: the reminder is prose, so both word orders appear upstream ("N tokens", "tokens: N of M").
-  const match =
-    /tokens\s*[:=]?\s*([\d][\d,.]*)/i.exec(text) ?? /([\d][\d,.]*)\s+tokens\b/i.exec(text)
-  const raw = match?.[1]?.replace(/[.,]+$/, '')
-  if (!raw) return null
-  const n = Number(raw.replace(/,/g, ''))
+  //
+  // Alert #3 was the prefix form's `\s*[:=]?\s*`, which let one run of spaces be divided
+  // between the two `\s*` in many ways. Tying the second run to a mandatory separator fixes
+  // it, and nothing follows the captured number, so the greedy run is taken once and never
+  // revisited — linear by shape rather than by luck.
+  const raw =
+    /tokens[ \t]*(?:[:=][ \t]*)?([\d][\d,.]*)/i.exec(text)?.[1] ?? numberBeforeTokens(text)
+  const trimmed = raw?.replace(/[.,]+$/, '')
+  if (!trimmed) return null
+  const n = Number(trimmed.replace(/,/g, ''))
   return Number.isFinite(n) ? Math.trunc(n) : null
 }
 
