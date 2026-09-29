@@ -12,3 +12,10 @@ allowBuilds:
   # which is exactly how esbuild broke CI — so it is declined by name, not by silence.
   es5-ext: false
   esbuild: true
+
+# GitHub flags esbuild <=0.24.2 (a dev server that lets any website make it send requests);
+# the only copy under that line arrives through svelte-i18n -> esbuild@0.19.2, an upstream pin
+# we do not control. Lifting it to the range Vite already uses keeps ONE esbuild in the tree
+# instead of downgrading Vite's, and clears the advisory without waiting on svelte-i18n.
+overrides:
+  esbuild: '>=0.25.0'
