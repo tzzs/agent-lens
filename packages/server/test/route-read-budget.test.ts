@@ -21,9 +21,9 @@ import { harness } from './helpers.ts'
 
 const CASES: [string, number, number][] = [
   // route, stage-2 reads, priced bucket passes
-  ['/api/overview?since=30d', 9, 6],
+  ['/api/overview?since=30d', 9, 5],
   ['/api/projects?since=30d', 3, 2],
-  ['/api/agents?since=30d', 4, 4],
+  ['/api/agents?since=30d', 4, 3],
   ['/api/models?since=30d', 3, 3],
   ['/api/sessions?since=30d', 1, 1],
   ['/api/capabilities?since=30d', 2, 2],

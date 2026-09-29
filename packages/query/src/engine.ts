@@ -634,13 +634,35 @@ function totalTokens(u: ReturnType<typeof usageOf>): number {
  * price table can hold, because the day pricing grows a non-linear tier the merge stops
  * being free and this file has to be told.
  */
-function readBuckets(db: DatabaseSync, reqs: Reqs): Row[] | null {
+/**
+ * The buckets, read once per scope per statement.
+ *
+ * A dashboard page asks for the same priced grouping twice in one request — `/api/overview`
+ * reads cost at the agent grain for its own table and again through `costView` for its cards,
+ * and since `b_unreported` became a column the two statements are now character-for-character
+ * identical. Memoising on the statement text (and its bound values) cannot change a number:
+ * the key IS the query. Without a scope — a bare `query()` call, which is what a CLI command
+ * used to be — there is nothing to memoise into and every read runs, as before.
+ */
+const bucketMemo = new WeakMap<FoldCache, Map<string, Row[]>>()
+
+function readBuckets(db: DatabaseSync, reqs: Reqs, scope?: FoldCache): Row[] | null {
   const cq = costBucketsQuery(reqs)
   if (!cq) return null
+  const key = `${cq.sql}\u0000${JSON.stringify(cq.params)}`
+  const memo = scope ? bucketMemo.get(scope) : undefined
+  const hit = memo?.get(key)
+  if (hit) return hit
   foldServed.costBuckets++
   const site = `${reqs.dims.join('+') || '(none)'} | ${reqs.metrics.join(',')}`
   foldServed.costBucketSites[site] = (foldServed.costBucketSites[site] ?? 0) + 1
-  return runPrepared(db, cq)
+  const rows = runPrepared(db, cq)
+  if (scope) {
+    const target = bucketMemo.get(scope) ?? new Map<string, Row[]>()
+    target.set(key, rows)
+    bucketMemo.set(scope, target)
+  }
+  return rows
 }
 
 /** The token columns a bucket carries, in `events` order. */
@@ -939,7 +961,7 @@ export function query(db: DatabaseSync, spec: QuerySpec, deps?: QueryDeps): Quer
   // grouping of rows already in hand is the doubling this replaced.
   const buckets =
     (metrics.includes('cost_api_equiv') && deps?.priceResolver) || metrics.includes('cost_total')
-      ? readBuckets(db, reqs)
+      ? readBuckets(db, reqs, deps?.foldCache)
       : null
   const folded = buckets ? foldBuckets(buckets, dims, deps ?? {}) : null
 
