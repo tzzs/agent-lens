@@ -71,6 +71,7 @@ Global flags:
   --content            store the content layer (payloads) during scan — off by default (§6)
   --no-content         force the content layer off, even alongside --content
   --serve              bare command: serve the dashboard even when stdout is not a terminal
+  --port <n>           dashboard port (default 7317); use it when another AgentLens already owns one
   --no-serve           bare command: stop after the summary (§9 serves by default)
   -h, --help           this text
   -V, --version        print version

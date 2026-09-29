@@ -13,6 +13,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { DatabaseSync } from 'node:sqlite'
 import { startServer, type CatalogEntry } from '@agentlens/server'
+import { UsageError } from './args.ts'
 import { getAdapters } from './adapters.ts'
 import type { Ctx } from './context.ts'
 import { makeHostCtx } from './context.ts'
@@ -71,9 +72,17 @@ export async function serveDashboard(
   ctx: Ctx,
   deps: QueryDeps,
 ): Promise<ServeHandle> {
+  // §9's dashboard port was fixed, so a second instance could only be started by guessing
+  // which process to kill. `--port` decides it here instead, and a value outside the bindable
+  // range is a usage error rather than a socket exception two frames later.
+  const requested = flags.num('port')
+  if (requested !== undefined && (!Number.isInteger(requested) || requested < 1 || requested > 65_535)) {
+    throw new UsageError(`--port expects an integer between 1 and 65535, got ${JSON.stringify(flags.str('port'))}`)
+  }
   const running = startServer({
     db,
     dbPath,
+    ...(requested !== undefined ? { port: requested } : {}),
     runMigrations: false,
     now: ctx.now,
     homedir: ctx.homedir,
@@ -94,11 +103,13 @@ export async function serveDashboard(
     await running.close()
     throw new Error(
       e.code === 'EADDRINUSE'
-        ? `cannot serve on ${running.url} — another process already owns port ${running.port}. Stop it first: the dashboard that port serves is that process's data, not this store's.`
+        ? `cannot serve on ${running.url} — another process already owns port ${running.port}. Pass --port <n> to serve this store elsewhere, or stop that process: the dashboard on a port you did not bind is that process's data, not this store's.`
         : `cannot serve on ${running.url}: ${e.message}`,
     )
   }
-  openBrowser(running.url, ctx)
+  // Only a person at a terminal asked for a browser. `agl --serve | tee log` used to open one
+  // anyway, which is also why nothing in the suite could exercise the bind path.
+  if (ctx.interactive) openBrowser(running.url, ctx)
 
   let settle: () => void = () => {}
   const closed = new Promise<void>((resolveDone) => {

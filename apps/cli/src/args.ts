@@ -148,6 +148,7 @@ export const CLI_FLAG_SCHEMA: FlagSchema = {
   version: { kind: 'boolean', aliases: ['V'] },
   db: { kind: 'value' },
   serve: { kind: 'boolean' },
+  port: { kind: 'value' },
   'no-serve': { kind: 'boolean' },
   interval: { kind: 'value' },
   content: { kind: 'boolean' },
