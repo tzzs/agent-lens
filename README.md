@@ -90,8 +90,10 @@ directory it never used.
 
 ```bash
 pnpm test          # vitest, whole workspace including adapter fixture snapshots
-pnpm typecheck     # tsc --noEmit
-cd apps/web && npm run build && npx svelte-check --fail-on-warnings
+pnpm typecheck     # tsc --noEmit, then the web app's svelte-check
+                   # (tsc never reads .svelte, so templates, store misuse and a11y
+                   # violations are only visible to svelte-check — CI runs both halves)
+pnpm -F @agentlens/web build   # the bundle, which is a separate guarantee
 ```
 
 Layout, dependency arrows (`adapters → event-model`, `cli/web → query → storage`,
