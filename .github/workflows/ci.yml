@@ -40,6 +40,10 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # `typecheck` is tsc AND the web app's svelte-check: tsc never opens a .svelte
+      # file, so a template error, a store used as its own value, or an a11y violation
+      # used to pass this job while `pnpm -F @agentlens/web check` failed locally. The
+      # build job below only proves the bundle compiles, which is not the same promise.
       - run: pnpm typecheck
       - run: pnpm test
 
