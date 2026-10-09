@@ -5,7 +5,7 @@
  * (cheap steady state, one poller shared by all connections) and the tick shape the browser's
  * status line reads.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { DatabaseSync } from 'node:sqlite'
 import { insertEvents } from '@agentlens/storage'
 import type { AgentEvent } from '@agentlens/event-model'
@@ -29,6 +29,22 @@ async function trackQueries(db: DatabaseSync, run: () => Promise<void>): Promise
   return seen
 }
 
+/** `trackQueries` for a clock the test drives itself, so nothing awaits. */
+function trackQueriesSync(db: DatabaseSync, run: () => void): string[] {
+  const original = db.prepare.bind(db)
+  const seen: string[] = []
+  ;(db as unknown as { prepare: (s: string) => unknown }).prepare = (sql: string) => {
+    if (/FROM events/i.test(sql)) seen.push(sql.replace(/\s+/g, ' ').slice(0, 60))
+    return original(sql)
+  }
+  try {
+    run()
+  } finally {
+    ;(db as unknown as { prepare: (s: string) => unknown }).prepare = original
+  }
+  return seen
+}
+
 const advance = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 const POLL = 5
 
@@ -40,25 +56,33 @@ describe('pollChangeSource', () => {
     h.close()
   })
 
-  it('runs the poll once per tick however many connections are watching', async () => {
-    const h = harness()
-    const db = h.seeded.db
-    const open = () => pollChangeSource(db, () => Date.now(), POLL).watch(() => {})
+  it('runs the poll once per tick however many connections are watching', () => {
+    // Fake timers, because the property is "the count is set by the tick rate, not by the
+    // connection count", and a real clock only lets that be asserted with a tolerance: 80 ms of
+    // 5 ms timers fires a load-dependent number of times, which once read 10 queries against a
+    // bound of 9 on a busy machine. With a driven clock both windows are exactly 80 / POLL
+    // ticks, so the assertion can be equality — and a per-connection timer fails it by 5x.
+    vi.useFakeTimers()
+    try {
+      const h = harness()
+      const db = h.seeded.db
+      const open = () => pollChangeSource(db, () => Date.now(), POLL).watch(() => {})
+      const ticks = 80 / POLL
 
-    const stopOne = [open()]
-    const one = await trackQueries(db, () => advance(80))
-    stopOne.forEach((s) => s())
+      const stopOne = [open()]
+      const one = trackQueriesSync(db, () => vi.advanceTimersByTime(80))
+      stopOne.forEach((s) => s())
 
-    const stopMany = [open(), open(), open(), open(), open()]
-    const many = await trackQueries(db, () => advance(80))
-    stopMany.forEach((s) => s())
-    h.close()
+      const stopMany = [open(), open(), open(), open(), open()]
+      const many = trackQueriesSync(db, () => vi.advanceTimersByTime(80))
+      stopMany.forEach((s) => s())
+      h.close()
 
-    // Five watchers must not add a single scan beyond the one that is always running. A
-    // tolerance, not a ratio: real timers fire a variable number of times in 80 ms, and the
-    // point is that the count is bounded by the tick rate rather than by the connection count.
-    expect(one.length, 'a poll must actually have happened').toBeGreaterThan(0)
-    expect(many.length, `5 watchers issued ${many.length} queries vs ${one.length} for 1`).toBeLessThanOrEqual(one.length + 2)
+      expect(one.length, 'one edge probe per tick').toBe(ticks)
+      expect(many.length, `5 watchers issued ${many.length} queries vs ${one.length} for 1`).toBe(ticks)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('emits to every open connection when the stream moves, and to none while it is quiet', async () => {
