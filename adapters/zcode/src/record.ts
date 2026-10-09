@@ -333,8 +333,13 @@ export function mcpOf(toolName: string | null): { server: string; tool: string }
   if (!toolName || !toolName.startsWith('mcp__')) return null
   const rest = toolName.slice('mcp__'.length)
   const sep = rest.indexOf('__')
-  if (sep <= 0 || sep === rest.length - 2) return null
-  return { server: rest.slice(0, sep), tool: rest.slice(sep + 2) }
+  if (sep <= 0) return null
+  // An empty tool is the one thing the old `sep === rest.length - 2` was checking, by index
+  // arithmetic CodeQL could not prove (and a reader had to re-derive: `-1` was excluded only
+  // by the `sep <= 0` above). Asking for the tool directly says the same thing.
+  const tool = rest.slice(sep + 2)
+  if (tool === '') return null
+  return { server: rest.slice(0, sep), tool }
 }
 
 /** Tools that spawn a subagent; `state.input.subagent_type` names the kind (measured: `Explore`, `general-purpose`). */

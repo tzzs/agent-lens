@@ -56,7 +56,11 @@ const MESSAGE_SEMANTICS = [
 ]
 
 function semanticsOf(alias: string): string {
-  return MESSAGE_SEMANTICS.map((c) => c.replace('%', alias)).join(', ')
+  // `replaceAll` with a function: a string `replace` swaps only the FIRST `%` (CodeQL's
+  // incomplete-sanitization), and a string replacement would also expand `$&`-style patterns
+  // inside `alias`. Each template holds one `%` and the aliases are constants today, so this
+  // changes no output — it stops the next template with two placeholders from being half-filled.
+  return MESSAGE_SEMANTICS.map((c) => c.replaceAll('%', () => alias)).join(', ')
 }
 
 function selectFor(table: ZcodeTable): string {
