@@ -104,6 +104,27 @@ describe('the rewritten parsing returns exactly what the old patterns returned',
     }
   })
 
+  it('trims a trailing .,-run exactly as /[.,]+$/ did, including the runs it leaves alone', () => {
+    // Alert #20: the tail trim, not the capture, was the quadratic part. Every shape here is a
+    // separator run in a different position relative to the digits that bound it.
+    for (const text of [
+      'tokens: 1',
+      'tokens: 1,',
+      'tokens: 1.,.,',
+      'tokens: 1,,,.',
+      'tokens: 1,,1',
+      'tokens: 1.,1,',
+      'tokens: 1,.,.,2.',
+      '1,, tokens',
+      '12,.,. tokens',
+      '.,1 tokens',
+      'tokens: .,',
+      'tokens: ,1',
+    ]) {
+      expect(parseTokenCount(text), JSON.stringify(text)).toBe(parseTokenCountOld(text))
+    }
+  })
+
   it('trailing-slash trim is unchanged', () => {
     for (const s of cases) expect(trimSlashesNew(s), JSON.stringify(s)).toBe(trimSlashesOld(s))
   })
@@ -114,6 +135,21 @@ describe('the adversarial input no longer costs quadratic time', () => {
     const started = performance.now()
     expect(trimSlashesNew(`skills/a${'/'.repeat(200_000)}`)).toBe('skills/a')
     expect(performance.now() - started).toBeLessThan(1000)
+  })
+
+  it('parses a digit, a 100k separator run, then a digit in well under a second (alert #20)', () => {
+    // The old `/[.,]+$/` retried the whole run from every start position because the final
+    // digit made `$` fail each time. The leading `tokens:` puts the run in the capture. Only
+    // the new code runs at 100k — the old one is the quadratic path — so equivalence is
+    // checked at a size where the old one is still instant.
+    for (const sep of [',', '.', '.,']) {
+      const small = `tokens: 1${sep.repeat(300)}1`
+      expect(parseTokenCount(small), sep).toBe(parseTokenCountOld(small))
+      const input = `tokens: 1${sep.repeat(100_000)}1`
+      const started = performance.now()
+      parseTokenCount(input)
+      expect(performance.now() - started).toBeLessThan(1000)
+    }
   })
 
   it('parses a 100k digit run against a 100k space run in well under a second', () => {
