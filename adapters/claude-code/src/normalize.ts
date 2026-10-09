@@ -768,6 +768,20 @@ function numberBeforeTokens(text: string): string | null {
   return null
 }
 
+/**
+ * `value` without its trailing run of `.` and `,`: the walk-back form of `/[.,]+$/`.
+ *
+ * The anchored quantifier is quadratic when a long separator run is followed by anything
+ * the `$` rejects (`1,,,,…,1`): it retries the whole run from every start position inside
+ * it. This is alert #20 — the shape alert #5 had at `numberBeforeTokens`'s caller, written
+ * again in the function that replaced it.
+ */
+function trimTrailingSeparators(value: string): string {
+  let end = value.length
+  while (end > 0 && (value[end - 1] === '.' || value[end - 1] === ',')) end--
+  return end === value.length ? value : value.slice(0, end)
+}
+
 /** Exported for `test/redos-patterns.test.ts`, which compares it against the old pipeline. */
 export function parseTokenCount(text: string | null): number | null {
   if (!text) return null
@@ -779,7 +793,7 @@ export function parseTokenCount(text: string | null): number | null {
   // revisited — linear by shape rather than by luck.
   const raw =
     /tokens[ \t]*(?:[:=][ \t]*)?([\d][\d,.]*)/i.exec(text)?.[1] ?? numberBeforeTokens(text)
-  const trimmed = raw?.replace(/[.,]+$/, '')
+  const trimmed = raw ? trimTrailingSeparators(raw) : raw
   if (!trimmed) return null
   const n = Number(trimmed.replace(/,/g, ''))
   return Number.isFinite(n) ? Math.trunc(n) : null
