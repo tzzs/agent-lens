@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.1](https://github.com/tzzs/agent-lens/compare/v1.0.0...v1.0.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* **adapter-claude-code:** trim the token count's separator tail by index ([71a2220](https://github.com/tzzs/agent-lens/commit/71a222078577253132a52f260a141f78bc88e116))
+* **adapter-claude-code:** trim the token count's separator tail by index, not /[.,]+$/ ([fe4608f](https://github.com/tzzs/agent-lens/commit/fe4608f1e0def70c4c9d1d25f133582563ea755a))
+* **adapter-zcode:** fill every placeholder, and ask for the empty tool directly ([6e54baa](https://github.com/tzzs/agent-lens/commit/6e54baad51846c5779d4d48e9bb8076ccbb48c85))
+* **adapter-zcode:** fill every placeholder, and ask for the empty tool directly ([7eedced](https://github.com/tzzs/agent-lens/commit/7eedcedfe1c470508a84c3cab89cd0caae25a9e7))
+* **adapters:** remove the five ReDoS shapes CodeQL scored as polynomial ([f05fc3a](https://github.com/tzzs/agent-lens/commit/f05fc3a763f2c024a75bd263739788e7795b927e))
+* **adapters:** remove the five ReDoS shapes CodeQL scored as polynomial ([b7d5773](https://github.com/tzzs/agent-lens/commit/b7d5773d826bb588d8733ed332ce99a75235a038))
+
 ## 1.0.0 (2026-09-29)
 
 
