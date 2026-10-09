@@ -9,6 +9,10 @@ jobs:
   pr-title:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    # Reads the PR's title and nothing else: no checkout, so no `contents` scope. Do not
+    # widen this to `write` — the action only comments on failure when asked to, and we don't.
+    permissions:
+      pull-requests: read
     steps:
       # Release Please derives changelogs and version bumps from squash-merged commit messages,
       # which are the PR titles on this repo — so the title is the gate.
@@ -29,6 +33,8 @@ jobs:
 
   verify:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       # No `version:` input: package.json's "packageManager" pins pnpm, and
@@ -49,6 +55,8 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       # No `version:` input: package.json's "packageManager" pins pnpm, and
