@@ -261,21 +261,6 @@ export interface HealthResponse {
  * Overview
  * ------------------------------------------------------------------ */
 
-export interface HostShare {
-  host: string
-  events: number
-  share: number
-}
-export interface HostSplitBanner {
-  agentId: string
-  dominantHost: string
-  dominantShare: number
-  hosts: HostShare[]
-  /** The dominant host is only the agent's own name repeated; the banner is worded differently. */
-  degenerate: boolean
-  splitByDefault: true
-  message: string
-}
 export interface OverviewResponse {
   generatedAt: number
   window: { since?: string; until?: string; sinceTs: number | null; granularity: string; defaultSinceApplied: boolean }
@@ -292,7 +277,6 @@ export interface OverviewResponse {
   hosts: Row[]
   projects: Row[]
   capabilities: Row[]
-  banners: { hostSplit: HostSplitBanner | null; coverage: CoverageReport }
   content: { available: boolean; payloads: number }
 }
 

@@ -1,10 +1,11 @@
 <script lang="ts">
   import { formatCompact, formatInt, formatMs, projectLabel, formatClock } from '../lib/format.ts'
-  import { range } from '../lib/filter.svelte.js'
+  import { range, filterParams } from '../lib/filter.svelte.js'
+  import { live } from '../lib/live.svelte.js'
+  import { loader } from '../lib/pagestate.svelte.js'
   import { href } from '../lib/router.svelte.js'
   import { halfOverHalf } from '../lib/series.ts'
-  import type { OverviewResponse } from '../lib/api.ts'
-  import type { LoaderState } from '../lib/pagestate.svelte.js'
+  import { api } from '../lib/api.ts'
   import type { MessageKey } from '@agentlens/i18n'
   import { tokenBasis } from '../lib/notes.ts'
   import { t } from '../lib/lang.js'
@@ -18,7 +19,14 @@
   import Sparkline from '../components/charts/Sparkline.svelte'
   import Bars from '../components/charts/Bars.svelte'
 
-  let { ov }: { ov: { state: LoaderState<OverviewResponse>; run: () => Promise<void> } } = $props()
+  const ov = loader(() => api.overview(filterParams()))
+  $effect(() => {
+    void range.since
+    void range.agent
+    void range.host
+    void live.lastTick
+    ov.run()
+  })
 
   const d = $derived(ov.state.data)
   const gran = $derived(d?.window?.granularity ?? range.since ?? 'day')

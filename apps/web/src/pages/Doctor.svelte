@@ -77,8 +77,9 @@
   const subagents = $derived(depth?.subagents ?? [])
   const guessedTimestamps = $derived(depth?.guessedTimestamps ?? [])
   const retention = $derived(depth?.retention ?? null)
-  // The §14 coverage banner, worded here from the same structured fields the
-  // overview header uses — the server's `coverage.banner` is one English sentence.
+  // The coverage line, worded in the viewer's language from the report's structured
+  // fields — the server's `coverage.banner` is one English sentence. This page is the
+  // only place it shows: it changes no figure, so it no longer heads every page.
   const coverageLine = $derived(d ? coverageText(d.coverage) : '')
   const stageOne = $derived(depth?.stageOneFold ?? null)
   const share = (n: number, total: number): string => (total === 0 ? '0.0%' : `${((n / total) * 100).toFixed(1)}%`)

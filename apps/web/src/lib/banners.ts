@@ -1,39 +1,16 @@
 /**
- * The two §14 first-screen banners, composed in the browser from the structured
- * fields the API already sends.
+ * The doctor's coverage line, composed in the browser from the structured fields
+ * the API already sends. It used to head every page; it now lives only in the
+ * doctor, because neither population it counts changes a figure (the rows were
+ * ingested before upstream deleted the files).
  *
- * The server still answers with its own English `message` / `banner` strings (the
- * terminal reads the same rule through `@agentlens/storage`), so the numbers are
- * the server's and only the *wording* is the viewer's. `apps/web/test/banners.test.ts`
+ * The server still answers with its own English `banner` string (`agl doctor`
+ * prints it), so the numbers are the server's and only the *wording* is the viewer's. `apps/web/test/banners.test.ts`
  * pins the English rendering against the server's, because two phrasings of one
  * fact is the failure §14 exists to prevent.
  */
 import { msg } from '@agentlens/i18n'
-import type { CoverageReport, HostSplitBanner } from './api.ts'
-
-/** "73.4%" for a 0.734 share — the same one-decimal rendering the server quotes. */
-const sharePct = (share: number) => (share * 100).toFixed(1)
-
-export function hostSplitText(b: HostSplitBanner): string {
-  const others = b.hosts.slice(1).map((h) => h.host)
-  const tail = b.hosts
-    .slice(1)
-    .map((h) => `${h.host} ${sharePct(h.share)}%`)
-    .join(', ')
-  const body = b.degenerate
-    ? msg('banner.hostSplitOwnHost', {
-        share: sharePct(b.dominantShare),
-        agent: b.agentId,
-        rest: tail || msg('banner.hostSplitRestNone'),
-      })
-    : msg('banner.hostSplitNormal', {
-        share: sharePct(b.dominantShare),
-        agent: b.agentId,
-        host: b.dominantHost,
-        others: others.length ? others.join(', ') : msg('banner.hostSplitOtherHost'),
-      })
-  return body + msg('banner.hostSplitTail')
-}
+import type { CoverageReport } from './api.ts'
 
 /** '' when the history is complete, which is also when the API sends no banner. */
 export function coverageText(c: Pick<CoverageReport, 'emptyDirs' | 'projectDirsWithoutSessions'>): string {

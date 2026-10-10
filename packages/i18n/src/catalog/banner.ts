@@ -1,8 +1,7 @@
 /**
- * The two persistent §14 banners, worded from the structured fields the API
- * already returns (`agentId`, `dominantHost`, `dominantShare`, `hosts[]`,
- * `emptyDirs`, `projectDirsWithoutSessions`) rather than from a sentence the
- * server composed in advance.
+ * The doctor's coverage line, worded from the structured fields the API already
+ * returns (`emptyDirs`, `projectDirsWithoutSessions`) rather than from a sentence
+ * the server composed in advance.
  *
  * That makes locale a property of the viewer while the *numbers* stay the
  * server's, which is the whole point of §14: one source per figure. The English
@@ -13,13 +12,7 @@
 import { matches } from '../index.ts'
 
 const en = {
-  hostSplitTitle: 'Host split.',
   coverageTitle: 'Incomplete history.',
-  hostSplitNormal: '{share}% of {agent} records came from {host}, not {others}',
-  hostSplitOtherHost: 'the other host',
-  hostSplitOwnHost: '{share}% of {agent} records are its own host, the rest is {rest}',
-  hostSplitRestNone: 'nowhere',
-  hostSplitTail: ' — shown split by default',
   coverageRetained:
     '{count, plural, one {{count} source dir still exists but holds no session files ({population}, §4.4 row 4)} other {{count} source dirs still exist but hold no session files ({population}, §4.4 row 4)}}',
   coverageIngestedPopulation: 'upstream retention, dirs this store already has rows for',
@@ -32,13 +25,7 @@ const en = {
 }
 
 const zh = matches(en)({
-  hostSplitTitle: '主机分裂',
   coverageTitle: '历史不完整',
-  hostSplitNormal: '{agent} 有 {share}% 的记录来自主机 {host}，而不是 {others}',
-  hostSplitOtherHost: '另一台主机',
-  hostSplitOwnHost: '{agent} 有 {share}% 的记录挂在它自己的主机名下，其余为 {rest}',
-  hostSplitRestNone: '没有来源',
-  hostSplitTail: '，因此默认按主机拆分展示',
   coverageRetained: '有 {count} 个源目录仍在，但已不含会话文件（{population}，§4.4 第 4 行）',
   coverageIngestedPopulation: '上游清理，本库已有这些目录的记录',
   coverageProjectRows:
