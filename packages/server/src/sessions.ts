@@ -117,10 +117,17 @@ export function listSessions(ctx: ServerCtx, sp: URLSearchParams): SessionListRe
   const globalContent = contentLayerPresent(ctx.db)
 
   const rows: SessionRow[] = []
+  // Set only when a matching session is left over once `limit` is reached, so a list
+  // that exactly fills the limit is not reported as cut short.
+  let cut = false
   for (const m of meta) {
     const id = String(m.id)
     const agg = bySession.get(id)
     if (!agg) continue // filtered out by the cube, or metricless
+    if (rows.length >= limit) {
+      cut = true
+      break
+    }
     const payloads = contents.get(id) ?? 0
     rows.push({
       sessionId: id,
@@ -138,12 +145,11 @@ export function listSessions(ctx: ServerCtx, sp: URLSearchParams): SessionListRe
       payloads,
       contentAvailable: payloads > 0,
     })
-    if (rows.length >= limit) break
   }
   return {
     rows,
     totalSessions: res.rows.length,
-    truncated: res.truncated,
+    truncated: res.truncated || cut,
     content: { available: globalContent },
     filter,
   }
