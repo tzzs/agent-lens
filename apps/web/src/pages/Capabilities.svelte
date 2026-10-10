@@ -7,6 +7,8 @@
   import { loader } from '../lib/pagestate.svelte.js'
   import { range, filterParams } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
+  import { route, setQuery } from '../lib/router.svelte.js'
+  import { listOf } from '../lib/hashquery.ts'
   import { formatCompact, formatInt, formatMs, pct } from '../lib/format.ts'
   import { eventKind } from '../lib/eventKinds.ts'
   import { catalogNote } from '../lib/notes.ts'
@@ -91,8 +93,10 @@
   })
   const anyNames = $derived(rows.some((r) => (r.stats?.names.length ?? 0) > 0))
 
-  let open = $state<string[]>([])
-  const toggle = (type: string) => (open = open.includes(type) ? open.filter((t) => t !== type) : [...open, type])
+  // Which types are expanded lives in the hash (`?open=mcp,tool`): the Overview bars link
+  // here with one open, and a refresh or Back keeps what the viewer opened.
+  const open = $derived(listOf(route.query.open))
+  const toggle = (type: string) => setQuery({ open: (open.includes(type) ? open.filter((t) => t !== type) : [...open, type]).join(',') })
 
   // English agrees its own count; the figures arrive pre-grouped, so a locale
   // switch never changes how a number reads.

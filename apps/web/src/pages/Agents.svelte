@@ -8,6 +8,7 @@
   import { loader } from '../lib/pagestate.svelte.js'
   import { range, filterParams } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
+  import { href } from '../lib/router.svelte.js'
   import { activeMetricInfo, formatCompact, formatInt, formatMs } from '../lib/format.ts'
   import { SERIES, eventKind } from '../lib/eventKinds.ts'
   import { t } from '../lib/lang.js'
@@ -265,7 +266,7 @@
                   </section>
                 {/if}
 
-                <a href="#/sessions" class="inline-flex text-[13px] font-medium text-accent-ink hover:underline">{$t('agents.viewSessions')}</a>
+                <a href={href('/sessions', { agents: a.agentId })} class="inline-flex text-[13px] font-medium text-accent-ink hover:underline">{$t('agents.viewSessions')}</a>
               </div>
             {/if}
           </Surface>

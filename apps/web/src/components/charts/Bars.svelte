@@ -9,7 +9,7 @@
     color = 'var(--cat-1)',
     emptyText = msg('viz.noDataInRange'),
   }: {
-    rows?: { label: string; value: number; note?: string; color?: string }[]
+    rows?: { label: string; value: number; note?: string; color?: string; href?: string }[]
     format?: (n: number) => string
     color?: string
     emptyText?: string
@@ -25,7 +25,11 @@
     {#each rows as r (r.label)}
       <li>
         <div class="flex items-baseline justify-between gap-3 text-[13px]">
-          <span class="truncate text-ink-2" title={r.label}>{r.label}</span>
+          {#if r.href}
+            <a href={r.href} class="truncate text-ink-2 hover:text-accent hover:underline" title={r.label}>{r.label}</a>
+          {:else}
+            <span class="truncate text-ink-2" title={r.label}>{r.label}</span>
+          {/if}
           <span class="flex shrink-0 items-baseline gap-2">
             {#if r.note}<span class="text-xs text-ink-3">{r.note}</span>{/if}
             <span class="nums text-ink">{format(r.value)}</span>

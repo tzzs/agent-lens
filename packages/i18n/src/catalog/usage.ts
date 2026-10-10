@@ -45,7 +45,7 @@ const en = {
 
   /* the filter fields */
   filtersTitle: 'Filters',
-  filtersInfo: "Only the header's time range applies on this page; agent and status are chosen here.",
+  filtersInfo: "The header's time range, agent and host apply here as on every page; status, order and row limit are this explorer's own.",
   statusLabel: 'Status',
   anyStatus: 'Any status',
   statusOk: 'OK',
@@ -144,7 +144,7 @@ const zh = matches(en)({
   groupOther: '其他',
 
   filtersTitle: '筛选',
-  filtersInfo: '本页面只套用顶栏的时间窗；agent 与状态在这里选择。',
+  filtersInfo: '顶栏的时间窗、agent 与 host 在这里同样生效；状态、排序和行数上限是本页自己的。',
   statusLabel: '状态',
   anyStatus: '任意状态',
   statusOk: '正常',

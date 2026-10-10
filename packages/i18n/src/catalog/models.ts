@@ -72,6 +72,7 @@ const en = {
   chipUnconfiguredTitle: 'No price table is loaded, so no model can be priced.',
   chipNoModel: 'No model',
   chipNoModelTitle: 'There is no model on these events, so there is nothing to price.',
+  viewSessionsTitle: 'Sessions that used {model}',
 }
 
 const zh = matches(en)({
@@ -120,6 +121,7 @@ const zh = matches(en)({
   chipUnconfiguredTitle: '没有加载任何价格表，因此任何模型都无法定价。',
   chipNoModel: '无模型',
   chipNoModelTitle: '这些事件上没有模型，因此也就没有可定价的对象。',
+  viewSessionsTitle: '用过 {model} 的会话',
 })
 
 export default { en, zh }

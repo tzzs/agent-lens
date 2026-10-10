@@ -15,7 +15,7 @@
   } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
   import { range } from '../lib/filter.svelte.js'
-  import { options, live } from '../lib/live.svelte.js'
+  import { live } from '../lib/live.svelte.js'
   import { formatCompact, formatInt, formatMs } from '../lib/format.ts'
   import { t } from '../lib/lang.js'
   import Surface from '../components/ui/Surface.svelte'
@@ -29,7 +29,6 @@
 
   let metrics = $state<string[]>(['events', 'tokens_total', 'cost_api_equiv'])
   let dims = $state<string[]>(['agent'])
-  let agent = $state('')
   let status = $state('')
   let order = $state('metric:events:desc')
   let limit = $state(50)
@@ -43,8 +42,11 @@
     withCapabilityType(dims, {
       metrics: metrics.join(','),
       dims: dims.join(','),
+      // The window, agent and host are the header's global filter, the same one every
+      // other page reads; only status/order/limit are this explorer's own.
       since: range.since,
-      agent: agent || undefined,
+      agent: range.agent || undefined,
+      host: range.host || undefined,
       status: status || undefined,
       order,
       limit,
@@ -65,7 +67,8 @@
   $effect(() => {
     void metrics
     void dims
-    void agent
+    void range.agent
+    void range.host
     void status
     void order
     void limit
@@ -267,16 +270,6 @@
 
     <Surface title={$t('usage.filtersTitle')} info={$t('usage.filtersInfo')}>
       <div class="space-y-3">
-        <div>
-          <label for="usage-agent" class={fieldLabel}>{$t('comps.agent')}</label>
-          <div class="relative">
-            <select id="usage-agent" class="{field} appearance-none pr-8" bind:value={agent}>
-              <option value="">{$t('comps.allAgents')}</option>
-              {#each options.agents as a (a.agentId)}<option value={a.agentId}>{a.displayName || a.agentId}</option>{/each}
-            </select>
-            {@render chevron()}
-          </div>
-        </div>
         <div>
           <label for="usage-status" class={fieldLabel}>{$t('usage.statusLabel')}</label>
           <div class="relative">

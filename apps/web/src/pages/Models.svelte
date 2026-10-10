@@ -5,6 +5,7 @@
   import { api, type ModelRow } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
   import { range, filterParams } from '../lib/filter.svelte.js'
+  import { href } from '../lib/router.svelte.js'
   import { live } from '../lib/live.svelte.js'
   import { formatCompact, formatInt, formatDate, formatDateTime } from '../lib/format.ts'
   import { t } from '../lib/lang.js'
@@ -124,7 +125,9 @@
             {@const price = priceOf(m)}
             {@const prov = price === 'priced' ? provenanceFor(m.priceSource) : undefined}
             {#if m.model}
-              <td class="nums font-medium text-ink" title={m.model}>{m.model}</td>
+              <td class="nums font-medium" title={$t('models.viewSessionsTitle', { values: { model: m.model } })}>
+                <a href={href('/sessions', { model: m.model, provider: m.provider || undefined })} class="text-ink hover:text-accent hover:underline">{m.model}</a>
+              </td>
             {:else}
               <td class="text-ink-3" title={$t('models.noModelTitle')}>{$t('models.noModel')}</td>
             {/if}

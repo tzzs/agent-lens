@@ -80,6 +80,24 @@ export function parentIds<N extends ForestNode>(forest: Forest<N>): Set<string> 
   return new Set(forest.children.keys())
 }
 
+/**
+ * The ids a node sits under, nearest parent first, so a deep-linked node can have its
+ * branch opened. Parent ids come from third-party logs, so a cycle or a parent missing
+ * from this session ends the walk instead of looping or throwing.
+ */
+export function ancestorIds(nodes: ForestNode[], id: string): string[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const out: string[] = []
+  const seen = new Set([id])
+  let p = byId.get(id)?.parentEventId ?? null
+  while (p && byId.has(p) && !seen.has(p)) {
+    out.push(p)
+    seen.add(p)
+    p = byId.get(p)!.parentEventId
+  }
+  return out
+}
+
 export interface Span {
   start: number
   end: number

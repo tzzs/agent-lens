@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { projectLabel, shortId, looksLikeHash, formatMs, formatUsd } from '../src/lib/format.ts'
 import { halfOverHalf, topN } from '../src/lib/series.ts'
-import { barGeometry, buildForest, parentIds, sessionSpan, visibleRows, type ForestNode } from '../src/lib/timeline.ts'
+import { ancestorIds, barGeometry, buildForest, parentIds, sessionSpan, visibleRows, type ForestNode } from '../src/lib/timeline.ts'
 import { eventKind } from '../src/lib/eventKinds.ts'
 
 const n = (id: string, parent: string | null = null, ts: number | null = 0, dur: number | null = null): ForestNode => ({
@@ -96,5 +96,18 @@ describe('eventKind', () => {
     expect(eventKind('subagent.start').group).toBe('agent')
     expect(eventKind('error.api').color).toBe('var(--red)')
     expect(eventKind(null).label).toBe('event')
+  })
+})
+
+describe('ancestorIds', () => {
+  it('walks to the root, nearest parent first', () => {
+    const nodes = [n('r'), n('a', 'r'), n('b', 'a'), n('c', 'b')]
+    expect(ancestorIds(nodes, 'c')).toEqual(['b', 'a', 'r'])
+    expect(ancestorIds(nodes, 'r')).toEqual([])
+    expect(ancestorIds(nodes, 'missing')).toEqual([])
+  })
+  it('stops at a parent outside the session and at a cycle', () => {
+    expect(ancestorIds([n('a', 'gone'), n('b', 'a')], 'b')).toEqual(['a'])
+    expect(ancestorIds([n('x', 'y'), n('y', 'x')], 'x')).toEqual(['y'])
   })
 })

@@ -56,7 +56,8 @@ const en = {
 
   /* the §4.1 truncation tail */
   truncatedNote:
-    'Showing {n} projects; more were active in this window — narrow the range or agent filter to see the rest.',
+    'Showing {n} projects; more were active in this window.',
+  loadMore: 'Load {n} more',
 }
 
 const zh = matches(en)({
@@ -95,7 +96,8 @@ const zh = matches(en)({
     '下面每个路径都归到了这个项目——正是把 worktree 与子目录折叠汇总成一行的依据。按繁忙程度排在前面；事件数量覆盖全部已记录历史，不只是当前时间窗。',
   eventsCount: '{n} 个事件',
 
-  truncatedNote: '这里只显示 {n} 个项目；这个时间窗内还有更多项目在活动——缩小时间范围或 agent 筛选即可看到其余部分。',
+  truncatedNote: '这里只显示 {n} 个项目；这个时间窗内还有更多项目在活动。',
+  loadMore: '再加载 {n} 个',
 })
 
 export default { en, zh }

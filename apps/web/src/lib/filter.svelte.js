@@ -30,3 +30,37 @@ export function filterParams() {
   if (range.host) p.host = range.host
   return p
 }
+
+// The global filter lives in the URL as `since`/`agent`/`host` so a refresh or a
+// shared link keeps it. Sticky, not authoritative: a hash that names a key wins, a
+// hash that leaves it out keeps the current value (and App writes it back). That is
+// what lets every plain `#/sessions/<id>` link in the app stay filter-agnostic.
+// Back/Forward to an entry the app wrote itself is different: that URL is complete,
+// so an absent key there means the default and the filter returns to what it was.
+const DEFAULT_SINCE = '30d'
+const SINCE_VALUES = new Set(SINCE_OPTIONS.map((o) => o.value))
+
+/**
+ * Adopt the filter keys `query` carries; an unknown `since` is ignored. With
+ * `complete`, absent keys reset to their defaults instead of being kept.
+ * @param {Record<string, string>} query
+ * @param {boolean} [complete]
+ */
+export function adoptFilterQuery(query, complete = false) {
+  if (query.since !== undefined && SINCE_VALUES.has(query.since)) range.since = query.since
+  else if (complete) range.since = DEFAULT_SINCE
+  if (query.agent !== undefined) range.agent = query.agent
+  else if (complete) range.agent = ''
+  if (query.host !== undefined) range.host = query.host
+  else if (complete) range.host = ''
+}
+
+/** The query patch that mirrors the filter; the default window stays out of the URL. */
+/** @returns {Record<string, string | undefined>} */
+export function filterQuery() {
+  return {
+    since: range.since === DEFAULT_SINCE ? undefined : range.since,
+    agent: range.agent || undefined,
+    host: range.host || undefined,
+  }
+}

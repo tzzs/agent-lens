@@ -8,6 +8,8 @@ export interface Slice {
   label: string
   value: number
   title?: string
+  /** Where clicking the slice drills in; the folded "Other" slice never has one. */
+  href?: string
 }
 
 /**

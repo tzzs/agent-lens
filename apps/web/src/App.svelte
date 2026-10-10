@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { route, initRouter } from './lib/router.svelte.js'
+  import { route, initRouter, setQuery } from './lib/router.svelte.js'
   import { live, options } from './lib/live.svelte.js'
-  import { range, filterParams } from './lib/filter.svelte.js'
+  import { range, filterParams, adoptFilterQuery, filterQuery } from './lib/filter.svelte.js'
   import { loader } from './lib/pagestate.svelte.js'
   import { initTheme } from './lib/theme.svelte.js'
   import { code, initLang, t } from './lib/lang.js'
@@ -54,6 +54,10 @@
     },
   ])
 
+  // A deep link's filter is adopted before the first fetch, not after mount: the
+  // loaders below would otherwise fire once with the defaults.
+  adoptFilterQuery(route.query)
+
   // The overview feed also drives the two §14 header banners, so App owns it and
   // hands the same loader to the Overview page (one fetch, not two).
   const ov = loader(() => api.overview(filterParams()))
@@ -85,7 +89,7 @@
 
   let es: EventSource | null = null
   onMount(() => {
-    const stop = initRouter()
+    const stop = initRouter(adoptFilterQuery)
     const stopTheme = initTheme()
     const stopLang = initLang()
 
@@ -133,6 +137,13 @@
     void range.host
     void live.lastTick
     ov.run()
+  })
+
+  // Mirror the global filter into the hash. Re-runs on every navigation too, so a
+  // link that carried no filter (`#/sessions/<id>`) gets the current one written back.
+  $effect(() => {
+    void route.path
+    setQuery(filterQuery())
   })
 
   // Filter options only change when new data lands, not when the user re-filters.

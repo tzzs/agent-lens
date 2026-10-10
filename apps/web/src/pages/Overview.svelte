@@ -1,6 +1,7 @@
 <script lang="ts">
   import { formatCompact, formatInt, formatMs, projectLabel, formatClock } from '../lib/format.ts'
   import { range } from '../lib/filter.svelte.js'
+  import { href } from '../lib/router.svelte.js'
   import { halfOverHalf } from '../lib/series.ts'
   import type { OverviewResponse } from '../lib/api.ts'
   import type { LoaderState } from '../lib/pagestate.svelte.js'
@@ -33,16 +34,25 @@
   // "we could not price it" (§8). The card's headline already says n/a; the series must not contradict it.
   const costSeries = $derived<(number | null)[]>(d ? d.trend.map((r) => (r.cost_api_equiv == null ? null : Number(r.cost_api_equiv))) : [])
 
-  const agentSlices = $derived(d ? d.agents.map((r) => ({ label: String(r.agent), value: Number(r.tokens_total ?? 0) })) : [])
+  // Each slice drills into the page that lists it, preselected through that page's
+  // own hash param, so the global filter is left as the viewer set it.
+  const agentSlices = $derived(
+    d ? d.agents.map((r) => ({ label: String(r.agent), value: Number(r.tokens_total ?? 0), href: href('/sessions', { agents: String(r.agent) }) })) : [],
+  )
   const projectSlices = $derived(
-    d ? d.projects.map((r) => ({ label: projectLabel(String(r.project || '')), title: String(r.project || $t('fmt.noProject')), value: Number(r.tokens_total ?? 0) })) : [],
+    d ? d.projects.map((r) => ({ label: projectLabel(String(r.project || '')), title: String(r.project || $t('fmt.noProject')), value: Number(r.tokens_total ?? 0), href: r.project ? href('/projects', { open: String(r.project) }) : undefined })) : [],
   )
   const capBars = $derived(
     d
       ? d.capabilities
           .map((r) => {
             const ms = Number(r.duration ?? 0)
-            return { label: String(r.capability_type), value: Number(r.events ?? 0), note: ms > 0 ? $t('overview.totalNote', { values: { dur: formatMs(ms) } }) : undefined }
+            return {
+              label: String(r.capability_type),
+              value: Number(r.events ?? 0),
+              note: ms > 0 ? $t('overview.totalNote', { values: { dur: formatMs(ms) } }) : undefined,
+              href: href('/capabilities', { open: String(r.capability_type) }),
+            }
           })
           .sort((a, b) => b.value - a.value)
       : [],
