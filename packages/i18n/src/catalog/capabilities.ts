@@ -91,13 +91,17 @@ const en = {
   deriveTitle: 'How these numbers were derived',
   deriveInfo: 'The cube query behind this page (§7). “Not reported” follows §18 item 5.',
   queryLabel: 'Query',
+  trendTitle: 'Calls over time',
+  trendSubtitle: 'Stacked by capability type, per {gran}',
+  topTitle: 'Most called',
+  topSubtitle: 'Top 10 across every type',
 }
 
 const zh = matches(en)({
   title: '能力调用',
   pageDesc: '哪些工具、技能、MCP 服务器、钩子与子代理在干活——用量、时长、失败与成本。',
   pageInfo:
-    '按所选时间窗内的能力类型分组（§10）。agent 没有记录的类型显示为“未上报”，绝不会显示成 0（§18 第 5 条）。',
+    '按所选时间窗内的能力类型分组（§10）。Agent 没有记录的类型显示为“未上报”，绝不会显示成 0（§18 第 5 条）。',
   loading: '正在加载能力',
 
   byType: '按类型',
@@ -113,18 +117,18 @@ const zh = matches(en)({
   colName: '名称',
   colErrors: '错误数',
   usesInfo: '所选时间窗内，该能力类型记录到的事件。',
-  durationInfo: 'agent 为这些调用记录的总时长。破折号表示该类型没有记录到时长，而不是时长为零。',
+  durationInfo: 'Agent 为这些调用记录的总时长。破折号表示该类型没有记录到时长，而不是时长为零。',
   tokensInfo: '这些事件所带的 tokens，每个请求只计一次（§3.1）。',
   failuresInfo: '以错误状态结束的调用。',
   costInfo: 'tokens × 牌价。没有价格、或没有可计价的 tokens 时显示“未定价”，绝不会显示 $0。',
-  reportedByInfo: '在所选时间窗内记录到该类型的 agent。',
+  reportedByInfo: '在所选时间窗内记录到该类型的 Agent。',
   noDurations: '未记录到时长',
   noUses: '本时间窗内没有使用记录',
   topNamesSr: '，最常用的名称',
 
   notReported: '未上报',
-  notReportedTitle: '这是一种缺席，不是零：这些 agent 根本不记录 {type} 事件。',
-  notReportedMeans: '表示该 agent 根本不记录这一类型的事件。这是缺席，不是零。',
+  notReportedTitle: '这是一种缺席，不是零：这些 Agent 根本不记录 {type} 事件。',
+  notReportedMeans: '表示该 Agent 根本不记录这一类型的事件。这是缺席，不是零。',
   byAgents: '未由 {agents} 上报',
 
   typeTool: '工具',
@@ -150,9 +154,9 @@ const zh = matches(en)({
   failureChipTitle: '{total} 次调用中有 {calls} 次以错误结束（{pct}）',
 
   installedTitle: '已安装但从未使用',
-  installedSubtitle: '在某个 agent 的能力目录里，但本时间窗内没有被用到',
+  installedSubtitle: '在某个 Agent 的能力目录里，但本时间窗内没有被用到',
   installedInfo:
-    '读取自每个 agent 的静态能力目录（§5.1）。当所选时间窗里没有任何东西用到某个条目时，它就会被列在这里。',
+    '读取自每个 Agent 的静态能力目录（§5.1）。当所选时间窗里没有任何东西用到某个条目时，它就会被列在这里。',
   noCatalog: '没有可用的能力目录，因此无法列出未使用的能力。这和“一个都没有”不是一回事。',
   catalogEmpty: '能力目录是空的：未发现已安装的能力。',
   catalogAllUsed: '目录里的 {s} 个条目在本时间窗内都用到过。',
@@ -160,6 +164,10 @@ const zh = matches(en)({
   deriveTitle: '这些数字是怎么来的',
   deriveInfo: '本页面背后的立方体查询（§7）。“未上报”的写法遵循 §18 第 5 条。',
   queryLabel: '查询',
+  trendTitle: '调用趋势',
+  trendSubtitle: '按能力类型堆叠，每{gran}',
+  topTitle: '调用最多',
+  topSubtitle: '所有类型中的前 10 名',
 })
 
 export default { en, zh }

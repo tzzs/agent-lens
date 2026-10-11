@@ -4,6 +4,8 @@
   // An agent known but idle in the window reads "Not recorded in this window",
   // never a row of zeros (§14). Per-agent cost is null-dominant server-side: one
   // unpriced model makes the figure n/a rather than a silent undercount.
+  import { slide } from 'svelte/transition'
+  import { cubicOut } from 'svelte/easing'
   import { api, type AgentRow } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
   import { range, filterParams, rangeKey } from '../lib/filter.svelte.js'
@@ -182,7 +184,7 @@
             </button>
 
             {#if isOpen}
-              <div id="agent-detail-{i}" class="space-y-5 rounded-b-card border-t border-line-soft bg-inset px-4 py-4">
+              <div id="agent-detail-{i}" transition:slide={{ duration: 240, easing: cubicOut }} class="space-y-5 rounded-b-card border-t border-line-soft bg-inset px-4 py-4">
                 {#if a.hosts.length}
                   <section>
                     <h4 class="mb-2 text-xs font-medium text-ink-2">{$t('agents.hostsHeading')}</h4>

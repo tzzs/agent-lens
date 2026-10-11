@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { agentLabel, hostLabel } from '../lib/names.js'
+  import { agentColor, agentLabel, hostLabel } from '../lib/names.js'
   import { untrack } from 'svelte'
   import { api, type SessionRow } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
@@ -109,7 +109,6 @@
     return [...new Set([...listed, ...agentSel])].sort()
   })
   const sessionsOf = (id: string) => Number(agentsQ.state.data?.rows.find((a) => a.agentId === id)?.metrics.sessions ?? 0)
-  const agentColor = (id: string) => SERIES[Math.max(0, agentIds.indexOf(id)) % SERIES.length]!
   // Counts are per agent across the window; with a model narrowing they would overstate
   // the matching rows, so they are left off rather than shown wrong.
   const agentOpts = $derived(

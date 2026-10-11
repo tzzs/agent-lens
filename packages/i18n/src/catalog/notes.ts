@@ -49,7 +49,7 @@ const zh = matches(en)({
   noPriceTable:
     '未注入价格表——api-equivalent 与 actual 都显示为未定价（§8：未知的价格绝不能显示成 $0）；cost_total 只覆盖已上报的那部分',
   fusedFormula:
-    'cost_total（立方体，§18 第 1 行）= agent 自己上报的费用（凡上报过的部分）+ 未上报部分按 token 计价，两者都没有时为 NULL；api-equivalent = 全部 tokens × 单价（按 agent 套用 §18 折叠规则），actual = 按模型分别套用计费模式（套餐里的按量模型仍然要付 token 钱），再加上已声明的套餐月费按当前窗口摊销；没填月费时就只剩边际 $0，并且界面会说明是这种情况。当窗口里存在价格表覆盖不到的切片时，严格值就是 NULL，各界面回退到「确实算得出的那部分」——按模型重折一次的已计价量——这就是标记写着 "partial"、界面冠以"至少"的原因',
+    'cost_total（立方体，§18 第 1 行）= Agent 自己上报的费用（凡上报过的部分）+ 未上报部分按 token 计价，两者都没有时为 NULL；api-equivalent = 全部 tokens × 单价（按 Agent 套用 §18 折叠规则），actual = 按模型分别套用计费模式（套餐里的按量模型仍然要付 token 钱），再加上已声明的套餐月费按当前窗口摊销；没填月费时就只剩边际 $0，并且界面会说明是这种情况。当窗口里存在价格表覆盖不到的切片时，严格值就是 NULL，各界面回退到「确实算得出的那部分」——按模型重折一次的已计价量——这就是标记写着 "partial"、界面冠以"至少"的原因',
   notDetected: '本机未检测到',
   dataRootUnreadable: '本进程读不到该数据目录',
   adapterNotInstalled: '当前构建里没有安装它的 adapter 包（历史数据仍可查询）',

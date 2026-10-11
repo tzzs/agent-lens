@@ -51,7 +51,7 @@ const zh = matches(en)({
   loading: '正在加载会话',
   contentOff: '内容层已关闭——会话详情只有指标数据。',
 
-  filterByAgent: '按 agent 筛选',
+  filterByAgent: '按 Agent 筛选',
   searchLabel: '搜索会话',
   searchPlaceholder: '搜索标题、id、项目…',
 

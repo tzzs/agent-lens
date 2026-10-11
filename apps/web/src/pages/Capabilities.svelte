@@ -3,12 +3,18 @@
   // §18 item 5 is the honesty rule here: an agent that never instruments hooks must
   // read "Not reported", never "0 hook calls", so every row comes from the full
   // CAPABILITY_TYPES list joined with `supports`, not only from types with counts.
+  import { slide } from 'svelte/transition'
+  import { cubicOut } from 'svelte/easing'
   import { agentLabel } from '../lib/names.js'
   import { api, CAPABILITY_TYPES, UNNAMED_CAPABILITY, type CapabilityNameRow, type CapabilityTypeRow } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
-  import { range, filterParams, rangeKey } from '../lib/filter.svelte.js'
+  import { range, filterParams, rangeKey, granularity } from '../lib/filter.svelte.js'
+  import { pivotSeries } from '../lib/series.ts'
+  import type { MessageKey } from '@agentlens/i18n'
+  import StackedTrend from '../components/charts/StackedTrend.svelte'
+  import Bars from '../components/charts/Bars.svelte'
   import { live } from '../lib/live.svelte.js'
-  import { route, setQuery } from '../lib/router.svelte.js'
+  import { route, setQuery, href } from '../lib/router.svelte.js'
   import { listOf } from '../lib/hashquery.ts'
   import { formatCompact, formatInt, formatMs, pct } from '../lib/format.ts'
   import { eventKind } from '../lib/eventKinds.ts'
@@ -30,6 +36,55 @@
   const AGENT_CHIPS = 3
 
   const q = loader(() => api.capabilities({ ...filterParams(), names: NAME_LIMIT }))
+
+  // The two charts read the §7 cube directly, under the same window and filter as the
+  // table: calls per bucket by type, and the busiest names across every type. Restricting
+  // to capability types keeps the cube from counting every other event as "unnamed".
+  const gran = $derived(granularity())
+  const trendQ = loader(() =>
+    api.query({ ...filterParams(), metrics: 'events', dims: `${gran},capability_type`, capabilityType: CAPABILITY_TYPES.join(','), limit: 5000 }),
+  )
+  const topQ = loader(() =>
+    api.query({
+      ...filterParams(),
+      metrics: 'events',
+      dims: 'capability_type,capability_name',
+      capabilityType: CAPABILITY_TYPES.join(','),
+      order: 'metric:events:desc',
+      limit: 10,
+    }),
+  )
+  $effect(() => {
+    void rangeKey()
+    void live.lastTick
+    trendQ.run()
+    topQ.run()
+  })
+  const GRAN_KEYS: Record<string, MessageKey> = { day: 'common.granDay', week: 'common.granWeek', month: 'common.granMonth' }
+  const trend = $derived.by(() => {
+    const p = pivotSeries(trendQ.state.data?.rows ?? [], gran, 'capability_type', 'events', 8)
+    return {
+      buckets: p.buckets.map((b) => b.slice(0, 10)),
+      series: p.series.map((s) => ({
+        key: s.key,
+        label: s.other ? $t('viz.other') : labelOf(s.key),
+        color: s.other ? 'var(--cat-muted)' : eventKind(s.key).color,
+        values: s.values,
+        total: s.total,
+      })),
+    }
+  })
+  const topNames = $derived(
+    (topQ.state.data?.rows ?? [])
+      .filter((r) => String(r.capability_name ?? '') !== '')
+      .map((r) => ({
+        label: String(r.capability_name),
+        value: Number(r.events ?? 0),
+        note: labelOf(String(r.capability_type)),
+        color: eventKind(String(r.capability_type)).color,
+        href: href('/capabilities', { open: String(r.capability_type) }),
+      })),
+  )
   $effect(() => {
     void rangeKey()
     void range.agent
@@ -188,6 +243,19 @@
     <div class="mb-4"><Alert tone="red" title={$t('states.refreshFailed')}>{q.state.error} — {$t('states.showingLastNumbers')}</Alert></div>
   {/if}
 
+  <div class="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
+    <Surface
+      title={$t('capabilities.trendTitle')}
+      subtitle={$t('capabilities.trendSubtitle', { values: { gran: GRAN_KEYS[gran] ? $t(GRAN_KEYS[gran]) : gran } })}
+      class="xl:col-span-2"
+    >
+      <StackedTrend buckets={trend.buckets} series={trend.series} format={formatCompact} label={$t('capabilities.trendTitle')} />
+    </Surface>
+    <Surface title={$t('capabilities.topTitle')} subtitle={$t('capabilities.topSubtitle')}>
+      <Bars rows={topNames} format={formatInt} />
+    </Surface>
+  </div>
+
   <Surface title={$t('capabilities.byType')} subtitle={anyNames ? $t('capabilities.byTypeSubtitle') : ''} padded={false}>
     <div class="overflow-x-auto rounded-b-card">
       <div class="min-w-[760px]">
@@ -256,7 +324,7 @@
 
           {#snippet expanded(r: TypeView)}
             {#if r.stats}
-              <div id="cap-names-{r.type}" class="whitespace-normal border-t border-line-soft bg-inset px-4 py-3">
+              <div id="cap-names-{r.type}" transition:slide|global={{ duration: 240, easing: cubicOut }} class="whitespace-normal border-t border-line-soft bg-inset px-4 py-3">
                 <div class="overflow-hidden rounded-[10px] bg-surface ring-1 ring-line-soft">
                   <DataTable
                     columns={nameColumns}

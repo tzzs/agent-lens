@@ -76,7 +76,7 @@ const en = {
 
 const zh = matches(en)({
   title: '总览',
-  description: '本机所有 agent 的 token、费用与活动。',
+  description: '本机所有 Agent 的 token、费用与活动。',
   info: 'token 已按 request_id 去重（每个请求取 MAX，再求 SUM，§3.1 不变量）。趋势分桶：{gran}。',
   updated: '更新于 {time} UTC',
   loading: '正在汇总总览数据',
@@ -84,12 +84,12 @@ const zh = matches(en)({
   tokens: 'token 用量',
 
   cost: '费用',
-  costInfo: '实际就是这个任务花掉的钱：agent 自己的日志里有上报数字时就用它，否则把已定价的 token 按它声明的计费模式折算，所以订阅制或本地模型的花费是 $0（§8、§18）。估算则是同样的 token 按 API 牌价算出的金额。',
+  costInfo: '实际就是这个任务花掉的钱：Agent 自己的日志里有上报数字时就用它，否则把已定价的 token 按它声明的计费模式折算，所以订阅制或本地模型的花费是 $0（§8、§18）。估算则是同样的 token 按 API 牌价算出的金额。',
   apiEquivalent: 'API 等效费用',
-  agentReported: 'agent 上报',
+  agentReported: 'Agent 上报',
   noPricing: '没有价格表——费用只能显示为{na}。',
   noPriceFor: '{agents} 无价格',
-  noPriceForTitle: '这些 agent 花在「没有价格的模型」上的 token 未计入合计，因此合计只是一个下限——同一窗口里能计价的部分仍然算在内。',
+  noPriceForTitle: '这些 Agent 花在「没有价格的模型」上的 token 未计入合计，因此合计只是一个下限——同一窗口里能计价的部分仍然算在内。',
   noPrice: '无价格',
 
   sessions: '会话',
@@ -102,7 +102,7 @@ const zh = matches(en)({
   tokenTrend: 'token 趋势',
   tokenTrendSubtitle: '每 {gran} 的 token 合计',
   tokensPer: '每 {gran} 的 token',
-  tokensByAgent: '按 agent 看 token',
+  tokensByAgent: '按 Agent 看 token',
   costTrend: '估算费用趋势',
   costTrendSubtitle: '每 {gran} 的 API 等效金额（$）——是估算，不是现金',
   estCostPer: '每 {gran} 的估算费用',
@@ -113,7 +113,7 @@ const zh = matches(en)({
   capabilityEventsSubtitle: '工具、skill、MCP、hook 等调用的次数',
   totalNote: '合计 {dur}',
   tokensByProject: '按项目看 token',
-  tokensByProjectInfo: '项目会跨 agent 与 worktree 合并统计；没有名字的项目显示短 id，悬停可看完整值。',
+  tokensByProjectInfo: '项目会跨 Agent 与 worktree 合并统计；没有名字的项目显示短 id，悬停可看完整值。',
   activityMix: '活动构成',
   activityMixSubtitle: '时间窗内的能力与信号计数',
 

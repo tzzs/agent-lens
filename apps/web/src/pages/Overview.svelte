@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { agentLabel, capabilityLabel } from '../lib/names.js'
+  import { agentColor, agentLabel, capabilityLabel } from '../lib/names.js'
   import { formatCompact, formatInt, formatMs, projectLabel, formatClock } from '../lib/format.ts'
   import { range, filterParams, rangeKey, granularity } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
@@ -17,6 +17,7 @@
   import StatePanel from '../components/StatePanel.svelte'
   import CostFigure from '../components/CostFigure.svelte'
   import Donut from '../components/charts/Donut.svelte'
+  import CountUp from '../components/ui/CountUp.svelte'
   import Sparkline from '../components/charts/Sparkline.svelte'
   import Bars from '../components/charts/Bars.svelte'
 
@@ -46,7 +47,7 @@
   // Each slice drills into the page that lists it, preselected through that page's
   // own hash param, so the global filter is left as the viewer set it.
   const agentSlices = $derived(
-    d ? d.agents.map((r) => ({ label: agentLabel(String(r.agent)), value: Number(r.tokens_total ?? 0), href: href('/sessions', { agents: String(r.agent) }) })) : [],
+    d ? d.agents.map((r) => ({ label: agentLabel(String(r.agent)), color: agentColor(String(r.agent)), value: Number(r.tokens_total ?? 0), href: href('/sessions', { agents: String(r.agent) }) })) : [],
   )
   const projectSlices = $derived(
     d ? d.projects.map((r) => ({ label: projectLabel(String(r.project || '')), title: String(r.project || $t('fmt.noProject')), value: Number(r.tokens_total ?? 0), href: r.project ? href('/projects', { open: String(r.project) }) : undefined })) : [],
@@ -103,7 +104,7 @@
 
   <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
     <InsightCard label={$t('overview.tokens')} info={tokenBasis(d.cards.tokens.basisCode)} delta={halfOverHalf(trendVals('tokens_total'))} deltaLabel={$t('overview.deltaInfo')}>
-      <div class="nums text-[26px] font-semibold tracking-tight">{formatCompact(d.cards.tokens.total)}</div>
+      <div class="nums text-[26px] font-semibold tracking-tight"><CountUp value={d.cards.tokens.total} format={formatCompact} /></div>
       {#snippet detail()}
         <dl class="nums grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
           {#each [[$t('viz.tokenInput'), d.cards.tokens.input], [$t('viz.tokenOutput'), d.cards.tokens.output], [$t('viz.tokenCacheRead'), d.cards.tokens.cacheRead], [$t('viz.tokenCacheWrite'), d.cards.tokens.cacheWrite], [$t('viz.tokenReasoning'), d.cards.tokens.reasoning]] as [k, v] (k)}
@@ -131,12 +132,12 @@
     </InsightCard>
 
     <InsightCard label={$t('overview.sessions')}>
-      <div class="nums text-[26px] font-semibold tracking-tight">{formatInt(d.cards.sessions)}</div>
+      <div class="nums text-[26px] font-semibold tracking-tight"><CountUp value={d.cards.sessions} format={formatInt} /></div>
       {#snippet detail()}<p class="text-xs text-ink-3">{$t('overview.sessionsActive')}</p>{/snippet}
     </InsightCard>
 
     <InsightCard label={$t('overview.events')} info={$t('overview.eventsInfo')} delta={halfOverHalf(trendVals('events'))} deltaLabel={$t('overview.deltaInfo')}>
-      <div class="nums text-[26px] font-semibold tracking-tight">{formatInt(d.cards.events)}</div>
+      <div class="nums text-[26px] font-semibold tracking-tight"><CountUp value={d.cards.events} format={formatInt} /></div>
       {#snippet detail()}<p class="text-xs text-ink-3">{$t('overview.perSessionAvg', { values: { n: formatCompact(Math.round(d.cards.events / Math.max(1, d.cards.sessions))) } })}</p>{/snippet}
     </InsightCard>
   </div>

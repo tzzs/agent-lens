@@ -21,8 +21,10 @@
 
   // Choosing "Custom" with no range yet starts from the last 30 days, so the window the
   // viewer was looking at does not jump; the dates are then theirs to move.
+  // Only an empty range is seeded: an invalid one is the viewer mid-edit, and resetting it
+  // would throw away what they just typed (the inputs say what is wrong instead).
   $effect(() => {
-    if (range.since !== CUSTOM || validCustom(range.from, range.to)) return
+    if (range.since !== CUSTOM || (range.from !== '' && range.to !== '')) return
     const today = Date.now()
     range.to = isoDay(today)
     range.from = isoDay(today - 29 * 86_400_000)

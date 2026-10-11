@@ -22,7 +22,7 @@
   <div class="py-6 text-center text-xs text-ink-3">{emptyText}</div>
 {:else}
   <ul class="space-y-2.5">
-    {#each rows as r (r.label)}
+    {#each rows as r, i (r.label)}
       <li>
         <div class="flex items-baseline justify-between gap-3 text-[13px]">
           {#if r.href}
@@ -36,7 +36,7 @@
           </span>
         </div>
         <div class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-hover-2" aria-hidden="true">
-          <div class="h-full rounded-full" style="width:{max === 0 ? 0 : Math.max(1, (r.value / max) * 100)}%;background:{r.color ?? color}"></div>
+          <div class="bar-grow h-full rounded-full" style="--i:{i};width:{max === 0 ? 0 : Math.max(1, (r.value / max) * 100)}%;background:{r.color ?? color}"></div>
         </div>
       </li>
     {/each}

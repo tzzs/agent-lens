@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { projectLabel, shortId, looksLikeHash, formatMs, formatUsd } from '../src/lib/format.ts'
-import { halfOverHalf, topN } from '../src/lib/series.ts'
+import { halfOverHalf, pivotSeries, topN } from '../src/lib/series.ts'
 import { ancestorIds, barGeometry, buildForest, parentIds, sessionSpan, visibleRows, type ForestNode } from '../src/lib/timeline.ts'
 import { eventKind } from '../src/lib/eventKinds.ts'
 
@@ -109,5 +109,29 @@ describe('ancestorIds', () => {
   it('stops at a parent outside the session and at a cycle', () => {
     expect(ancestorIds([n('a', 'gone'), n('b', 'a')], 'b')).toEqual(['a'])
     expect(ancestorIds([n('x', 'y'), n('y', 'x')], 'x')).toEqual(['y'])
+  })
+})
+
+describe('pivotSeries', () => {
+  const rows = [
+    { day: '2026-09-02', model: 'a', t: 5 },
+    { day: '2026-09-01', model: 'a', t: 1 },
+    { day: '2026-09-01', model: 'b', t: 3 },
+    { day: '2026-09-02', model: 'c', t: 1 },
+    { day: '2026-09-02', model: '', t: 99 },
+  ]
+  it('aligns every series on sorted buckets, zero-filling gaps, biggest first', () => {
+    const p = pivotSeries(rows, 'day', 'model', 't', 6)
+    expect(p.buckets).toEqual(['2026-09-01', '2026-09-02'])
+    expect(p.series.map((s) => [s.key, s.values, s.total])).toEqual([
+      ['a', [1, 5], 6],
+      ['b', [3, 0], 3],
+      ['c', [0, 1], 1],
+    ])
+  })
+  it('drops the empty key (another kind of event) and folds the tail into Other', () => {
+    const p = pivotSeries(rows, 'day', 'model', 't', 2)
+    expect(p.series.map((s) => s.key)).toEqual(['a', ''])
+    expect(p.series[1]).toMatchObject({ other: true, values: [3, 1], total: 4 })
   })
 })

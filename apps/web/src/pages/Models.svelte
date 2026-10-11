@@ -4,7 +4,14 @@
   // model's cost is n/a, never $0.
   import { api, type ModelRow } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
-  import { range, filterParams, rangeKey } from '../lib/filter.svelte.js'
+  import { range, filterParams, rangeKey, granularity } from '../lib/filter.svelte.js'
+  import { pivotSeries } from '../lib/series.ts'
+  import { SERIES } from '../lib/eventKinds.ts'
+  import { formatUsd } from '../lib/format.ts'
+  import type { MessageKey } from '@agentlens/i18n'
+  import Donut from '../components/charts/Donut.svelte'
+  import Bars from '../components/charts/Bars.svelte'
+  import StackedTrend from '../components/charts/StackedTrend.svelte'
   import { href } from '../lib/router.svelte.js'
   import { live } from '../lib/live.svelte.js'
   import { formatCompact, formatInt, formatDate, formatDateTime } from '../lib/format.ts'
@@ -29,6 +36,61 @@
     q.run()
   })
   const d = $derived(q.state.data)
+
+  // Charts group by model NAME (the cube's `model` dim): one model served by two providers
+  // is one line. Its colour is its slot by tokens in this window, the same slot in all
+  // three charts, so a model is the same hue wherever it appears on the page.
+  const gran = $derived(granularity())
+  const trendQ = loader(() => api.query({ ...filterParams(), metrics: 'tokens_total', dims: `${gran},model`, limit: 5000 }))
+  $effect(() => {
+    void rangeKey()
+    void live.lastTick
+    trendQ.run()
+  })
+  const byName = $derived.by(() => {
+    const m = new Map<string, { tokens: number; cost: number | null; priced: boolean }>()
+    for (const r of d?.rows ?? []) {
+      if (!r.model) continue
+      const cur = m.get(r.model) ?? { tokens: 0, cost: 0, priced: true }
+      cur.tokens += r.tokensTotal
+      if (r.costApiEquiv === null) cur.priced = false
+      else cur.cost = (cur.cost ?? 0) + r.costApiEquiv
+      m.set(r.model, cur)
+    }
+    return [...m].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.tokens - a.tokens)
+  })
+  const TOP = 6
+  const colorOf = $derived.by(() => {
+    const slots = new Map(byName.slice(0, TOP - 1).map((m, i) => [m.name, SERIES[i % SERIES.length]!]))
+    return (name: string) => slots.get(name) ?? 'var(--cat-muted)'
+  })
+  const tokenSlices = $derived(
+    byName.map((m) => ({ label: m.name, value: m.tokens, color: colorOf(m.name), href: href('/sessions', { model: m.name }) })),
+  )
+  // Unpriced models stay out of the cost chart: their cost is unknown, and a bar at $0
+  // would say "free". The subtitle counts what was left out.
+  const costBars = $derived(
+    byName
+      .filter((m) => m.priced && (m.cost ?? 0) > 0)
+      .sort((a, b) => (b.cost ?? 0) - (a.cost ?? 0))
+      .slice(0, 8)
+      .map((m) => ({ label: m.name, value: m.cost ?? 0, color: colorOf(m.name) })),
+  )
+  const unpricedCount = $derived(byName.filter((m) => !m.priced && m.tokens > 0).length)
+  const GRAN_KEYS: Record<string, MessageKey> = { day: 'common.granDay', week: 'common.granWeek', month: 'common.granMonth' }
+  const trend = $derived.by(() => {
+    const p = pivotSeries(trendQ.state.data?.rows ?? [], gran, 'model', 'tokens_total', TOP)
+    return {
+      buckets: p.buckets.map((b) => b.slice(0, 10)),
+      series: p.series.map((s) => ({
+        key: s.key,
+        label: s.other ? $t('viz.other') : s.key,
+        color: s.other ? 'var(--cat-muted)' : colorOf(s.key),
+        values: s.values,
+        total: s.total,
+      })),
+    }
+  })
 
   const modelKey = (provider: string, model: string) => `${provider}::${model}`
 
@@ -116,6 +178,26 @@
       {/if}
     </div>
   {/if}
+
+  <div class="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
+    <Surface
+      title={$t('models.trendTitle')}
+      subtitle={$t('models.trendSubtitle', { values: { gran: GRAN_KEYS[gran] ? $t(GRAN_KEYS[gran]) : gran } })}
+      class="xl:col-span-2"
+    >
+      <StackedTrend buckets={trend.buckets} series={trend.series} format={formatCompact} label={$t('models.trendTitle')} />
+    </Surface>
+    <Surface title={$t('models.shareTitle')} subtitle={$t('models.shareSubtitle')}>
+      <Donut data={tokenSlices} max={TOP} format={formatCompact} label={$t('models.shareTitle')} />
+    </Surface>
+    <Surface
+      title={$t('models.costTitle')}
+      subtitle={unpricedCount ? $t('models.costSubtitleGap', { values: { n: unpricedCount } }) : $t('models.costSubtitle')}
+      class="xl:col-span-3"
+    >
+      <Bars rows={costBars} format={(n) => formatUsd(n)} />
+    </Surface>
+  </div>
 
   <Surface padded={false}>
     <div class="overflow-x-auto rounded-card">

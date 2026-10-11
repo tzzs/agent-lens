@@ -64,8 +64,8 @@ const zh = matches(en)({
   title: '项目',
   count: '{n} 个项目',
   countPlus: '{n}+ 个项目',
-  desc: '{count}，统计自本时间窗，已按 agent 与 worktree 归并分组。',
-  pageDesc: '已按 agent 与 worktree 归并分组。',
+  desc: '{count}，统计自本时间窗，已按 Agent 与 worktree 归并分组。',
+  pageDesc: '已按 Agent 与 worktree 归并分组。',
   loadingProjects: '正在加载项目',
   empty: '这个时间窗内没有项目',
 
@@ -79,9 +79,9 @@ const zh = matches(en)({
   noRoot: '未记录仓库根目录',
   tokensTitle: '{n} 个 token',
 
-  byAgent: '按 agent 统计',
-  byAgentAria: '按 agent 区分的用量',
-  noAgentActivity: '这个时间窗内没有 agent 活动',
+  byAgent: '按 Agent 统计',
+  byAgentAria: '按 Agent 区分的用量',
+  noAgentActivity: '这个时间窗内没有 Agent 活动',
   recentSessions: '最近的会话',
   untitled: '未命名',
   noSessions: '未记录任何会话',

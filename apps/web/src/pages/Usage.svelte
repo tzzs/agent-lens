@@ -2,7 +2,11 @@
   // GET /api/query — a thin UI over the single §7 cube (this page IS the cube; every
   // other page is a fixed slice of it). The returned `explain` is rendered verbatim
   // so the user always sees the basis behind the numbers (§7 "basis is visible").
-  import { agentLabel, hostLabel } from '../lib/names.js'
+  import { agentColor, agentLabel, hostLabel } from '../lib/names.js'
+  import { pivotSeries } from '../lib/series.ts'
+  import { SERIES } from '../lib/eventKinds.ts'
+  import StackedTrend from '../components/charts/StackedTrend.svelte'
+  import Bars from '../components/charts/Bars.svelte'
   import type { MessageKey } from '@agentlens/i18n'
   import {
     api,
@@ -104,6 +108,46 @@
   const res = $derived(q.state.data)
   // The cube returns no rows without a dim — the aggregate then lives only in totals.
   const hasDim = $derived(res ? res.columns.some(isDim) : false)
+
+  // The chart follows the query's shape: time plus at most one other dim is a stacked
+  // trend, a single dim is a ranked bar list, anything wider is a table only. It plots the
+  // first selected non-cost metric: an unpriced cost is unknown, and a chart cannot draw
+  // "unknown" without inventing a number for it.
+  const chartMetric = $derived(res ? metrics.find((m) => !m.startsWith('cost') && res.columns.includes(m)) ?? null : null)
+  const timeDim = $derived(dims.find((c) => TIME_DIMS.includes(c)) ?? null)
+  const otherDims = $derived(dims.filter((c) => !TIME_DIMS.includes(c)))
+  const chartKind = $derived<'trend' | 'bars' | 'none'>(
+    !res || !chartMetric || res.rows.length === 0 ? 'none' : timeDim && otherDims.length <= 1 ? 'trend' : !timeDim && dims.length === 1 ? 'bars' : 'none',
+  )
+  const chartFormat = (n: number) => cell(chartMetric ?? 'events', n) ?? String(n)
+  const chartTrend = $derived.by(() => {
+    if (chartKind !== 'trend' || !res || !timeDim || !chartMetric) return { buckets: [], series: [] }
+    const by = otherDims[0]
+    const rows = by ? res.rows : res.rows.map((r) => ({ ...r, __all: chartMetric }))
+    const p = pivotSeries(rows, timeDim, by ?? '__all', chartMetric, 8)
+    return {
+      buckets: p.buckets.map((b) => b.slice(0, 16)),
+      series: p.series.map((s, i) => ({
+        key: s.key,
+        label: s.other ? $t('viz.other') : by ? (cell(by, s.key) ?? s.key) : vocab(chartMetric),
+        color: s.other ? 'var(--cat-muted)' : by === 'agent' ? agentColor(s.key) : SERIES[i % SERIES.length]!,
+        values: s.values,
+        total: s.total,
+      })),
+    }
+  })
+  const chartBars = $derived(
+    chartKind === 'bars' && res && chartMetric
+      ? [...res.rows]
+          .sort((a, b) => Number(b[chartMetric] ?? 0) - Number(a[chartMetric] ?? 0))
+          .slice(0, 15)
+          .map((r, i) => ({
+            label: cell(dims[0]!, r[dims[0]!]) ?? '—',
+            value: Number(r[chartMetric] ?? 0),
+            color: dims[0] === 'agent' ? agentColor(String(r.agent)) : SERIES[i % SERIES.length]!,
+          }))
+      : [],
+  )
 
   // The header's window, as a sentence of its own. `{since}` is the raw §7 value the
   // query sends (`30d`, `365d`) rather than the pill's label: the pill for the last
@@ -326,6 +370,19 @@
     {:else}
       {#if q.state.status === 'error'}
         <Alert tone="red" title={$t('usage.failedTitle')}>{q.state.error} — {$t('usage.failedTail')}</Alert>
+      {/if}
+
+      {#if hasDim}
+        <Surface
+          title={chartMetric ? $t('usage.chartTitle', { values: { metric: vocab(chartMetric) } }) : $t('usage.chartTitleNone')}
+          subtitle={chartKind === 'none' ? $t('usage.chartNone') : ''}
+        >
+          {#if chartKind === 'trend'}
+            <StackedTrend buckets={chartTrend.buckets} series={chartTrend.series} format={chartFormat} label={vocab(chartMetric ?? '')} />
+          {:else if chartKind === 'bars'}
+            <Bars rows={chartBars} format={chartFormat} />
+          {/if}
+        </Surface>
       {/if}
 
       <Surface

@@ -74,4 +74,9 @@ export function payloadColor(kind: string): string {
 }
 
 /** Categorical series colours for charts, in slot order. */
-export const SERIES = [1, 2, 3, 4, 5, 6, 7, 8].map(cat)
+// Order, not hue, is what keeps neighbours apart: charts hand these out in sequence, so
+// adjacent slots are adjacent segments and lines. The token order put green (5) beside
+// red (6) — ΔE 2.8 under deuteranopia. This order, searched against the dataviz
+// validator over both themes, keeps every adjacent pair at ΔE ≥ 11 (target 8) and the
+// normal-vision floor at 18. Tokens are unchanged; only the hand-out order moved.
+export const SERIES = [1, 3, 8, 7, 2, 6, 4, 5].map(cat)

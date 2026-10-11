@@ -186,6 +186,10 @@
            instead of subscribing to a store, so re-rendering is what turns an
            already-drawn "55h 52m" into "55 时 52 分". -->
       {#key $code}
+      <!-- Keyed by page (and session id) so arriving at a page plays its entrance once;
+           a filter change refetches in place and does not replay it. -->
+      {#key `${page}/${parts[1] ?? ''}`}
+      <div class="page-enter">
       {#if page === ''}
         <Overview />
       {:else if page === 'agents'}
@@ -213,6 +217,8 @@
           {$t('shell.unknownPageStart')} <span class="nums text-ink">/{page}</span>{$t('shell.unknownPageEnd')}
         </div>
       {/if}
+      </div>
+      {/key}
       {/key}
     </main>
   </div>

@@ -15,7 +15,7 @@
     format = (n: number) => String(n),
     label = msg('viz.donutBreakdown'),
   }: {
-    data: { label: string; value: number; title?: string; href?: string }[]
+    data: { label: string; value: number; title?: string; href?: string; color?: string }[]
     size?: number
     thickness?: number
     max?: number
@@ -36,7 +36,7 @@
       const frac = total === 0 ? 0 : d.value / total
       const seg = {
         ...d,
-        color: 'other' in d && d.other ? 'var(--cat-muted)' : SERIES[i % SERIES.length]!,
+        color: 'other' in d && d.other ? 'var(--cat-muted)' : (d.color ?? SERIES[i % SERIES.length]!),
         dash: Math.max(0, frac * c - gap),
         offset: -acc * c,
         pct: frac,
@@ -67,7 +67,7 @@
             stroke-dasharray="{a.dash} {c - a.dash}"
             stroke-dashoffset={a.offset}
             opacity={active === null || active === i ? 1 : 0.35}
-            class="transition-[opacity,stroke-width] duration-150"
+            class="donut-arc transition-[opacity,stroke-width] duration-150"
           />
         {/each}
       </g>

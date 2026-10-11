@@ -119,6 +119,9 @@ const en = {
     status: 'status',
     usageSource: 'usage_source',
   },
+  chartTitle: 'Chart: {metric}',
+  chartTitleNone: 'Chart',
+  chartNone: 'A chart is drawn for one dimension, or a time dimension plus one other, with at least one non-cost metric. The table below has every row.',
 }
 
 const zh = matches(en)({
@@ -146,7 +149,7 @@ const zh = matches(en)({
   groupOther: '其他',
 
   filtersTitle: '筛选',
-  filtersInfo: '顶栏的时间窗、agent 与 host 在这里同样生效；状态、排序和行数上限是本页自己的。',
+  filtersInfo: '顶栏的时间窗、Agent 与主机在这里同样生效；状态、排序和行数上限是本页自己的。',
   statusLabel: '状态',
   anyStatus: '任意状态',
   statusOk: '正常',
@@ -196,7 +199,7 @@ const zh = matches(en)({
     day: '按天',
     week: '按周',
     month: '按月',
-    agent: 'agent',
+    agent: 'Agent',
     host: '主机',
     project: '项目',
     session: '会话',
@@ -216,6 +219,9 @@ const zh = matches(en)({
     status: '状态',
     usageSource: '用量来源',
   },
+  chartTitle: '图表：{metric}',
+  chartTitleNone: '图表',
+  chartNone: '选择一个维度，或"时间维度 + 一个其他维度"，并至少选一个非费用指标，就会画出图表。下表包含全部行。',
 })
 
 export default { en, zh }

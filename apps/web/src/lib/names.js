@@ -4,6 +4,7 @@
 // Plain JS with JSDoc, like the other modules that read a `.svelte.js` store.
 import { msg } from '@agentlens/i18n'
 import { options } from './live.svelte.js'
+import { SERIES } from './eventKinds.ts'
 
 /**
  * "Claude Code" for `claude-code`, from the adapter's own name; the id until it is known.
@@ -56,4 +57,17 @@ export function modelList(models) {
   const seen = {}
   for (const m of models) seen[m.model] = (seen[m.model] ?? 0) + 1
   return models.map((m) => ((seen[m.model] ?? 0) > 1 && m.provider ? `${m.provider}/${m.model}` : m.model)).join(', ')
+}
+
+/**
+ * One colour per agent, the same on every page: slot = the agent's place among every
+ * agent the directory knows, sorted by id. Rank-based colours (the donut's old
+ * "biggest first") repainted an agent whenever the window changed which one was largest.
+ * @param {string} id
+ * @returns {string}
+ */
+export function agentColor(id) {
+  const ids = options.agents.map((a) => a.agentId).sort()
+  const i = ids.indexOf(id)
+  return i < 0 ? 'var(--cat-muted)' : SERIES[i % SERIES.length] ?? 'var(--cat-muted)'
 }

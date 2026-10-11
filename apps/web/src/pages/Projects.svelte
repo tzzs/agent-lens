@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { agentLabel, hostLabel } from '../lib/names.js'
+  import { slide } from 'svelte/transition'
+  import { cubicOut } from 'svelte/easing'
+  import { agentColor, agentLabel, hostLabel } from '../lib/names.js'
   import { tick } from 'svelte'
   // GET /api/projects (§10 priority 4, §9's example output). One row per canonical
   // repo root: worktrees and subdirectories are folded server-side (§4.1), so the
@@ -65,7 +67,6 @@
 
   const now = $derived(live.lastTick || Date.now())
   const agentIds = $derived([...new Set((d?.rows ?? []).flatMap((p) => p.agents.map((a) => a.agentId)))].sort())
-  const agentColor = (id: string) => SERIES[Math.max(0, agentIds.indexOf(id)) % SERIES.length]!
 
   // The header's count reads "1 project" / "1,234 projects" / "1,234+ projects":
   // the truncated case is never singular, so it is its own message and the
@@ -157,7 +158,7 @@
       {/snippet}
 
       {#snippet expanded(p: ProjectRow)}
-        <div id={detailId(p)} class="grid grid-cols-1 gap-x-10 gap-y-5 whitespace-normal bg-inset px-4 py-4 sm:pl-[35px] lg:grid-cols-2">
+        <div id={detailId(p)} transition:slide|global={{ duration: 240, easing: cubicOut }} class="grid grid-cols-1 gap-x-10 gap-y-5 whitespace-normal bg-inset px-4 py-4 sm:pl-[35px] lg:grid-cols-2">
           <section class="min-w-0">
             <h3 class="mb-2 text-xs font-medium text-ink-2">{$t('projects.byAgent')}</h3>
             {#if p.agents.length}

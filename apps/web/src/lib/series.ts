@@ -10,6 +10,8 @@ export interface Slice {
   title?: string
   /** Where clicking the slice drills in; the folded "Other" slice never has one. */
   href?: string
+  /** A colour that follows the entity (an agent keeps its hue on every page); else slot order. */
+  color?: string
 }
 
 /**
@@ -40,4 +42,50 @@ export function halfOverHalf(values: number[]): number | null {
   const second = sum(values.slice(values.length - mid))
   if (first <= 0) return null
   return (second - first) / first
+}
+
+export interface PivotSeries {
+  key: string
+  /** One value per bucket, aligned with `buckets`; a bucket with no row is 0. */
+  values: number[]
+  total: number
+  /** True for the folded remainder, which charts draw in the muted colour. */
+  other?: boolean
+}
+
+/**
+ * Cube rows (`{day, model, tokens_total}`…) as time buckets × series, for a stacked trend.
+ * Keeps the `top` series with the largest totals and folds the rest into one "Other"
+ * series, so a chart never needs a ninth hue (and a series' colour can follow its key).
+ * Buckets come back sorted; rows with an empty series key are dropped, since in the cube
+ * that is "events of another kind", not a series of its own.
+ */
+export function pivotSeries(
+  rows: readonly Record<string, unknown>[],
+  timeKey: string,
+  seriesKey: string,
+  metric: string,
+  top = 6,
+): { buckets: string[]; series: PivotSeries[] } {
+  const buckets = [...new Set(rows.map((r) => String(r[timeKey] ?? '')))].filter((b) => b !== '').sort()
+  const at = new Map(buckets.map((b, i) => [b, i]))
+  const byKey = new Map<string, number[]>()
+  for (const r of rows) {
+    const key = String(r[seriesKey] ?? '')
+    const i = at.get(String(r[timeKey] ?? ''))
+    if (key === '' || i === undefined) continue
+    const v = Number(r[metric] ?? 0)
+    if (!Number.isFinite(v)) continue
+    const arr = byKey.get(key) ?? new Array<number>(buckets.length).fill(0)
+    arr[i]! += v
+    byKey.set(key, arr)
+  }
+  const all = [...byKey].map(([key, values]) => ({ key, values, total: values.reduce((a, b) => a + b, 0) }))
+  all.sort((a, b) => b.total - a.total || (a.key < b.key ? -1 : 1))
+  const kept = all.filter((s) => s.total > 0)
+  if (kept.length <= top) return { buckets, series: kept }
+  const head = kept.slice(0, top - 1)
+  const rest = kept.slice(top - 1)
+  const values = buckets.map((_, i) => rest.reduce((a, s) => a + s.values[i]!, 0))
+  return { buckets, series: [...head, { key: '', values, total: values.reduce((a, b) => a + b, 0), other: true }] }
 }

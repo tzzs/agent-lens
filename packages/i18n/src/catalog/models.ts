@@ -73,6 +73,13 @@ const en = {
   chipNoModel: 'No model',
   chipNoModelTitle: 'There is no model on these events, so there is nothing to price.',
   viewSessionsTitle: 'Sessions that used {model}',
+  trendTitle: 'Tokens over time',
+  trendSubtitle: 'Stacked by model, per {gran}',
+  shareTitle: 'Token share',
+  shareSubtitle: 'By model in this window; click one for its sessions',
+  costTitle: 'Estimated cost by model',
+  costSubtitle: 'Tokens × list price',
+  costSubtitleGap: '{n, plural, one {Tokens × list price; {n} unpriced model is left out, not drawn as $0} other {Tokens × list price; {n} unpriced models are left out, not drawn as $0}}',
 }
 
 const zh = matches(en)({
@@ -94,7 +101,7 @@ const zh = matches(en)({
   noModel: '（无模型）',
   noModelTitle: '没有记录模型的事件，例如工具调用与生命周期事件',
   empty: '这个时间窗内没有任何模型活动',
-  truncated: '仅显示前 {n} 个模型。缩窄时间窗或 agent 以查看其余部分。',
+  truncated: '仅显示前 {n} 个模型。缩窄时间窗或 Agent 以查看其余部分。',
 
   pricingGapTitle: '定价缺口。',
   pricingGap: '有 {n} 个模型在其最后出现日期上没有价格，因此它们的费用显示为{na}：',
@@ -122,6 +129,13 @@ const zh = matches(en)({
   chipNoModel: '无模型',
   chipNoModelTitle: '这些事件上没有模型，因此也就没有可定价的对象。',
   viewSessionsTitle: '用过 {model} 的会话',
+  trendTitle: 'Token 趋势',
+  trendSubtitle: '按模型堆叠，每{gran}',
+  shareTitle: 'Token 占比',
+  shareSubtitle: '本时间窗内按模型统计，点击查看对应会话',
+  costTitle: '按模型的估算费用',
+  costSubtitle: 'token × 牌价',
+  costSubtitleGap: 'token × 牌价；{n} 个未定价模型未计入，不会按 $0 画出',
 })
 
 export default { en, zh }
