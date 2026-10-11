@@ -1,6 +1,7 @@
 /**
  * GET /api/overview — the §10 priority-1 screen: four cards, the trend, the
- * agent/project splits, the two §14 banners.
+ * agent/project splits. Coverage and the host mix are not repeated here: neither
+ * changes a figure on this screen, so they live in the doctor and the Agents page.
  *
  * Every figure below comes from one cube call with a dim list; the route adds
  * no arithmetic beyond folding the §8 billing modes and shaping rows.
@@ -8,7 +9,6 @@
 import { query, resolveSince, type QueryFilter, type Row, type TimeUnit } from '@agentlens/query'
 import type { ServerCtx } from './types.ts'
 import { costView } from './cost.ts'
-import { banners } from './banners.ts'
 import { contentLayerPresent, payloadCount } from './content.ts'
 import { parseFilter, strParam } from './request-spec.ts'
 import { ApiError } from './errors.ts'
@@ -40,7 +40,6 @@ export interface OverviewResponse {
   hosts: Row[]
   projects: Row[]
   capabilities: Row[]
-  banners: ReturnType<typeof banners>
   content: { available: boolean; payloads: number }
 }
 
@@ -159,7 +158,6 @@ export function overview(ctx: ServerCtx, sp: URLSearchParams): OverviewResponse 
     hosts: hosts.rows,
     projects: projects.rows,
     capabilities: capabilities.rows.filter((r) => String(r.capability_type) !== ''),
-    banners: banners(ctx, windowFilter),
     content: { available: contentLayerPresent(ctx.db), payloads: payloadCount(ctx.db) },
   }
 }

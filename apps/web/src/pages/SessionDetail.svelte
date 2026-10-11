@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick, untrack } from 'svelte'
   // GET /api/sessions/:id — the waterfall, the product's differentiator (§10
   // priority 2). The parent_event_id forest is built once and flattened to the
   // *visible* rows only, then windowed by VirtualList, so a 13k-event session stays
@@ -7,11 +8,13 @@
   import { api, type PayloadView, type TimelineNode } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
   import { live } from '../lib/live.svelte.js'
+  import { route, setQuery } from '../lib/router.svelte.js'
+  import { listOf } from '../lib/hashquery.ts'
   import { contentNote } from '../lib/notes.ts'
   import { t } from '../lib/lang.js'
   import { activeMetricInfo, formatCompact, formatInt, formatMs, formatDateTime, projectLabel, shortId } from '../lib/format.ts'
   import { eventGroups, eventKind, type EventGroup } from '../lib/eventKinds.ts'
-  import { buildForest, parentIds, sessionSpan, visibleRows } from '../lib/timeline.ts'
+  import { ancestorIds, buildForest, parentIds, sessionSpan, visibleRows } from '../lib/timeline.ts'
   import Surface from '../components/ui/Surface.svelte'
   import PageHeader from '../components/ui/PageHeader.svelte'
   import FilterChips from '../components/ui/FilterChips.svelte'
@@ -40,9 +43,45 @@
   const span = $derived(d ? sessionSpan(d.nodes, d.session.firstTimestamp, d.session.lastTimestamp) : null)
 
   let expanded = $state<Set<string>>(new Set())
-  let groups = $state<string[]>([])
-  let search = $state('')
-  let selectedId = $state<string | null>(null)
+  // The kind filter, the search and the open node live in the hash
+  // (`?kinds=tool,mcp&q=…&node=<event id>`), so a refresh keeps the view and a link
+  // can point at one event. Expanded branches stay local: they are derivable, and a
+  // deep-linked node opens its own branch below.
+  let groups = $state<string[]>(listOf(route.query.kinds))
+  let search = $state(route.query.q ?? '')
+  let selectedId = $state<string | null>(route.query.node ?? null)
+  /** A node named by the hash that still has to be revealed: branch opened, row scrolled to. */
+  let pendingReveal = $state<string | null>(route.query.node ?? null)
+
+  const onPage = () => {
+    const p = route.path.split('/')
+    try {
+      return p[1] === 'sessions' && p[2] !== undefined && decodeURIComponent(p[2]) === id
+    } catch {
+      return false
+    }
+  }
+  // Hash -> state on Back/Forward; the local values are read untracked so a click is
+  // not undone before it reaches the hash.
+  $effect(() => {
+    if (!onPage()) return
+    const kinds = listOf(route.query.kinds)
+    const q = route.query.q ?? ''
+    const node = route.query.node ?? null
+    untrack(() => {
+      if (kinds.join(',') !== groups.join(',')) groups = kinds
+      if (q !== search.trim()) search = q
+      if (node !== selectedId) {
+        selectedId = node
+        pendingReveal = node
+      }
+    })
+  })
+  // Guarded by the path: leaving for another session must not write this one's state there.
+  $effect(() => {
+    const patch = { kinds: groups.join(','), q: search.trim(), node: selectedId ?? '' }
+    if (untrack(onPage)) setQuery(patch)
+  })
 
   const groupCounts = $derived.by(() => {
     const m = new Map<EventGroup, number>()
@@ -123,6 +162,38 @@
     selectedId = rows[next]!.node.id
     list?.scrollToIndex(next)
   }
+
+  // Reveal a hash-named node once the timeline exists: open every branch above it (a
+  // filter shows matches flat, so it needs none), then scroll its row into view.
+  $effect(() => {
+    if (!pendingReveal || !d || !forest || !list) return
+    const target = pendingReveal
+    pendingReveal = null
+    if (!d.nodes.some((n) => n.id === target)) return
+    const up = untrack(() => (matcher ? [] : ancestorIds(d.nodes, target)))
+    untrack(() => {
+      if (up.some((a) => !expanded.has(a))) expanded = new Set([...expanded, ...up])
+    })
+    // A frame after the render, not just the tick: the list has only just mounted and
+    // its viewport has no height yet, which would park the row just out of view.
+    void tick().then(() =>
+      requestAnimationFrame(() => {
+        const i = rows.findIndex((r) => r.node.id === target)
+        if (i < 0) return
+        list?.scrollToIndex(i, 'center')
+        // The list is taller than what is left of the window below the header, so bring
+        // the page along too. The virtual window renders the row only after its scroll
+        // event lands, so look for it over a few frames rather than once.
+        let frames = 10
+        const bringIntoView = () => {
+          const el = document.querySelector('[role="tree"] [aria-selected="true"]')
+          if (el) el.scrollIntoView({ block: 'center' })
+          else if (--frames > 0) requestAnimationFrame(bringIntoView)
+        }
+        requestAnimationFrame(bringIntoView)
+      }),
+    )
+  })
 
   const axis = $derived(span ? [0, 0.5, 1].map((f) => formatMs(f * (span.end - span.start))) : [])
   let copied = $state(false)

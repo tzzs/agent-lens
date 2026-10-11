@@ -39,10 +39,12 @@
   const slice = $derived(items.slice(start, end))
 
   /** Bring row `i` into view with minimal scrolling (keyboard navigation). */
-  export function scrollToIndex(i: number) {
+  /** `nearest` (keyboard stepping) moves only as far as needed; `center` (a deep link) puts the row mid-view. */
+  export function scrollToIndex(i: number, align: 'nearest' | 'center' = 'nearest') {
     if (!viewport) return
     const top = i * itemHeight
-    if (top < viewport.scrollTop) viewport.scrollTop = top
+    if (align === 'center') viewport.scrollTop = Math.max(0, top - (viewport.clientHeight - itemHeight) / 2)
+    else if (top < viewport.scrollTop) viewport.scrollTop = top
     else if (top + itemHeight > viewport.scrollTop + viewport.clientHeight) viewport.scrollTop = top + itemHeight - viewport.clientHeight
   }
 </script>

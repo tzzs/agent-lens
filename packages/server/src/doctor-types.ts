@@ -67,6 +67,9 @@ export interface DoctorReport {
     estimated: number
     missing: number
     withoutRequestId: number
+    /** Model calls, and how many carry a token count — the coverage figure that means something. */
+    generations: number
+    generationsWithUsage: number
     naiveTokens: number
     dedupedTokens: number
     inflationAvoidedPct: number

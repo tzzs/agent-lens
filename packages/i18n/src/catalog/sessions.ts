@@ -38,8 +38,11 @@ const en = {
   emptyFiltered: 'No sessions match these filters',
   emptyWindow: 'No sessions in this window',
   showing: 'Showing {n} of {total} sessions{tail}.',
-  // The limit is the page's own `limit: 100` query, so the number is wording here.
-  showingTailTruncated: ' — the 100 most recent; narrow the range or agent to see older ones',
+  // {n} is how many rows the server sent (the page's `limit`, grown by loadMore).
+  showingTailTruncated: ' — the {n} most recent',
+  loadMore: 'Load {n} more',
+  modelFilter: 'Model: {model}',
+  clearModel: 'Clear the model filter',
 }
 
 const zh = matches(en)({
@@ -48,7 +51,7 @@ const zh = matches(en)({
   loading: '正在加载会话',
   contentOff: '内容层已关闭——会话详情只有指标数据。',
 
-  filterByAgent: '按 agent 筛选',
+  filterByAgent: '按 Agent 筛选',
   searchLabel: '搜索会话',
   searchPlaceholder: '搜索标题、id、项目…',
 
@@ -68,7 +71,10 @@ const zh = matches(en)({
   emptyFiltered: '没有符合这些筛选条件的会话',
   emptyWindow: '这个时间窗内没有会话',
   showing: '共 {total} 个会话，当前显示 {n} 个{tail}。',
-  showingTailTruncated: '（只有最近 100 个，可缩小时间范围或只选一个 agent 来看更早的）',
+  showingTailTruncated: '（只有最近 {n} 个）',
+  loadMore: '再加载 {n} 个',
+  modelFilter: '模型：{model}',
+  clearModel: '清除模型筛选',
 })
 
 export default { en, zh }

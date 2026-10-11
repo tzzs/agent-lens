@@ -25,6 +25,7 @@ const en = {
   pageDesc: 'Pick metrics, dimensions and filters to query the usage cube directly. {window}',
   windowLast: 'Window: last {since}.',
   windowAll: 'Window: all time.',
+  windowRange: 'Window: {from} to {to}.',
   pageInfo:
     "This page is the query cube itself — every other page is a fixed slice of it (§7). The server's own account of each query is shown under the result.",
 
@@ -45,7 +46,7 @@ const en = {
 
   /* the filter fields */
   filtersTitle: 'Filters',
-  filtersInfo: "Only the header's time range applies on this page; agent and status are chosen here.",
+  filtersInfo: "The header's time range, agent and host apply here as on every page; status, order and row limit are this explorer's own.",
   statusLabel: 'Status',
   anyStatus: 'Any status',
   statusOk: 'OK',
@@ -118,6 +119,9 @@ const en = {
     status: 'status',
     usageSource: 'usage_source',
   },
+  chartTitle: 'Chart: {metric}',
+  chartTitleNone: 'Chart',
+  chartNone: 'A chart is drawn for one dimension, or a time dimension plus one other, with at least one non-cost metric. The table below has every row.',
 }
 
 const zh = matches(en)({
@@ -126,6 +130,7 @@ const zh = matches(en)({
   pageDesc: '自选指标、维度与筛选条件，直接查询用量立方体。{window}',
   windowLast: '时间窗：最近 {since}。',
   windowAll: '时间窗：全部历史。',
+  windowRange: '时间窗：{from} 至 {to}。',
   pageInfo:
     '本页面就是查询立方体本身——其他每个页面都只是它的一个固定切片（§7）。每次查询由服务器自己给出的说明会显示在结果下方。',
 
@@ -144,7 +149,7 @@ const zh = matches(en)({
   groupOther: '其他',
 
   filtersTitle: '筛选',
-  filtersInfo: '本页面只套用顶栏的时间窗；agent 与状态在这里选择。',
+  filtersInfo: '顶栏的时间窗、Agent 与主机在这里同样生效；状态、排序和行数上限是本页自己的。',
   statusLabel: '状态',
   anyStatus: '任意状态',
   statusOk: '正常',
@@ -194,7 +199,7 @@ const zh = matches(en)({
     day: '按天',
     week: '按周',
     month: '按月',
-    agent: 'agent',
+    agent: 'Agent',
     host: '主机',
     project: '项目',
     session: '会话',
@@ -214,6 +219,9 @@ const zh = matches(en)({
     status: '状态',
     usageSource: '用量来源',
   },
+  chartTitle: '图表：{metric}',
+  chartTitleNone: '图表',
+  chartNone: '选择一个维度，或"时间维度 + 一个其他维度"，并至少选一个非费用指标，就会画出图表。下表包含全部行。',
 })
 
 export default { en, zh }

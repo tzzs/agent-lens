@@ -93,7 +93,10 @@ export function coverageBanner(retainedSourceDirs: number, projectRootsWithoutRo
     retainedSourceDirs > 0 ? retentionPhrase(INGESTED_RETENTION, retainedSourceDirs) : null,
     projectRootsWithoutRows > 0 ? projectRowsPhrase(projectRootsWithoutRows) : null,
   ].filter((c): c is string => c !== null)
-  return clauses.length === 0 ? null : `${clauses.join(' · ')} — history is incomplete`
+  // Not "history is incomplete": both populations are rows this store already holds (a dir
+  // emptied after ingest, a project whose sessions were pruned). Lost history is only what
+  // was never ingested, which `agl doctor`'s filesystem sweep is the one place to see.
+  return clauses.length === 0 ? null : `${clauses.join(' · ')} — rows already ingested are kept here`
 }
 
 export interface CoverageReport {

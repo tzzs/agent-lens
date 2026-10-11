@@ -562,6 +562,20 @@ export function setAgentAggregations(db: DatabaseSync, policies: Record<string, 
   })
 }
 
+/**
+ * Record each adapter's display name, so every reader of `agents.display_name` (the
+ * dashboard, `agl`) names an agent the way its adapter does rather than by its id.
+ */
+export function setAgentDisplayNames(db: DatabaseSync, names: Record<string, string>): void {
+  withTransaction(db, () => {
+    const stmt = db.prepare(`
+      INSERT INTO agents (id, display_name) VALUES (?, ?)
+      ON CONFLICT(id) DO UPDATE SET display_name = excluded.display_name
+    `)
+    for (const [agentId, name] of Object.entries(names)) stmt.run(agentId, name)
+  })
+}
+
 /** Agents with no persisted policy are absent, so the caller's default applies. */
 export function loadAgentAggregations(db: DatabaseSync): Record<string, AggregationPolicy> {
   const rows = db

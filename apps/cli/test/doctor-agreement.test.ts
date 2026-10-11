@@ -195,6 +195,8 @@ describe('agl doctor vs GET /api/doctor on one database (§14)', () => {
     expect(served.usageQuality.estimated).toBe(sum('estimated'))
     expect(served.usageQuality.missing).toBe(sum('missing'))
     expect(served.usageQuality.withoutRequestId).toBe(sum('noRequestId'))
+    expect(served.usageQuality.generations).toBe(sum('generations'))
+    expect(served.usageQuality.generationsWithUsage).toBe(sum('generationsWithUsage'))
     expect(served.usageQuality.naiveTokens).toBe(sum('naive'))
     expect(served.usageQuality.dedupedTokens).toBe(sum('folded'))
     expect(served.usageQuality.modes).toEqual(['last_call_sum', 'request_max'])
@@ -209,10 +211,13 @@ describe('agl doctor vs GET /api/doctor on one database (§14)', () => {
     )
     expect(cliLine(`${GLYPH.none} codex`)).toContain(`no request_id dedup: raw sum ${formatTokens(cx.naive)} = ${formatTokens(cx.folded)}`)
     expect(cliLine(`${GLYPH.none} codex`)).toContain(`${formatCount(cx.usageRows)} usage rows summed once each`)
-    expect(cliLine('reported')).toContain(
-      `reported ${pct(cc.reported, cc.events)}% · estimated ${pct(cc.estimated, cc.events)}% · missing ${pct(cc.missing, cc.events)}%`,
-    )
-    expect(cliLine('records without request_id')).toContain(`${formatCount(cc.noRequestId)} records without request_id`)
+    // Coverage is over model calls, and both surfaces read it from the same rows.
+    const coverage = cli.find((l) => l.startsWith('claude-code') && /usage on|no model calls/.test(l)) ?? ''
+    if (cc.generations === 0) expect(coverage).toContain('no model calls recorded')
+    else expect(coverage).toContain(`(${formatCount(cc.generationsWithUsage)} of ${formatCount(cc.generations)}`)
+    if (cc.noRequestIdWithUsage > 0) {
+      expect(coverage).toContain(`${formatCount(cc.noRequestIdWithUsage)} usage record`)
+    }
     expect(cli).toContain(
       `${GLYPH.warn} codex declares ${cx.policy.mode}: one GLOBAL request_max would have reported ` +
         `${formatTokens(cx.globalFolded)} instead of ${formatTokens(cx.folded)} (§18 row 2 — the fold is per agent)`,

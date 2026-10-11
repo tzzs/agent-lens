@@ -355,6 +355,11 @@ export function renderParsing(db: DatabaseSync, rctx: Ctx, probes: readonly Adap
   }
 }
 
+/** A path as a LIKE prefix: `%`, `_` and the escape itself match literally. */
+function likePrefix(path: string): string {
+  return path.replace(/[\\%_]/g, (c) => `\\${c}`)
+}
+
 export async function renderCoverage(db: DatabaseSync, rctx: Ctx, probes: readonly AdapterProbe[]): Promise<void> {
   rctx.out('Coverage')
   for (const p of probes) {
@@ -379,7 +384,19 @@ export async function renderCoverage(db: DatabaseSync, rctx: Ctx, probes: readon
     // population: this sweep counts every dir in the live store, ingested or not, while the
     // banner's count is bounded by the `sources` table. Two questions, two honest labels (§14).
     rctx.out(`${GLYPH.warn} ${p.adapter.id}: ${retentionPhrase(UPSTREAM_RETENTION, p.survey.emptyDirs.length, p.survey.dirs, shown)}`)
-    rctx.out('  → history is incomplete: whatever those dirs held was never ingested and cannot be recovered from disk')
+    // Only a dir this store never read from is lost history: one that was ingested before
+    // upstream emptied it still has every row here. The sweep counts both, so split them.
+    const neverIngested = p.survey.emptyDirs.filter(
+      (dir) => rowsOf(db, `SELECT 1 FROM sources WHERE path LIKE ? ESCAPE '\\' LIMIT 1`, `${likePrefix(dir)}/%`).length === 0,
+    )
+    if (neverIngested.length > 0) {
+      rctx.out(
+        `  → ${formatCount(neverIngested.length)} of them ${neverIngested.length === 1 ? 'was' : 'were'} never ingested: ` +
+          'history is incomplete — whatever they held cannot be recovered from disk',
+      )
+    } else {
+      rctx.out('  → every one was ingested before upstream emptied it: their rows are kept in this store, nothing is missing')
+    }
     if (p.survey.unreadableDirs.length > 0) {
       rctx.out(`${GLYPH.err} ${formatCount(p.survey.unreadableDirs.length)} of those dirs exist but are not readable (locked?)`)
     }

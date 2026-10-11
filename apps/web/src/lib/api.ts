@@ -261,21 +261,6 @@ export interface HealthResponse {
  * Overview
  * ------------------------------------------------------------------ */
 
-export interface HostShare {
-  host: string
-  events: number
-  share: number
-}
-export interface HostSplitBanner {
-  agentId: string
-  dominantHost: string
-  dominantShare: number
-  hosts: HostShare[]
-  /** The dominant host is only the agent's own name repeated; the banner is worded differently. */
-  degenerate: boolean
-  splitByDefault: true
-  message: string
-}
 export interface OverviewResponse {
   generatedAt: number
   window: { since?: string; until?: string; sinceTs: number | null; granularity: string; defaultSinceApplied: boolean }
@@ -292,7 +277,6 @@ export interface OverviewResponse {
   hosts: Row[]
   projects: Row[]
   capabilities: Row[]
-  banners: { hostSplit: HostSplitBanner | null; coverage: CoverageReport }
   content: { available: boolean; payloads: number }
 }
 
@@ -484,7 +468,7 @@ export interface AgentRow {
   billingMode: string
   /** True when some of this agent's models bill at another mode, so `billingMode` is only its default. */
   mixedBilling: boolean
-  hosts: { host: string; events: number; sessions: number }[]
+  hosts: { host: string; label: string; events: number; sessions: number }[]
   capabilities: { type: string; events: number; errors: number }[]
   models: { model: string; events: number; tokensTotal: number; costApiEquiv: number | null }[]
   metrics: Record<string, number | null>
@@ -562,6 +546,9 @@ export interface DoctorReport {
     estimated: number
     missing: number
     withoutRequestId: number
+    /** Model calls, and how many carry a token count — the coverage figure that means something. */
+    generations: number
+    generationsWithUsage: number
     naiveTokens: number
     dedupedTokens: number
     inflationAvoidedPct: number

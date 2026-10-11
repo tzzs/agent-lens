@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
-import { defaultDbPath, hostSplitFor, hostSplitSentence, migrate, openDatabase, pickHostWarning } from '@agentlens/storage'
+import { defaultDbPath, migrate, openDatabase } from '@agentlens/storage'
 import { CLI_FLAG_SCHEMA, parseArgs, UsageError, type FlagView } from './args.ts'
 import { getAdapters } from './adapters.ts'
 import { defaultCtx, redactHome, type Ctx } from './context.ts'
@@ -25,8 +25,6 @@ import { cmdPricing, cmdPrune } from './commands/admin.ts'
 import { query } from '@agentlens/query'
 import { queryDeps } from './context.ts'
 import { serveDashboard } from './serve.ts'
-import { filter, rowsOf } from './commands/shared.ts'
-import { createContext, coverageReport } from '@agentlens/server'
 
 export const DASHBOARD_URL = 'http://localhost:7317'
 
@@ -88,40 +86,6 @@ function cliVersion(): string {
   }
 }
 
-/**
- * §14: what the first screen owes the user is coverage and the host split, not a
- * disclaimer that the numbers are estimates. A scan that looks complete while
- * upstream retention already deleted history has to say so, and §1.5's measured
- * 94.6%-desktop split is the single easiest way to misread a total.
- */
-function hostSkew(db: DatabaseSync): string | null {
-  const byAgent = new Map<string, { host: string; events: number }[]>()
-  for (
-    const r of rowsOf(
-      db,
-      `SELECT agent_id, COALESCE(NULLIF(host_id, ''), '(none)') AS host, COUNT(*) AS n
-       FROM events GROUP BY agent_id, host`,
-    )
-  ) {
-    const agent = String(r.agent_id)
-    byAgent.set(agent, [...(byAgent.get(agent) ?? []), { host: String(r.host), events: Number(r.n) }])
-  }
-  // §14: the same decision the browser makes, from the same shared rule — see
-  // `packages/storage/src/host-split.ts` for why the warning is stricter than the split note.
-  const split = pickHostWarning([...byAgent].map(([agent, hosts]) => hostSplitFor(agent, hosts)))
-  if (!split) return null
-  return `${GLYPH.warn} ${hostSplitSentence(split, 'events')} — every figure above is split by host (§1.5)`
-}
-
-/** The §14 warning lines, or nothing at all when coverage and hosts are clean. */
-export function bannerWarnings(db: DatabaseSync, ctx: Ctx): string[] {
-  const lines: string[] = []
-  const coverage = coverageReport(createContext({ db, now: ctx.now, homedir: ctx.homedir }))
-  if (coverage.banner) lines.push(`${GLYPH.warn} ${coverage.banner}`)
-  const skew = hostSkew(db)
-  if (skew) lines.push(skew)
-  return lines
-}
 
 async function cmdBare(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath: string): Promise<number> {
   ctx.out('AgentLens')
@@ -159,7 +123,6 @@ async function cmdBare(db: DatabaseSync, flags: FlagView, ctx: Ctx, dbPath: stri
   ctx.out(
     `today: ${formatTokens(today.tokens_total)} tokens · ${formatUsd(today.cost_api_equiv)} api-equiv`,
   )
-  for (const line of bannerWarnings(db, ctx)) ctx.out(line)
   // §9: the bare command is scan + serve + browser. A pipe or CI run gets the summary
   // alone, because a server nobody can see — or interrupt — is worse than none.
   const wantsServe = flags.bool('serve') || (ctx.interactive && !flags.bool('no-serve'))

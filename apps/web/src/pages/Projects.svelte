@@ -1,4 +1,8 @@
 <script lang="ts">
+  import { slide } from 'svelte/transition'
+  import { cubicOut } from 'svelte/easing'
+  import { agentColor, agentLabel, hostLabel } from '../lib/names.js'
+  import { tick } from 'svelte'
   // GET /api/projects (§10 priority 4, §9's example output). One row per canonical
   // repo root: worktrees and subdirectories are folded server-side (§4.1), so the
   // server's note and each project's observed working directories are shown for
@@ -6,8 +10,10 @@
   // the full digest in the title.
   import { api, type ProjectRow } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
-  import { range, filterParams } from '../lib/filter.svelte.js'
+  import { range, filterParams, rangeKey } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
+  import { route, setQuery } from '../lib/router.svelte.js'
+  import { listOf } from '../lib/hashquery.ts'
   import { projectNote } from '../lib/notes.ts'
   import { t } from '../lib/lang.js'
   import { formatCompact, formatInt, relativeTime, projectLabel, shortId, looksLikeHash } from '../lib/format.ts'
@@ -21,20 +27,46 @@
   import StatePanel from '../components/StatePanel.svelte'
   import CostFigure from '../components/CostFigure.svelte'
 
-  const q = loader(() => api.projects({ ...filterParams(), limit: 50 }))
+  // Same paging rule as Sessions: growth is pinned to the filter it was asked under.
+  const PAGE = 50
+  const filterKey = $derived(rangeKey())
+  let grown = $state({ key: '', pages: 1 })
+  const limit = $derived(grown.key === filterKey ? grown.pages * PAGE : PAGE)
+  const loadMore = () => (grown = { key: filterKey, pages: limit / PAGE + 1 })
+  const q = loader(() => api.projects({ ...filterParams(), limit }))
   $effect(() => {
-    void range.since
+    void rangeKey()
     void range.agent
     void range.host
+    void limit
     void live.lastTick
     q.run()
   })
   const d = $derived(q.state.data)
-  let open = $state<Record<string, boolean>>({})
+
+  // Expanded rows live in the hash (`?open=agent-lens,cable-info`), named as the cube
+  // groups projects, so the Overview donut can link straight to one and a refresh or
+  // Back keeps what the viewer opened. `projectId` is accepted on the way in too. Two
+  // repos sharing a basename share the label, so they open and close together.
+  const openNames = $derived(listOf(route.query.open))
+  const isOpenRow = (p: ProjectRow) => openNames.includes(p.project) || openNames.includes(p.projectId)
+  function toggleRow(p: ProjectRow) {
+    const next = isOpenRow(p) ? openNames.filter((n) => n !== p.project && n !== p.projectId) : [...openNames, p.project]
+    setQuery({ open: next.join(',') })
+  }
+  // A deep link scrolls its first open row into view once, when the rows first arrive;
+  // later toggles stay where the viewer is.
+  let scrolled = false
+  $effect(() => {
+    if (scrolled || !d || !openNames.length) return
+    const i = d.rows.findIndex(isOpenRow)
+    if (i < 0) return
+    scrolled = true
+    void tick().then(() => document.getElementById(`project-detail-${i}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }))
+  })
 
   const now = $derived(live.lastTick || Date.now())
   const agentIds = $derived([...new Set((d?.rows ?? []).flatMap((p) => p.agents.map((a) => a.agentId)))].sort())
-  const agentColor = (id: string) => SERIES[Math.max(0, agentIds.indexOf(id)) % SERIES.length]!
 
   // The header's count reads "1 project" / "1,234 projects" / "1,234+ projects":
   // the truncated case is never singular, so it is its own message and the
@@ -54,7 +86,7 @@
   const rowKey = (p: ProjectRow, i: number) => `${i}:${p.projectId}`
   const detailId = (p: ProjectRow) => `project-detail-${d ? d.rows.indexOf(p) : 0}`
   const who = (s: ProjectRow['recentSessions'][number]) =>
-    s.hostId && s.hostId !== s.agentId ? `${s.agentId} · ${s.hostId}` : s.agentId
+    s.hostId && s.hostId !== s.agentId ? `${agentLabel(s.agentId)} · ${hostLabel(s.hostId)}` : agentLabel(s.agentId)
   const agentGrid = 'grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_5.5rem] gap-x-3'
 
   const columns = $derived([
@@ -87,17 +119,17 @@
       key={rowKey}
       caption={$t('projects.title')}
       empty={$t('projects.empty')}
-      isExpanded={(p: ProjectRow) => !!open[p.projectId]}
+      isExpanded={isOpenRow}
     >
       {#snippet row(p: ProjectRow)}
-        {@const isOpen = !!open[p.projectId]}
+        {@const isOpen = isOpenRow(p)}
         <td>
           <button
             type="button"
             class="group flex max-w-full items-center gap-1.5 text-left"
             aria-expanded={isOpen}
             aria-controls={detailId(p)}
-            onclick={() => (open[p.projectId] = !open[p.projectId])}
+            onclick={() => toggleRow(p)}
           >
             <Icon name={isOpen ? 'chevronDown' : 'chevronRight'} size={13} class="text-ink-3 group-hover:text-ink" />
             <span class="truncate font-medium text-ink group-hover:text-accent {looksLikeHash(p.project) ? 'nums' : ''}" title={p.project}>{projectLabel(p.project)}</span>
@@ -109,10 +141,10 @@
           {/if}
         </td>
         <td>
-          <div class="flex min-w-0 items-center gap-1" title={p.agents.map((a) => a.agentId).join(', ')}>
+          <div class="flex min-w-0 items-center gap-1" title={p.agents.map((a) => agentLabel(a.agentId)).join(', ')}>
             {#each p.agents.slice(0, 2) as a}
               <Chip class="min-w-0">
-                <span class="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style="background:{agentColor(a.agentId)}" aria-hidden="true"></span>{a.agentId}
+                <span class="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style="background:{agentColor(a.agentId)}" aria-hidden="true"></span>{agentLabel(a.agentId)}
               </Chip>
             {:else}
               <span class="text-ink-3">—</span>
@@ -126,7 +158,7 @@
       {/snippet}
 
       {#snippet expanded(p: ProjectRow)}
-        <div id={detailId(p)} class="grid grid-cols-1 gap-x-10 gap-y-5 whitespace-normal bg-inset px-4 py-4 sm:pl-[35px] lg:grid-cols-2">
+        <div id={detailId(p)} transition:slide|global={{ duration: 240, easing: cubicOut }} class="grid grid-cols-1 gap-x-10 gap-y-5 whitespace-normal bg-inset px-4 py-4 sm:pl-[35px] lg:grid-cols-2">
           <section class="min-w-0">
             <h3 class="mb-2 text-xs font-medium text-ink-2">{$t('projects.byAgent')}</h3>
             {#if p.agents.length}
@@ -141,7 +173,7 @@
                   <div role="row" class="{agentGrid} items-center border-t border-line-soft py-1.5">
                     <span role="cell" class="flex min-w-0 items-center gap-2">
                       <span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background:{agentColor(a.agentId)}" aria-hidden="true"></span>
-                      <span class="truncate text-ink" title={a.agentId}>{a.agentId}</span>
+                      <span class="truncate text-ink" title={a.agentId}>{agentLabel(a.agentId)}</span>
                     </span>
                     <span role="cell" class="nums text-right text-ink-2">{formatInt(a.sessions)}</span>
                     <span role="cell" class="nums text-right text-ink-2" title={$t('projects.tokensTitle', { values: { n: formatInt(a.tokensTotal) } })}>{formatCompact(a.tokensTotal)}</span>
@@ -233,8 +265,14 @@
   </Surface>
 
   {#if d.truncated}
-    <p class="mt-3 text-xs text-ink-3">
-      {$t('projects.truncatedNote', { values: { n: formatInt(d.rows.length) } })}
-    </p>
+    <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-ink-3">
+      <p>{$t('projects.truncatedNote', { values: { n: formatInt(d.rows.length) } })}</p>
+      <button
+        type="button"
+        class="h-7 rounded-full bg-surface px-3 font-medium text-ink-2 shadow-btn hover:bg-hover hover:text-ink disabled:opacity-60"
+        disabled={q.state.refreshing}
+        onclick={loadMore}
+      >{$t('projects.loadMore', { values: { n: formatInt(PAGE) } })}</button>
+    </div>
   {/if}
 {/if}
