@@ -468,7 +468,7 @@ export interface AgentRow {
   billingMode: string
   /** True when some of this agent's models bill at another mode, so `billingMode` is only its default. */
   mixedBilling: boolean
-  hosts: { host: string; events: number; sessions: number }[]
+  hosts: { host: string; label: string; events: number; sessions: number }[]
   capabilities: { type: string; events: number; errors: number }[]
   models: { model: string; events: number; tokensTotal: number; costApiEquiv: number | null }[]
   metrics: Record<string, number | null>
@@ -546,6 +546,9 @@ export interface DoctorReport {
     estimated: number
     missing: number
     withoutRequestId: number
+    /** Model calls, and how many carry a token count — the coverage figure that means something. */
+    generations: number
+    generationsWithUsage: number
     naiveTokens: number
     dedupedTokens: number
     inflationAvoidedPct: number

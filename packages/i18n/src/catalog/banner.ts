@@ -12,26 +12,26 @@
 import { matches } from '../index.ts'
 
 const en = {
-  coverageTitle: 'Incomplete history.',
+  coverageTitle: 'Deleted upstream.',
   coverageRetained:
     '{count, plural, one {{count} source dir still exists but holds no session files ({population}, §4.4 row 4)} other {{count} source dirs still exist but hold no session files ({population}, §4.4 row 4)}}',
   coverageIngestedPopulation: 'upstream retention, dirs this store already has rows for',
   coverageProjectRows:
     '{count, plural, one {{count} attributed project root holds no session rows here — never ingested from them, or retention took it since (§7)} other {{count} attributed project roots hold no session rows here — never ingested from them, or retention took it since (§7)}}',
   coverageClauseJoin: ' · ',
-  coverageTail: ' — history is incomplete',
+  coverageTail: ' — rows already ingested are kept here',
   limits:
     'only dirs already ingested at least once are visible here; dirs never scanned cannot be distinguished from dirs with nothing in them — `agl doctor` sweeps the live store instead, and says which population it counted',
 }
 
 const zh = matches(en)({
-  coverageTitle: '历史不完整',
+  coverageTitle: '上游已删除',
   coverageRetained: '有 {count} 个源目录仍在，但已不含会话文件（{population}，§4.4 第 4 行）',
   coverageIngestedPopulation: '上游清理，本库已有这些目录的记录',
   coverageProjectRows:
     '{count, plural, other {{count} 个已归属项目的根目录在本库里已无任何会话记录——从未从中采集，或之后被清理（§7）}}',
   coverageClauseJoin: '；',
-  coverageTail: '，历史并不完整',
+  coverageTail: '——已采集的记录仍保存在本库',
   limits: '这里只看得到至少采集过一次的路径；从未扫描过的目录与扫描后确实为空的目录无法区分 —— 用 `agl doctor` 扫描实时存储，它会说明自己数的是哪一批',
 })
 

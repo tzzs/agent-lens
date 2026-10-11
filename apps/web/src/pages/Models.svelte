@@ -4,7 +4,7 @@
   // model's cost is n/a, never $0.
   import { api, type ModelRow } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
-  import { range, filterParams } from '../lib/filter.svelte.js'
+  import { range, filterParams, rangeKey } from '../lib/filter.svelte.js'
   import { href } from '../lib/router.svelte.js'
   import { live } from '../lib/live.svelte.js'
   import { formatCompact, formatInt, formatDate, formatDateTime } from '../lib/format.ts'
@@ -22,7 +22,7 @@
 
   const q = loader(() => api.models(filterParams()))
   $effect(() => {
-    void range.since
+    void rangeKey()
     void range.agent
     void range.host
     void live.lastTick

@@ -20,7 +20,8 @@ export interface AgentRow {
   billingMode: string
   /** True when some of this agent's models bill at another mode, so `billingMode` is only its default. */
   mixedBilling: boolean
-  hosts: { host: string; events: number; sessions: number }[]
+  /** `label` is the adapter's name for the host, or the agent's own name when the host repeats its id. */
+  hosts: { host: string; label: string; events: number; sessions: number }[]
   capabilities: { type: string; events: number; errors: number }[]
   models: { model: string; events: number; tokensTotal: number; costApiEquiv: number | null }[]
   metrics: Record<string, number | null>
@@ -33,8 +34,17 @@ export interface AgentsResponse {
   cost: ReturnType<typeof costView>
 }
 
-export function agents(ctx: ServerCtx, sp: URLSearchParams): AgentsResponse {
+export async function agents(ctx: ServerCtx, sp: URLSearchParams): Promise<AgentsResponse> {
   const filter = parseFilter(sp, ctx.db)
+  // Names only: a build without adapters still answers, by id (§5.4).
+  const adapters = ctx.adapters ? await ctx.adapters() : []
+  const adapterOf = (agentId: string) => adapters.find((a) => a.id === agentId)
+  // The stored name wins (it is what the scan recorded); the adapter covers a store
+  // scanned before names were persisted.
+  const nameOf = (agentId: string, stored: unknown): string | null =>
+    stored ? String(stored) : (adapterOf(agentId)?.displayName ?? null)
+  const hostLabel = (agentId: string, host: string, name: string | null): string =>
+    adapterOf(agentId)?.hostLabels?.[host] ?? (host === agentId && name ? name : host)
   const perAgent = query(ctx.db, { metrics: [...METRICS], dims: ['agent'], filter }, ctx.cubeDeps)
   const hosts = query(ctx.db, { metrics: ['events', 'sessions'], dims: ['agent', 'host'], filter, totals: false }, ctx.cubeDeps)
   const caps = query(ctx.db, { metrics: ['events'], dims: ['agent', 'capability_type'], filter, totals: false }, ctx.cubeDeps)
@@ -61,15 +71,21 @@ export function agents(ctx: ServerCtx, sp: URLSearchParams): AgentsResponse {
     const agentId = String(r.agent)
     const slice = cost.perAgent.find((s) => s.agentId === agentId)
     const m = meta.find((x) => String(x.id) === agentId)
+    const displayName = nameOf(agentId, m?.display_name)
     return {
       agentId,
-      displayName: m?.display_name ? String(m.display_name) : null,
+      displayName,
       recorded: true,
       billingMode: modeFor(agentId),
       mixedBilling: slice?.mixedBilling ?? false,
       hosts: hosts.rows
         .filter((h) => String(h.agent) === agentId)
-        .map((h) => ({ host: String(h.host), events: Number(h.events ?? 0), sessions: Number(h.sessions ?? 0) })),
+        .map((h) => ({
+          host: String(h.host),
+          label: hostLabel(agentId, String(h.host), displayName),
+          events: Number(h.events ?? 0),
+          sessions: Number(h.sessions ?? 0),
+        })),
       capabilities: caps.rows
         .filter((c) => String(c.agent) === agentId && String(c.capability_type) !== '')
         .map((c) => ({
@@ -99,7 +115,7 @@ export function agents(ctx: ServerCtx, sp: URLSearchParams): AgentsResponse {
     if (seen.has(agentId)) continue
     rows.push({
       agentId,
-      displayName: m.display_name ? String(m.display_name) : null,
+      displayName: nameOf(agentId, m.display_name),
       recorded: false,
       billingMode: modeFor(agentId),
       mixedBilling: false,

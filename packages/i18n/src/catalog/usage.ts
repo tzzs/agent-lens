@@ -25,6 +25,7 @@ const en = {
   pageDesc: 'Pick metrics, dimensions and filters to query the usage cube directly. {window}',
   windowLast: 'Window: last {since}.',
   windowAll: 'Window: all time.',
+  windowRange: 'Window: {from} to {to}.',
   pageInfo:
     "This page is the query cube itself — every other page is a fixed slice of it (§7). The server's own account of each query is shown under the result.",
 
@@ -126,6 +127,7 @@ const zh = matches(en)({
   pageDesc: '自选指标、维度与筛选条件，直接查询用量立方体。{window}',
   windowLast: '时间窗：最近 {since}。',
   windowAll: '时间窗：全部历史。',
+  windowRange: '时间窗：{from} 至 {to}。',
   pageInfo:
     '本页面就是查询立方体本身——其他每个页面都只是它的一个固定切片（§7）。每次查询由服务器自己给出的说明会显示在结果下方。',
 

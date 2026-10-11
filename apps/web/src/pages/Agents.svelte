@@ -6,7 +6,7 @@
   // unpriced model makes the figure n/a rather than a silent undercount.
   import { api, type AgentRow } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
-  import { range, filterParams } from '../lib/filter.svelte.js'
+  import { range, filterParams, rangeKey } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
   import { href } from '../lib/router.svelte.js'
   import { activeMetricInfo, formatCompact, formatInt, formatMs } from '../lib/format.ts'
@@ -23,7 +23,7 @@
 
   const q = loader(() => api.agents(filterParams()))
   $effect(() => {
-    void range.since
+    void rangeKey()
     void range.agent
     void range.host
     void live.lastTick
@@ -211,7 +211,7 @@
                                 {#if a.hosts.length > 1}
                                   <span class="h-2 w-2 shrink-0 rounded-[3px]" style="background:{hostColor(j)}" aria-hidden="true"></span>
                                 {/if}
-                                <span class="truncate text-ink" title={h.host}>{h.host}</span>
+                                <span class="truncate text-ink" title={h.host}>{h.label}</span>
                               </span>
                             </td>
                             <td class="nums py-1.5 text-right text-ink-2">{formatInt(h.sessions)}</td>

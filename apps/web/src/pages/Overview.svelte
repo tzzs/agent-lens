@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { agentLabel, capabilityLabel } from '../lib/names.js'
   import { formatCompact, formatInt, formatMs, projectLabel, formatClock } from '../lib/format.ts'
-  import { range, filterParams } from '../lib/filter.svelte.js'
+  import { range, filterParams, rangeKey, granularity } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
   import { loader } from '../lib/pagestate.svelte.js'
   import { href } from '../lib/router.svelte.js'
@@ -19,9 +20,9 @@
   import Sparkline from '../components/charts/Sparkline.svelte'
   import Bars from '../components/charts/Bars.svelte'
 
-  const ov = loader(() => api.overview(filterParams()))
+  const ov = loader(() => api.overview({ ...filterParams(), granularity: granularity() }))
   $effect(() => {
-    void range.since
+    void rangeKey()
     void range.agent
     void range.host
     void live.lastTick
@@ -29,7 +30,7 @@
   })
 
   const d = $derived(ov.state.data)
-  const gran = $derived(d?.window?.granularity ?? range.since ?? 'day')
+  const gran = $derived(d?.window?.granularity ?? granularity())
   // The bucket's *name* in a sentence is translatable; the row key looked up by
   // `gran` above is a field name and is not.
   const GRAN_KEYS: Record<string, MessageKey> = { day: 'common.granDay', week: 'common.granWeek', month: 'common.granMonth' }
@@ -45,7 +46,7 @@
   // Each slice drills into the page that lists it, preselected through that page's
   // own hash param, so the global filter is left as the viewer set it.
   const agentSlices = $derived(
-    d ? d.agents.map((r) => ({ label: String(r.agent), value: Number(r.tokens_total ?? 0), href: href('/sessions', { agents: String(r.agent) }) })) : [],
+    d ? d.agents.map((r) => ({ label: agentLabel(String(r.agent)), value: Number(r.tokens_total ?? 0), href: href('/sessions', { agents: String(r.agent) }) })) : [],
   )
   const projectSlices = $derived(
     d ? d.projects.map((r) => ({ label: projectLabel(String(r.project || '')), title: String(r.project || $t('fmt.noProject')), value: Number(r.tokens_total ?? 0), href: r.project ? href('/projects', { open: String(r.project) }) : undefined })) : [],
@@ -56,7 +57,7 @@
           .map((r) => {
             const ms = Number(r.duration ?? 0)
             return {
-              label: String(r.capability_type),
+              label: capabilityLabel(String(r.capability_type)),
               value: Number(r.events ?? 0),
               note: ms > 0 ? $t('overview.totalNote', { values: { dur: formatMs(ms) } }) : undefined,
               href: href('/capabilities', { open: String(r.capability_type) }),
@@ -123,7 +124,7 @@
           {#if !d.cards.cost.pricingConfigured}
             <p class="text-orange">{$t('overview.noPricing', { values: { na: $t('common.na') } })}</p>
           {:else if d.cards.cost.unpricedAgents.length}
-            <p class="text-orange" title={$t('overview.noPriceForTitle')}>{$t('overview.noPriceFor', { values: { agents: d.cards.cost.unpricedAgents.join(', ') } })}</p>
+            <p class="text-orange" title={$t('overview.noPriceForTitle')}>{$t('overview.noPriceFor', { values: { agents: d.cards.cost.unpricedAgents.map(agentLabel).join(', ') } })}</p>
           {/if}
         </div>
       {/snippet}

@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { agentLabel, hostLabel } from '../lib/names.js'
   import { untrack } from 'svelte'
   import { api, type SessionRow } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
-  import { range, filterParams } from '../lib/filter.svelte.js'
+  import { range, filterParams, rangeKey } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
   import { route, setQuery } from '../lib/router.svelte.js'
   import { listOf } from '../lib/hashquery.ts'
@@ -62,7 +63,7 @@
   // under, so changing the window or a narrowing drops back to one page in the same
   // tick (one fetch, not a long tail the narrowed view no longer needs).
   const PAGE = 100
-  const filterKey = $derived(`${range.since}|${range.host}|${agentParam}|${model}|${provider}`)
+  const filterKey = $derived(`${rangeKey()}|${agentParam}|${model}|${provider}`)
   let grown = $state({ key: '', pages: 1 })
   const limit = $derived(grown.key === filterKey ? grown.pages * PAGE : PAGE)
   const loadMore = () => (grown = { key: filterKey, pages: limit / PAGE + 1 })
@@ -82,7 +83,7 @@
   const agentsQ = loader(() => api.agents(filterParams()))
 
   $effect(() => {
-    void range.since
+    void rangeKey()
     void range.host
     void agentParam
     void model
@@ -92,7 +93,7 @@
     q.run()
   })
   $effect(() => {
-    void range.since
+    void rangeKey()
     void range.agent
     void range.host
     void live.lastTick
@@ -112,7 +113,7 @@
   // Counts are per agent across the window; with a model narrowing they would overstate
   // the matching rows, so they are left off rather than shown wrong.
   const agentOpts = $derived(
-    agentIds.map((id) => ({ key: id, label: id, dot: agentColor(id), count: model || provider ? undefined : sessionsOf(id) })),
+    agentIds.map((id) => ({ key: id, label: agentLabel(id), dot: agentColor(id), count: model || provider ? undefined : sessionsOf(id) })),
   )
   const rows = $derived.by(() => {
     if (empty) return []
@@ -193,9 +194,9 @@
         <td>
           <span class="inline-flex max-w-full items-center gap-1.5 text-ink-2" title="{r.agentId} · {r.hostId}">
             <span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background:{agentColor(r.agentId)}"></span>
-            <span class="truncate">{r.agentId}</span>
+            <span class="truncate">{agentLabel(r.agentId)}</span>
           </span>
-          {#if r.hostId !== r.agentId}<div class="truncate text-xs text-ink-3">{r.hostId}</div>{/if}
+          {#if r.hostId !== r.agentId}<div class="truncate text-xs text-ink-3">{hostLabel(r.hostId)}</div>{/if}
         </td>
         <td class="text-ink-2" title={r.project}><span class={projectLabel(r.project) !== r.project ? 'nums' : ''}>{projectLabel(r.project)}</span></td>
         <td class="nums text-right">{formatInt(r.events)}</td>

@@ -3,9 +3,10 @@
   // §18 item 5 is the honesty rule here: an agent that never instruments hooks must
   // read "Not reported", never "0 hook calls", so every row comes from the full
   // CAPABILITY_TYPES list joined with `supports`, not only from types with counts.
+  import { agentLabel } from '../lib/names.js'
   import { api, CAPABILITY_TYPES, UNNAMED_CAPABILITY, type CapabilityNameRow, type CapabilityTypeRow } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
-  import { range, filterParams } from '../lib/filter.svelte.js'
+  import { range, filterParams, rangeKey } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
   import { route, setQuery } from '../lib/router.svelte.js'
   import { listOf } from '../lib/hashquery.ts'
@@ -30,7 +31,7 @@
 
   const q = loader(() => api.capabilities({ ...filterParams(), names: NAME_LIMIT }))
   $effect(() => {
-    void range.since
+    void rangeKey()
     void range.agent
     void range.host
     void live.lastTick
@@ -228,7 +229,7 @@
                 {#if r.reporting.length}
                   <div class="flex items-center gap-1 overflow-hidden">
                     {#each r.reporting.slice(0, AGENT_CHIPS) as agent (agent)}
-                      <Chip title={agentTitle(s, agent)}>{agent}</Chip>
+                      <Chip title={agentTitle(s, agent)}>{agentLabel(agent)}</Chip>
                     {/each}
                     {#if r.reporting.length > AGENT_CHIPS}
                       <Chip mono title={r.reporting.slice(AGENT_CHIPS).join(', ')}>+{r.reporting.length - AGENT_CHIPS}</Chip>
@@ -308,7 +309,7 @@
               <span class="nums min-w-0 truncate text-[13px] text-ink" title={c.name}>{c.name}</span>
               <span class="flex min-w-0 shrink-0 items-center gap-1">
                 <Chip color={eventKind(c.type).color}>{wordOf(c.type)}</Chip>
-                {#if c.agentId}<Chip>{c.agentId}</Chip>{/if}
+                {#if c.agentId}<Chip>{agentLabel(c.agentId)}</Chip>{/if}
                 {#if c.source}<span class="inline-flex min-w-0 max-w-40"><Chip mono title={c.source}>{c.source}</Chip></span>{/if}
               </span>
             </li>

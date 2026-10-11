@@ -531,7 +531,9 @@ describe('Coverage', () => {
     expect(text).toContain(
       'source dir still exists but holds no session files (upstream retention, dirs this store already has rows for, §4.4 row 4)',
     )
-    expect(text).toContain('→ history is incomplete')
+    // Of the two empty dirs one was ingested before it emptied (its rows are still here), so
+    // only the other is lost history.
+    expect(text).toContain('→ 1 of them was never ingested: history is incomplete')
     if (modeBitsApply) expect(text).toContain('of those dirs exist but are not readable (locked?)')
     expect(text).toContain('4 sessions named in ~/.claude/history.jsonl')
     expect(text).toContain('2 known only from history.jsonl')
@@ -598,7 +600,7 @@ describe('Usage quality', () => {
     expect(declared.codex).toEqual({ mode: 'last_call_sum', subagentsIncluded: false })
   })
 
-  it('splits reported / estimated / missing per agent and counts request_id-less rows', () => {
+  it('measures usage coverage over model calls, not over every event', () => {
     const claude = qualities.find((q) => q.agentId === 'claude-code')!
     expect(claude.events).toBe(19)
     expect(claude.reported).toBe(5)
@@ -606,9 +608,14 @@ describe('Usage quality', () => {
     expect(claude.missing).toBe(13)
     expect(claude.noRequestId).toBe(13)
     expect(claude.noRequestIdWithUsage).toBe(1)
+    // Tool calls and user turns never carry usage; the coverage figure leaves them out.
+    expect(claude.generations).toBeGreaterThan(0)
+    expect(claude.generations).toBeLessThan(claude.events)
+    expect(claude.generationsWithUsage).toBeLessThanOrEqual(claude.generations)
     const text = out.text()
-    expect(text).toContain('reported 26.3% · estimated 5.3% · missing 68.4%')
-    expect(text).toContain('(13 records without request_id, counted individually, 1 of them carrying usage)')
+    expect(text).toContain(`of model calls (${claude.generationsWithUsage} of ${claude.generations};`)
+    expect(text).not.toMatch(/missing \d/)
+    expect(text).toContain('1 usage record without request_id, counted individually')
   })
 
   it('shows inflation actually avoided and labels the fold that produced it', () => {

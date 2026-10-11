@@ -6,6 +6,7 @@
   // Sections render as soon as their own route answers: /api/health is instant,
   // /api/doctor scans every usage row. The theme is the one setting stored in this
   // browser; the one thing written back to the server is the §8 billing declaration.
+  import { agentLabel as nameOf, modelList } from '../lib/names.js'
   import { api, BILLING_MODES, type BillingAgentRow, type BillingMode, type DoctorAgentRow } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
   import { live } from '../lib/live.svelte.js'
@@ -67,7 +68,7 @@
   // controls that answer the same question do not look like three different questions.
   const MODE_SELECT =
     'h-7 shrink-0 rounded-full bg-hover-2/70 px-3 text-xs text-ink outline-none hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50'
-  const agentLabel = (a: BillingAgentRow): string => a.displayName || a.agentId
+  const agentLabel = (a: BillingAgentRow): string => a.displayName || nameOf(a.agentId)
   let saving = $state<Record<string, boolean>>({})
   /** Which agents show their per-model rows. Disclosure only — the modes come from the server. */
   let openModels = $state<Record<string, boolean>>({})
@@ -244,7 +245,7 @@
               {#if !doc.pricing.pricingConfigured}
                 <span class="text-orange">{$t('settings.allUnpriced')}</span>
               {:else if doc.pricing.missing.length}
-                <span class="nums text-orange">{doc.pricing.missing.map((m) => m.model).join(', ')}</span>
+                <span class="nums text-orange">{modelList(doc.pricing.missing)}</span>
               {:else}
                 <span class="text-ink">{$t('settings.none')}</span>
               {/if}

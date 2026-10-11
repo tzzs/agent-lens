@@ -2,6 +2,7 @@
   // GET /api/query — a thin UI over the single §7 cube (this page IS the cube; every
   // other page is a fixed slice of it). The returned `explain` is rendered verbatim
   // so the user always sees the basis behind the numbers (§7 "basis is visible").
+  import { agentLabel, hostLabel } from '../lib/names.js'
   import type { MessageKey } from '@agentlens/i18n'
   import {
     api,
@@ -14,7 +15,8 @@
     type Row,
   } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
-  import { range } from '../lib/filter.svelte.js'
+  import { range, rangeKey } from '../lib/filter.svelte.js'
+  import { ALL, CUSTOM, validCustom, windowParams } from '../lib/window.ts'
   import { live } from '../lib/live.svelte.js'
   import { formatCompact, formatInt, formatMs } from '../lib/format.ts'
   import { t } from '../lib/lang.js'
@@ -44,7 +46,7 @@
       dims: dims.join(','),
       // The window, agent and host are the header's global filter, the same one every
       // other page reads; only status/order/limit are this explorer's own.
-      since: range.since,
+      ...windowParams(range.since, range.from, range.to),
       agent: range.agent || undefined,
       host: range.host || undefined,
       status: status || undefined,
@@ -72,7 +74,7 @@
     void status
     void order
     void limit
-    void range.since
+    void rangeKey()
     void live.lastTick
     void nonce
     if (dimConflict) return
@@ -89,6 +91,8 @@
   function cell(col: string, v: unknown) {
     if (v === null || v === undefined) return null
     if (isCapabilityNameDim(col)) return capabilityDimCell(col, v, nameDims)
+    if (col === 'agent') return agentLabel(String(v))
+    if (col === 'host') return hostLabel(String(v))
     if (col === 'duration') return formatMs(Number(v))
     if (col.startsWith('tokens')) return formatCompact(Number(v))
     if (col === 'events' || col === 'sessions') return formatInt(Number(v))
@@ -105,7 +109,13 @@
   // query sends (`30d`, `365d`) rather than the pill's label: the pill for the last
   // option reads `1y` in English while this line has always said `365d`, and the two
   // strings are also what the §14 tests quote.
-  const windowText = $derived(range.since ? $t('usage.windowLast', { values: { since: range.since } }) : $t('usage.windowAll'))
+  const windowText = $derived(
+    range.since === ALL
+      ? $t('usage.windowAll')
+      : range.since === CUSTOM && validCustom(range.from, range.to)
+        ? $t('usage.windowRange', { values: { from: range.from, to: range.to } })
+        : $t('usage.windowLast', { values: { since: range.since === CUSTOM ? '30d' : range.since } }),
+  )
 
   const resultNote = $derived(
     !res

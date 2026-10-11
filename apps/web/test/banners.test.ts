@@ -38,6 +38,7 @@ describe('coverage banner', () => {
     const line = coverageText({ emptyDirs: dirs(3), projectDirsWithoutSessions: roots(2) })
     expect(line).toContain('有 3 个源目录仍在')
     expect(line).toContain('2 个已归属项目')
-    expect(line).toContain('历史并不完整')
+    expect(line).toContain('已采集的记录仍保存在本库')
+    expect(line).not.toContain('历史并不完整')
   })
 })

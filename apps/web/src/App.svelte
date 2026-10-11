@@ -65,9 +65,14 @@
     try {
       const a = await api.agents()
       options.agents = a.rows.map((r) => ({ agentId: r.agentId, displayName: r.displayName }))
-      const hosts = new Set<string>()
-      for (const r of a.rows) for (const h of r.hosts) hosts.add(h.host)
-      options.hosts = [...hosts].sort()
+      options.hostLabels = Object.fromEntries(a.rows.flatMap((r) => r.hosts.map((h) => [h.host, h.label])))
+      options.hostGroups = a.rows
+        .filter((r) => r.hosts.length > 1 || r.hosts.some((h) => h.host !== r.agentId))
+        .map((r) => ({
+          agentId: r.agentId,
+          label: r.displayName || r.agentId,
+          hosts: [...r.hosts].sort((x, y) => y.events - x.events).map((h) => ({ host: h.host, label: h.label })),
+        }))
     } catch {
       /* options are best-effort; a failure just shrinks the filter dropdowns */
     } finally {

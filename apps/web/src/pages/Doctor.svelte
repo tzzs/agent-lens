@@ -4,9 +4,10 @@
   // "inflation avoided" number is the same one the dashboard's tokens rest on.
   // Parsing, usage quality, coverage and pricing read the whole store; capabilities
   // and cost follow the header's window (the route applies the filter to those only).
+  import { agentLabel, capabilityLabel, modelList } from '../lib/names.js'
   import { api, type DoctorAgentRow, type StageOneCode } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
-  import { range, filterParams } from '../lib/filter.svelte.js'
+  import { range, filterParams, rangeKey } from '../lib/filter.svelte.js'
   import { live } from '../lib/live.svelte.js'
   import { agentNote, catalogNote, contentNote, costBasis, stageOneNote } from '../lib/notes.ts'
   import { t } from '../lib/lang.js'
@@ -23,7 +24,7 @@
 
   const q = loader(() => api.doctor(filterParams()))
   $effect(() => {
-    void range.since
+    void rangeKey()
     void range.agent
     void range.host
     void live.lastTick
@@ -48,6 +49,8 @@
     reported: number
     estimated: number
     missing: number
+    generations: number
+    generationsWithUsage: number
     noRequestId: number
     noRequestIdWithUsage: number
     usageRows: number
@@ -282,10 +285,12 @@
         class="flex-1"
       >
         <dl class="text-[13px]">
-          <div class={dlRow}><dt class="text-ink-3">{$t('doctor.reportedByAgent')}</dt><dd class="nums text-ink">{formatInt(d.usageQuality.reported)}</dd></div>
-          <div class={dlRow}><dt class="text-ink-3">{$t('doctor.estimated')}</dt><dd class="nums text-ink">{formatInt(d.usageQuality.estimated)}</dd></div>
-          <div class={dlRow}><dt class="text-ink-3">{$t('doctor.missing')}</dt><dd class="nums text-ink">{formatInt(d.usageQuality.missing)}</dd></div>
-          <div class={dlRow}><dt class="text-ink-3">{$t('doctor.withoutRequestId')}</dt><dd class="nums text-ink">{formatInt(d.usageQuality.withoutRequestId)}</dd></div>
+          <div class={dlRow}><dt class="text-ink-3">{$t('doctor.modelCalls')}</dt><dd class="nums text-ink">{formatInt(d.usageQuality.generations)}</dd></div>
+          <div class={dlRow}><dt class="text-ink-3">{$t('doctor.withTokens')}</dt><dd class="nums text-ink">{formatInt(d.usageQuality.generationsWithUsage)}</dd></div>
+          <div class={dlRow}>
+            <dt class="text-ink-3">{$t('doctor.withoutTokens')}</dt>
+            <dd class="nums {d.usageQuality.generations > d.usageQuality.generationsWithUsage ? 'text-orange' : 'text-ink'}">{formatInt(d.usageQuality.generations - d.usageQuality.generationsWithUsage)}</dd>
+          </div>
         </dl>
         {#if d.usageQuality.dedupActive}
           <p class="mt-3 flex items-start gap-2 rounded-lg bg-green-tint px-3 py-2 text-[13px] text-green">
@@ -311,7 +316,8 @@
             {#each perAgent as a (a.agentId)}
               <li class="py-2">
                 <div class="flex min-w-0 items-center gap-2">
-                  <span class="truncate text-[13px] font-medium text-ink" title={a.agentId}>{a.agentId}</span>
+                  <span class="truncate text-[13px] font-medium text-ink" title={a.agentId}>{agentLabel(a.agentId)}</span>
+                  {#if a.generations > 0 && a.generationsWithUsage === 0}<Chip tone="orange">{$t('doctor.noTokensChip')}</Chip>{/if}
                   <Chip tone={foldTone(a)} title={$t('doctor.foldChipTitle')}>{a.policy.mode}</Chip>
                   <Chip tone="neutral" dashed={!a.policy.subagentsIncluded}>
                     {a.policy.subagentsIncluded ? $t('doctor.subagentsCounted') : $t('doctor.subagentsExcluded')}
@@ -321,9 +327,15 @@
                   {/if}
                 </div>
                 <div class="nums mt-0.5 text-xs text-ink-3">
-                  {$t('doctor.usageShares', { values: { r: share(a.reported, a.events), e: share(a.estimated, a.events), m: share(a.missing, a.events) } })}
-                  {#if a.noRequestId > 0}
-                    · <span title={$t('doctor.withoutRequestIdTip')}>{$t('doctor.withoutRequestIdN', { values: { n: formatInt(a.noRequestId), extra: a.noRequestIdWithUsage > 0 ? $t('doctor.withUsageN', { values: { n: formatInt(a.noRequestIdWithUsage) } }) : '' } })}</span>
+                  {#if a.generations === 0}
+                    {$t('doctor.noModelCalls')}
+                  {:else if a.generationsWithUsage === 0}
+                    <span class="text-orange">{$t('doctor.noTokensAtAll', { values: { m: formatInt(a.generations) } })}</span>
+                  {:else}
+                    {$t('doctor.usageCoverage', { values: { pct: share(a.generationsWithUsage, a.generations), n: formatInt(a.generationsWithUsage), m: formatInt(a.generations) } })}
+                  {/if}
+                  {#if a.noRequestIdWithUsage > 0}
+                    · <span title={$t('doctor.withoutRequestIdTip')}>{$t('doctor.usageNoRequestIdN', { values: { n: a.noRequestIdWithUsage } })}</span>
                   {/if}
                 </div>
                 <div class="mt-0.5 text-xs {a.agrees ? 'text-ink-2' : 'text-red'}">{foldSentence(a)}</div>
@@ -359,9 +371,10 @@
     >
       <div class="space-y-3">
         {#if coverageLine}
-          <Alert tone="orange" title={$t('banner.coverageTitle')}>{coverageLine}</Alert>
+          <!-- Neutral, not a warning: these rows were ingested before upstream removed them. -->
+          <Alert tone="neutral" title={$t('banner.coverageTitle')}>{coverageLine}</Alert>
         {:else if d.coverage.incomplete}
-          <Alert tone="orange" title={$t('doctor.historyMaybeIncomplete')}>
+          <Alert tone="neutral" title={$t('doctor.historyMaybeIncomplete')}>
             {$t('doctor.unreachableNow', { values: { n: formatInt(d.coverage.unreachable.length) } })}
           </Alert>
         {:else}
@@ -421,7 +434,7 @@
         <dl class="text-[13px]">
           {#each subagents as s (s.agentId)}
             <div class={dlRow}>
-              <dt class="min-w-0 truncate text-ink-2" title={s.agentId}>{s.agentId}</dt>
+              <dt class="min-w-0 truncate text-ink-2" title={s.agentId}>{agentLabel(s.agentId)}</dt>
               <dd class="nums shrink-0 {s.orphan > 0 ? 'text-orange' : 'text-ink'}">
                 {$t('doctor.orphanOf', { values: { orphan: formatInt(s.orphan), total: formatInt(s.total) } })} <span class="text-ink-3">({s.orphanPct.toFixed(1)}%)</span>
               </dd>
@@ -462,7 +475,7 @@
         <dl class="text-[13px]">
           {#each guessedTimestamps as g (g.agentId)}
             <div class={dlRow}>
-              <dt class="min-w-0 truncate text-ink-2" title={g.agentId}>{g.agentId}</dt>
+              <dt class="min-w-0 truncate text-ink-2" title={g.agentId}>{agentLabel(g.agentId)}</dt>
               <dd class="nums shrink-0 text-orange">
                 {$t('doctor.guessedOf', { values: { g: formatInt(g.guessed), e: formatInt(g.events) } })}
                 <span class="text-ink-3">({share(g.guessed, g.events)})</span>
@@ -485,7 +498,7 @@
           <dl class="text-[13px]">
             {#each d.capabilities as c (c.type)}
               <div class={dlRow}>
-                <dt class="text-ink-2">{c.type}</dt>
+                <dt class="text-ink-2">{capabilityLabel(c.type)}</dt>
                 <dd class="nums text-ink">
                   {formatInt(c.events)}{#if c.errors}<span class="text-red"> · {formatInt(c.errors)} {$t('doctor.errorsWord')}</span>{/if}
                 </dd>
@@ -510,7 +523,7 @@
           {#if d.pricing.missing.length}
             <div class="mt-3">
               <Alert tone="orange" title={$t('doctor.missingPriceAlert', { values: { n: formatInt(d.pricing.missing.length) } })}>
-                <span class="nums">{d.pricing.missing.map((m) => m.model).join(', ')}</span>
+                <span class="nums">{modelList(d.pricing.missing)}</span>
               </Alert>
             </div>
           {/if}
@@ -538,7 +551,7 @@
         {/if}
       </dl>
       {#if d.cost.unpricedAgents.length}
-        <p class="mt-3 text-xs text-orange">{$t('doctor.noPriceFor', { values: { agents: d.cost.unpricedAgents.join(', ') } })}</p>
+        <p class="mt-3 text-xs text-orange">{$t('doctor.noPriceFor', { values: { agents: d.cost.unpricedAgents.map(agentLabel).join(', ') } })}</p>
       {/if}
       <p class="mt-3 border-t border-line-soft pt-3 text-xs text-ink-3">{costBasis(d.cost.basisCode)}</p>
     </Surface>
