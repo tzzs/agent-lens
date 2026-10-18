@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/tzzs/agent-lens/compare/v1.1.0...v1.2.0) (2026-10-18)
+
+
+### Features
+
+* **adapters:** read the second store a model-switching setup leaves behind ([092d33e](https://github.com/tzzs/agent-lens/commit/092d33e6df0af9827bff498df2ab407418d26699))
+
 ## [1.1.0](https://github.com/tzzs/agent-lens/compare/v1.0.0...v1.1.0) (2026-10-18)
 
 
