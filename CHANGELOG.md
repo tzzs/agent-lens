@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.1.0](https://github.com/tzzs/agent-lens/compare/v1.0.0...v1.1.0) (2026-10-18)
+
+
+### Features
+
+* drop the host-split and coverage banners from the first screen ([e8e10b2](https://github.com/tzzs/agent-lens/commit/e8e10b2ee913f3a5163127a0d819d7e6bc61d241))
+* proper names, all-time and custom ranges, and doctor figures that mean what they say ([0ebb0db](https://github.com/tzzs/agent-lens/commit/0ebb0dbbad98b3770f1476b6042916af1ffa5ac6))
+* **web:** charts on the analysis pages, one motion vocabulary, steadier colours ([4d89d38](https://github.com/tzzs/agent-lens/commit/4d89d38aebf35af1a815779ae6745a5a72d608cc))
+* **web:** dashboard flow, proper names, time ranges, analysis charts and motion ([0c567d7](https://github.com/tzzs/agent-lens/commit/0c567d7bba4733f520673a7a8f84bfed590972fa))
+* **web:** keep the dashboard's filters in the URL and link each breakdown to its page ([4300328](https://github.com/tzzs/agent-lens/commit/4300328e2e07dee0d613976c8537da401c9637d2))
+
+
+### Bug Fixes
+
+* **adapter-claude-code:** trim the token count's separator tail by index ([71a2220](https://github.com/tzzs/agent-lens/commit/71a222078577253132a52f260a141f78bc88e116))
+* **adapter-claude-code:** trim the token count's separator tail by index, not /[.,]+$/ ([fe4608f](https://github.com/tzzs/agent-lens/commit/fe4608f1e0def70c4c9d1d25f133582563ea755a))
+* **adapter-zcode:** fill every placeholder, and ask for the empty tool directly ([6e54baa](https://github.com/tzzs/agent-lens/commit/6e54baad51846c5779d4d48e9bb8076ccbb48c85))
+* **adapter-zcode:** fill every placeholder, and ask for the empty tool directly ([7eedced](https://github.com/tzzs/agent-lens/commit/7eedcedfe1c470508a84c3cab89cd0caae25a9e7))
+* **adapters:** remove the five ReDoS shapes CodeQL scored as polynomial ([f05fc3a](https://github.com/tzzs/agent-lens/commit/f05fc3a763f2c024a75bd263739788e7795b927e))
+* **adapters:** remove the five ReDoS shapes CodeQL scored as polynomial ([b7d5773](https://github.com/tzzs/agent-lens/commit/b7d5773d826bb588d8733ed332ce99a75235a038))
+* **server:** report a session list cut short by its limit as truncated ([e981871](https://github.com/tzzs/agent-lens/commit/e981871b40c9fccae18a4baa5fe7eb90740212e9))
+
 ## 1.0.0 (2026-09-29)
 
 
