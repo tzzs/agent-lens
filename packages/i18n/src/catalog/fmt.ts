@@ -44,9 +44,9 @@ const zh = matches(en)({
   otherFold: '其他（{n}）',
   noProject: '（无项目）',
   costNoPrice: '暂无价格——按 §8 显示为“未定价”，不会显示 $0',
-  costPartial: '至少这么多：部分 agent 没有价格，已从合计中排除（§8）',
+  costPartial: '至少这么多：部分 Agent 没有价格，已从合计中排除（§8）',
   costEstimate: '由 tokens × 单价计算（估算）',
-  costReported: '这是 agent 自己上报的数字（§8）',
+  costReported: '这是 Agent 自己上报的数字（§8）',
   activeMetric: '已记录事件的时长合计（模型调用、工具运行），每个请求只计一次——不是挂钟时间。',
 })
 

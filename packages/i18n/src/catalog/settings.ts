@@ -161,7 +161,7 @@ const zh = matches(en)({
   contentOn: '已开启 · 存了 {n} 条正文',
   contentOff: '已关闭 · 仅指标',
   privacyLead:
-    'AgentLens 会读取本机 agent 的私有日志，并在没有身份验证的情况下对外提供，因此服务器只绑定回环地址，本看板也绝不会请求自身源之外的任何资源 —— 没有遥测、没有 CDN，字体也随应用一起打包。内容层默认关闭，只有在扫描时主动带上',
+    'AgentLens 会读取本机 Agent 的私有日志，并在没有身份验证的情况下对外提供，因此服务器只绑定回环地址，本看板也绝不会请求自身源之外的任何资源 —— 没有遥测、没有 CDN，字体也随应用一起打包。内容层默认关闭，只有在扫描时主动带上',
   privacyTail:
     ' 才会开启：消息与工具正文是它唯一会复制进这个数据库的私有内容。所有统计不启用它也照样可用。',
 
@@ -169,7 +169,7 @@ const zh = matches(en)({
   noAdapters: '本构建未安装任何 adapter —— 行数据来自已采集的历史',
   adaptersInfo: 'adapter 的接线由 CLI 负责（§5.4）。检测是只读的；把鼠标停在状态标签上可以看到它的说明。',
   adaptersCaption: 'Adapters',
-  adaptersEmpty: '尚未检测到或采集任何 agent',
+  adaptersEmpty: '尚未检测到或采集任何 Agent',
   colAgent: 'Agent',
   colVersion: '版本',
   colRoot: '数据根目录',
@@ -192,7 +192,7 @@ const zh = matches(en)({
 
   billing: '计费方式',
   billingInfo:
-    '这里说的是每个 agent 的 token 如何变成钱（§8）。现金与 API 等价是两个不同的数字，应用会一直同时显示两者：声明某个计费方式只会改变现金数字，不会改变 token 的价值。',
+    '这里说的是每个 Agent 的 token 如何变成钱（§8）。现金与 API 等价是两个不同的数字，应用会一直同时显示两者：声明某个计费方式只会改变现金数字，不会改变 token 的价值。',
   declRejected: '声明被拒绝。',
   saved: '已保存。',
   savedNote: '已保存：{agent} = {mode}',
@@ -205,7 +205,7 @@ const zh = matches(en)({
   modeSubscription: 'Token 套餐 —— 按月费，不按 token',
   modeLocal: '本地 —— 不出现金，token 仍按 API 等价计价',
   notDeclared: '未声明（api 默认）',
-  inheritAgent: '与 agent 相同（{mode}）',
+  inheritAgent: '与 Agent 相同（{mode}）',
   modelOverridden: '独立声明',
   modelsCount: '{n} 个模型{overridden, plural, =0 {} other { · 1 个独立声明}}',
   planFee: '套餐费用',
@@ -214,7 +214,7 @@ const zh = matches(en)({
   feeUnknownHint: '未填写套餐费用，所以实际支出只显示它的边际 $0。',
   feeNotNumber: '套餐费用必须是一个数字，留空表示撤销填写。',
   savedModelNote: '{agent} · {model} 现在按以下方式计费',
-  noAgentsYet: '还没有已知的 agent —— 一次扫描会先把它们登记，之后才能在这里声明计费方式。',
+  noAgentsYet: '还没有已知的 Agent —— 一次扫描会先把它们登记，之后才能在这里声明计费方式。',
   savedInLead: '已保存到',
   savedInMid: '，这个文件正是',
   savedInTail: '读取的同一份，因此终端与本页面不可能不一致。没有定价的模型仍然显示 未定价，绝不会是 $0 —— 计费方式说的是现金，不是价格（§8）。',

@@ -78,6 +78,5 @@ export {
   type ModelSpend,
   type UnpricedModel,
 } from './cost.ts'
-export { banners, hostSplitBanner, hostSplitsByAgent, type HostSplitBanner } from './banners.ts'
 export { DEFAULT_POLL_MS, SSE_KEEPALIVE_MS, pollChangeSource } from './changes.ts'
 export { contentLayerPresent, loadPayloads, payloadCount } from './content.ts'

@@ -100,14 +100,14 @@ const en = {
 
 const zh = matches(en)({
   title: 'Agents',
-  pageDesc: '本机的每个 agent，按主机拆分。',
+  pageDesc: '本机的每个 Agent，按主机拆分。',
   pageInfo:
-    '主机是 agent 身份的一部分（§18 第 6 条），因此每张卡片都显示自己的主机拆分。估算成本是 tokens × 牌价——一个估算值，不是现金；模型没有定价时显示“未定价”。本时间窗内没有记录的 agent 会直接说明，而不是一排零（§14）。',
+    '主机是 Agent 身份的一部分（§18 第 6 条），因此每张卡片都显示自己的主机拆分。估算成本是 tokens × 牌价——一个估算值，不是现金；模型没有定价时显示“未定价”。本时间窗内没有记录的 Agent 会直接说明，而不是一排零（§14）。',
   loading: '正在加载 agents',
 
-  noMatch: '没有 agent 符合当前的 agent 筛选条件',
-  noneDetected: '这台机器上还未检测到任何 agent',
-  hiddenByFilter: '另有 {s} 个已知 agent 因 agent 筛选条件而被隐藏。',
+  noMatch: '没有 Agent 符合当前的 Agent 筛选条件',
+  noneDetected: '这台机器上还未检测到任何 Agent',
+  hiddenByFilter: '另有 {s} 个已知 Agent 因 Agent 筛选条件而被隐藏。',
 
   billingApi: 'API',
   billingSubscription: '订阅制',
@@ -125,7 +125,7 @@ const zh = matches(en)({
   tokens: 'token 数',
   estCost: '估算成本',
   credits: '套餐积分',
-  creditsTitle: '该 agent 自报烧掉的积分，数字来自它自己的用量记录（§18）。积分不是美元，也绝不折算成美元：与这个数字并列的每一个 $ 都只是等价 API 价值，不是套餐的实际花费。',
+  creditsTitle: '该 Agent 自报烧掉的积分，数字来自它自己的用量记录（§18）。积分不是美元，也绝不折算成美元：与这个数字并列的每一个 $ 都只是等价 API 价值，不是套餐的实际花费。',
   active: '活跃时长',
   noDurations: '未记录到事件时长',
   sessionsTitle: '{s} 个会话',
@@ -141,7 +141,7 @@ const zh = matches(en)({
   hostsCaption: '{name} 的各主机会话数与事件数',
   colHost: '主机',
   colShare: '占比',
-  shareInfo: '占该 agent 事件数的比例',
+  shareInfo: '占该 Agent 事件数的比例',
   capabilitiesHeading: '能力',
   modelsHeading: '模型',
   modelsCaption: '{name} 的各模型 token 数与估算成本',

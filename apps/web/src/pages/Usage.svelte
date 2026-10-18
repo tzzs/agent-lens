@@ -2,6 +2,11 @@
   // GET /api/query — a thin UI over the single §7 cube (this page IS the cube; every
   // other page is a fixed slice of it). The returned `explain` is rendered verbatim
   // so the user always sees the basis behind the numbers (§7 "basis is visible").
+  import { agentColor, agentLabel, hostLabel } from '../lib/names.js'
+  import { pivotSeries } from '../lib/series.ts'
+  import { SERIES } from '../lib/eventKinds.ts'
+  import StackedTrend from '../components/charts/StackedTrend.svelte'
+  import Bars from '../components/charts/Bars.svelte'
   import type { MessageKey } from '@agentlens/i18n'
   import {
     api,
@@ -14,8 +19,9 @@
     type Row,
   } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
-  import { range } from '../lib/filter.svelte.js'
-  import { options, live } from '../lib/live.svelte.js'
+  import { range, rangeKey } from '../lib/filter.svelte.js'
+  import { ALL, CUSTOM, validCustom, windowParams } from '../lib/window.ts'
+  import { live } from '../lib/live.svelte.js'
   import { formatCompact, formatInt, formatMs } from '../lib/format.ts'
   import { t } from '../lib/lang.js'
   import Surface from '../components/ui/Surface.svelte'
@@ -29,7 +35,6 @@
 
   let metrics = $state<string[]>(['events', 'tokens_total', 'cost_api_equiv'])
   let dims = $state<string[]>(['agent'])
-  let agent = $state('')
   let status = $state('')
   let order = $state('metric:events:desc')
   let limit = $state(50)
@@ -43,8 +48,11 @@
     withCapabilityType(dims, {
       metrics: metrics.join(','),
       dims: dims.join(','),
-      since: range.since,
-      agent: agent || undefined,
+      // The window, agent and host are the header's global filter, the same one every
+      // other page reads; only status/order/limit are this explorer's own.
+      ...windowParams(range.since, range.from, range.to),
+      agent: range.agent || undefined,
+      host: range.host || undefined,
       status: status || undefined,
       order,
       limit,
@@ -65,11 +73,12 @@
   $effect(() => {
     void metrics
     void dims
-    void agent
+    void range.agent
+    void range.host
     void status
     void order
     void limit
-    void range.since
+    void rangeKey()
     void live.lastTick
     void nonce
     if (dimConflict) return
@@ -86,6 +95,8 @@
   function cell(col: string, v: unknown) {
     if (v === null || v === undefined) return null
     if (isCapabilityNameDim(col)) return capabilityDimCell(col, v, nameDims)
+    if (col === 'agent') return agentLabel(String(v))
+    if (col === 'host') return hostLabel(String(v))
     if (col === 'duration') return formatMs(Number(v))
     if (col.startsWith('tokens')) return formatCompact(Number(v))
     if (col === 'events' || col === 'sessions') return formatInt(Number(v))
@@ -98,11 +109,57 @@
   // The cube returns no rows without a dim — the aggregate then lives only in totals.
   const hasDim = $derived(res ? res.columns.some(isDim) : false)
 
+  // The chart follows the query's shape: time plus at most one other dim is a stacked
+  // trend, a single dim is a ranked bar list, anything wider is a table only. It plots the
+  // first selected non-cost metric: an unpriced cost is unknown, and a chart cannot draw
+  // "unknown" without inventing a number for it.
+  const chartMetric = $derived(res ? metrics.find((m) => !m.startsWith('cost') && res.columns.includes(m)) ?? null : null)
+  const timeDim = $derived(dims.find((c) => TIME_DIMS.includes(c)) ?? null)
+  const otherDims = $derived(dims.filter((c) => !TIME_DIMS.includes(c)))
+  const chartKind = $derived<'trend' | 'bars' | 'none'>(
+    !res || !chartMetric || res.rows.length === 0 ? 'none' : timeDim && otherDims.length <= 1 ? 'trend' : !timeDim && dims.length === 1 ? 'bars' : 'none',
+  )
+  const chartFormat = (n: number) => cell(chartMetric ?? 'events', n) ?? String(n)
+  const chartTrend = $derived.by(() => {
+    if (chartKind !== 'trend' || !res || !timeDim || !chartMetric) return { buckets: [], series: [] }
+    const by = otherDims[0]
+    const rows = by ? res.rows : res.rows.map((r) => ({ ...r, __all: chartMetric }))
+    const p = pivotSeries(rows, timeDim, by ?? '__all', chartMetric, 8)
+    return {
+      buckets: p.buckets.map((b) => b.slice(0, 16)),
+      series: p.series.map((s, i) => ({
+        key: s.key,
+        label: s.other ? $t('viz.other') : by ? (cell(by, s.key) ?? s.key) : vocab(chartMetric),
+        color: s.other ? 'var(--cat-muted)' : by === 'agent' ? agentColor(s.key) : SERIES[i % SERIES.length]!,
+        values: s.values,
+        total: s.total,
+      })),
+    }
+  })
+  const chartBars = $derived(
+    chartKind === 'bars' && res && chartMetric
+      ? [...res.rows]
+          .sort((a, b) => Number(b[chartMetric] ?? 0) - Number(a[chartMetric] ?? 0))
+          .slice(0, 15)
+          .map((r, i) => ({
+            label: cell(dims[0]!, r[dims[0]!]) ?? '—',
+            value: Number(r[chartMetric] ?? 0),
+            color: dims[0] === 'agent' ? agentColor(String(r.agent)) : SERIES[i % SERIES.length]!,
+          }))
+      : [],
+  )
+
   // The header's window, as a sentence of its own. `{since}` is the raw §7 value the
   // query sends (`30d`, `365d`) rather than the pill's label: the pill for the last
   // option reads `1y` in English while this line has always said `365d`, and the two
   // strings are also what the §14 tests quote.
-  const windowText = $derived(range.since ? $t('usage.windowLast', { values: { since: range.since } }) : $t('usage.windowAll'))
+  const windowText = $derived(
+    range.since === ALL
+      ? $t('usage.windowAll')
+      : range.since === CUSTOM && validCustom(range.from, range.to)
+        ? $t('usage.windowRange', { values: { from: range.from, to: range.to } })
+        : $t('usage.windowLast', { values: { since: range.since === CUSTOM ? '30d' : range.since } }),
+  )
 
   const resultNote = $derived(
     !res
@@ -268,16 +325,6 @@
     <Surface title={$t('usage.filtersTitle')} info={$t('usage.filtersInfo')}>
       <div class="space-y-3">
         <div>
-          <label for="usage-agent" class={fieldLabel}>{$t('comps.agent')}</label>
-          <div class="relative">
-            <select id="usage-agent" class="{field} appearance-none pr-8" bind:value={agent}>
-              <option value="">{$t('comps.allAgents')}</option>
-              {#each options.agents as a (a.agentId)}<option value={a.agentId}>{a.displayName || a.agentId}</option>{/each}
-            </select>
-            {@render chevron()}
-          </div>
-        </div>
-        <div>
           <label for="usage-status" class={fieldLabel}>{$t('usage.statusLabel')}</label>
           <div class="relative">
             <select id="usage-status" class="{field} appearance-none pr-8" bind:value={status}>
@@ -323,6 +370,19 @@
     {:else}
       {#if q.state.status === 'error'}
         <Alert tone="red" title={$t('usage.failedTitle')}>{q.state.error} — {$t('usage.failedTail')}</Alert>
+      {/if}
+
+      {#if hasDim}
+        <Surface
+          title={chartMetric ? $t('usage.chartTitle', { values: { metric: vocab(chartMetric) } }) : $t('usage.chartTitleNone')}
+          subtitle={chartKind === 'none' ? $t('usage.chartNone') : ''}
+        >
+          {#if chartKind === 'trend'}
+            <StackedTrend buckets={chartTrend.buckets} series={chartTrend.series} format={chartFormat} label={vocab(chartMetric ?? '')} />
+          {:else if chartKind === 'bars'}
+            <Bars rows={chartBars} format={chartFormat} />
+          {/if}
+        </Surface>
       {/if}
 
       <Surface

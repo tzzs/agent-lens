@@ -3,10 +3,19 @@
   // §18 item 5 is the honesty rule here: an agent that never instruments hooks must
   // read "Not reported", never "0 hook calls", so every row comes from the full
   // CAPABILITY_TYPES list joined with `supports`, not only from types with counts.
+  import { slide } from 'svelte/transition'
+  import { cubicOut } from 'svelte/easing'
+  import { agentLabel } from '../lib/names.js'
   import { api, CAPABILITY_TYPES, UNNAMED_CAPABILITY, type CapabilityNameRow, type CapabilityTypeRow } from '../lib/api.ts'
   import { loader } from '../lib/pagestate.svelte.js'
-  import { range, filterParams } from '../lib/filter.svelte.js'
+  import { range, filterParams, rangeKey, granularity } from '../lib/filter.svelte.js'
+  import { pivotSeries } from '../lib/series.ts'
+  import type { MessageKey } from '@agentlens/i18n'
+  import StackedTrend from '../components/charts/StackedTrend.svelte'
+  import Bars from '../components/charts/Bars.svelte'
   import { live } from '../lib/live.svelte.js'
+  import { route, setQuery, href } from '../lib/router.svelte.js'
+  import { listOf } from '../lib/hashquery.ts'
   import { formatCompact, formatInt, formatMs, pct } from '../lib/format.ts'
   import { eventKind } from '../lib/eventKinds.ts'
   import { catalogNote } from '../lib/notes.ts'
@@ -27,8 +36,57 @@
   const AGENT_CHIPS = 3
 
   const q = loader(() => api.capabilities({ ...filterParams(), names: NAME_LIMIT }))
+
+  // The two charts read the §7 cube directly, under the same window and filter as the
+  // table: calls per bucket by type, and the busiest names across every type. Restricting
+  // to capability types keeps the cube from counting every other event as "unnamed".
+  const gran = $derived(granularity())
+  const trendQ = loader(() =>
+    api.query({ ...filterParams(), metrics: 'events', dims: `${gran},capability_type`, capabilityType: CAPABILITY_TYPES.join(','), limit: 5000 }),
+  )
+  const topQ = loader(() =>
+    api.query({
+      ...filterParams(),
+      metrics: 'events',
+      dims: 'capability_type,capability_name',
+      capabilityType: CAPABILITY_TYPES.join(','),
+      order: 'metric:events:desc',
+      limit: 10,
+    }),
+  )
   $effect(() => {
-    void range.since
+    void rangeKey()
+    void live.lastTick
+    trendQ.run()
+    topQ.run()
+  })
+  const GRAN_KEYS: Record<string, MessageKey> = { day: 'common.granDay', week: 'common.granWeek', month: 'common.granMonth' }
+  const trend = $derived.by(() => {
+    const p = pivotSeries(trendQ.state.data?.rows ?? [], gran, 'capability_type', 'events', 8)
+    return {
+      buckets: p.buckets.map((b) => b.slice(0, 10)),
+      series: p.series.map((s) => ({
+        key: s.key,
+        label: s.other ? $t('viz.other') : labelOf(s.key),
+        color: s.other ? 'var(--cat-muted)' : eventKind(s.key).color,
+        values: s.values,
+        total: s.total,
+      })),
+    }
+  })
+  const topNames = $derived(
+    (topQ.state.data?.rows ?? [])
+      .filter((r) => String(r.capability_name ?? '') !== '')
+      .map((r) => ({
+        label: String(r.capability_name),
+        value: Number(r.events ?? 0),
+        note: labelOf(String(r.capability_type)),
+        color: eventKind(String(r.capability_type)).color,
+        href: href('/capabilities', { open: String(r.capability_type) }),
+      })),
+  )
+  $effect(() => {
+    void rangeKey()
     void range.agent
     void range.host
     void live.lastTick
@@ -91,8 +149,10 @@
   })
   const anyNames = $derived(rows.some((r) => (r.stats?.names.length ?? 0) > 0))
 
-  let open = $state<string[]>([])
-  const toggle = (type: string) => (open = open.includes(type) ? open.filter((t) => t !== type) : [...open, type])
+  // Which types are expanded lives in the hash (`?open=mcp,tool`): the Overview bars link
+  // here with one open, and a refresh or Back keeps what the viewer opened.
+  const open = $derived(listOf(route.query.open))
+  const toggle = (type: string) => setQuery({ open: (open.includes(type) ? open.filter((t) => t !== type) : [...open, type]).join(',') })
 
   // English agrees its own count; the figures arrive pre-grouped, so a locale
   // switch never changes how a number reads.
@@ -183,6 +243,19 @@
     <div class="mb-4"><Alert tone="red" title={$t('states.refreshFailed')}>{q.state.error} — {$t('states.showingLastNumbers')}</Alert></div>
   {/if}
 
+  <div class="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
+    <Surface
+      title={$t('capabilities.trendTitle')}
+      subtitle={$t('capabilities.trendSubtitle', { values: { gran: GRAN_KEYS[gran] ? $t(GRAN_KEYS[gran]) : gran } })}
+      class="xl:col-span-2"
+    >
+      <StackedTrend buckets={trend.buckets} series={trend.series} format={formatCompact} label={$t('capabilities.trendTitle')} />
+    </Surface>
+    <Surface title={$t('capabilities.topTitle')} subtitle={$t('capabilities.topSubtitle')}>
+      <Bars rows={topNames} format={formatInt} />
+    </Surface>
+  </div>
+
   <Surface title={$t('capabilities.byType')} subtitle={anyNames ? $t('capabilities.byTypeSubtitle') : ''} padded={false}>
     <div class="overflow-x-auto rounded-b-card">
       <div class="min-w-[760px]">
@@ -224,7 +297,7 @@
                 {#if r.reporting.length}
                   <div class="flex items-center gap-1 overflow-hidden">
                     {#each r.reporting.slice(0, AGENT_CHIPS) as agent (agent)}
-                      <Chip title={agentTitle(s, agent)}>{agent}</Chip>
+                      <Chip title={agentTitle(s, agent)}>{agentLabel(agent)}</Chip>
                     {/each}
                     {#if r.reporting.length > AGENT_CHIPS}
                       <Chip mono title={r.reporting.slice(AGENT_CHIPS).join(', ')}>+{r.reporting.length - AGENT_CHIPS}</Chip>
@@ -251,7 +324,7 @@
 
           {#snippet expanded(r: TypeView)}
             {#if r.stats}
-              <div id="cap-names-{r.type}" class="whitespace-normal border-t border-line-soft bg-inset px-4 py-3">
+              <div id="cap-names-{r.type}" transition:slide|global={{ duration: 240, easing: cubicOut }} class="whitespace-normal border-t border-line-soft bg-inset px-4 py-3">
                 <div class="overflow-hidden rounded-[10px] bg-surface ring-1 ring-line-soft">
                   <DataTable
                     columns={nameColumns}
@@ -304,7 +377,7 @@
               <span class="nums min-w-0 truncate text-[13px] text-ink" title={c.name}>{c.name}</span>
               <span class="flex min-w-0 shrink-0 items-center gap-1">
                 <Chip color={eventKind(c.type).color}>{wordOf(c.type)}</Chip>
-                {#if c.agentId}<Chip>{c.agentId}</Chip>{/if}
+                {#if c.agentId}<Chip>{agentLabel(c.agentId)}</Chip>{/if}
                 {#if c.source}<span class="inline-flex min-w-0 max-w-40"><Chip mono title={c.source}>{c.source}</Chip></span>{/if}
               </span>
             </li>

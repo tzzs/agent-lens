@@ -27,7 +27,7 @@
   )
 </script>
 
-<section class="flex min-w-0 flex-col rounded-card bg-surface p-4 shadow-card">
+<section class="surface-enter flex min-w-0 flex-col rounded-card bg-surface p-4 shadow-card">
   <div class="flex items-center justify-between gap-2">
     <h3 class="flex items-center gap-1.5 text-xs font-medium text-ink-2">{label}{#if info}<InfoTip text={info} />{/if}</h3>
     {#if deltaText}

@@ -1,9 +1,12 @@
 <script lang="ts">
+  import { agentColor, agentLabel, capabilityLabel } from '../lib/names.js'
   import { formatCompact, formatInt, formatMs, projectLabel, formatClock } from '../lib/format.ts'
-  import { range } from '../lib/filter.svelte.js'
+  import { range, filterParams, rangeKey, granularity } from '../lib/filter.svelte.js'
+  import { live } from '../lib/live.svelte.js'
+  import { loader } from '../lib/pagestate.svelte.js'
+  import { href } from '../lib/router.svelte.js'
   import { halfOverHalf } from '../lib/series.ts'
-  import type { OverviewResponse } from '../lib/api.ts'
-  import type { LoaderState } from '../lib/pagestate.svelte.js'
+  import { api } from '../lib/api.ts'
   import type { MessageKey } from '@agentlens/i18n'
   import { tokenBasis } from '../lib/notes.ts'
   import { t } from '../lib/lang.js'
@@ -14,13 +17,21 @@
   import StatePanel from '../components/StatePanel.svelte'
   import CostFigure from '../components/CostFigure.svelte'
   import Donut from '../components/charts/Donut.svelte'
+  import CountUp from '../components/ui/CountUp.svelte'
   import Sparkline from '../components/charts/Sparkline.svelte'
   import Bars from '../components/charts/Bars.svelte'
 
-  let { ov }: { ov: { state: LoaderState<OverviewResponse>; run: () => Promise<void> } } = $props()
+  const ov = loader(() => api.overview({ ...filterParams(), granularity: granularity() }))
+  $effect(() => {
+    void rangeKey()
+    void range.agent
+    void range.host
+    void live.lastTick
+    ov.run()
+  })
 
   const d = $derived(ov.state.data)
-  const gran = $derived(d?.window?.granularity ?? range.since ?? 'day')
+  const gran = $derived(d?.window?.granularity ?? granularity())
   // The bucket's *name* in a sentence is translatable; the row key looked up by
   // `gran` above is a field name and is not.
   const GRAN_KEYS: Record<string, MessageKey> = { day: 'common.granDay', week: 'common.granWeek', month: 'common.granMonth' }
@@ -33,16 +44,25 @@
   // "we could not price it" (§8). The card's headline already says n/a; the series must not contradict it.
   const costSeries = $derived<(number | null)[]>(d ? d.trend.map((r) => (r.cost_api_equiv == null ? null : Number(r.cost_api_equiv))) : [])
 
-  const agentSlices = $derived(d ? d.agents.map((r) => ({ label: String(r.agent), value: Number(r.tokens_total ?? 0) })) : [])
+  // Each slice drills into the page that lists it, preselected through that page's
+  // own hash param, so the global filter is left as the viewer set it.
+  const agentSlices = $derived(
+    d ? d.agents.map((r) => ({ label: agentLabel(String(r.agent)), color: agentColor(String(r.agent)), value: Number(r.tokens_total ?? 0), href: href('/sessions', { agents: String(r.agent) }) })) : [],
+  )
   const projectSlices = $derived(
-    d ? d.projects.map((r) => ({ label: projectLabel(String(r.project || '')), title: String(r.project || $t('fmt.noProject')), value: Number(r.tokens_total ?? 0) })) : [],
+    d ? d.projects.map((r) => ({ label: projectLabel(String(r.project || '')), title: String(r.project || $t('fmt.noProject')), value: Number(r.tokens_total ?? 0), href: r.project ? href('/projects', { open: String(r.project) }) : undefined })) : [],
   )
   const capBars = $derived(
     d
       ? d.capabilities
           .map((r) => {
             const ms = Number(r.duration ?? 0)
-            return { label: String(r.capability_type), value: Number(r.events ?? 0), note: ms > 0 ? $t('overview.totalNote', { values: { dur: formatMs(ms) } }) : undefined }
+            return {
+              label: capabilityLabel(String(r.capability_type)),
+              value: Number(r.events ?? 0),
+              note: ms > 0 ? $t('overview.totalNote', { values: { dur: formatMs(ms) } }) : undefined,
+              href: href('/capabilities', { open: String(r.capability_type) }),
+            }
           })
           .sort((a, b) => b.value - a.value)
       : [],
@@ -84,7 +104,7 @@
 
   <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
     <InsightCard label={$t('overview.tokens')} info={tokenBasis(d.cards.tokens.basisCode)} delta={halfOverHalf(trendVals('tokens_total'))} deltaLabel={$t('overview.deltaInfo')}>
-      <div class="nums text-[26px] font-semibold tracking-tight">{formatCompact(d.cards.tokens.total)}</div>
+      <div class="nums text-[26px] font-semibold tracking-tight"><CountUp value={d.cards.tokens.total} format={formatCompact} /></div>
       {#snippet detail()}
         <dl class="nums grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
           {#each [[$t('viz.tokenInput'), d.cards.tokens.input], [$t('viz.tokenOutput'), d.cards.tokens.output], [$t('viz.tokenCacheRead'), d.cards.tokens.cacheRead], [$t('viz.tokenCacheWrite'), d.cards.tokens.cacheWrite], [$t('viz.tokenReasoning'), d.cards.tokens.reasoning]] as [k, v] (k)}
@@ -105,19 +125,19 @@
           {#if !d.cards.cost.pricingConfigured}
             <p class="text-orange">{$t('overview.noPricing', { values: { na: $t('common.na') } })}</p>
           {:else if d.cards.cost.unpricedAgents.length}
-            <p class="text-orange" title={$t('overview.noPriceForTitle')}>{$t('overview.noPriceFor', { values: { agents: d.cards.cost.unpricedAgents.join(', ') } })}</p>
+            <p class="text-orange" title={$t('overview.noPriceForTitle')}>{$t('overview.noPriceFor', { values: { agents: d.cards.cost.unpricedAgents.map(agentLabel).join(', ') } })}</p>
           {/if}
         </div>
       {/snippet}
     </InsightCard>
 
     <InsightCard label={$t('overview.sessions')}>
-      <div class="nums text-[26px] font-semibold tracking-tight">{formatInt(d.cards.sessions)}</div>
+      <div class="nums text-[26px] font-semibold tracking-tight"><CountUp value={d.cards.sessions} format={formatInt} /></div>
       {#snippet detail()}<p class="text-xs text-ink-3">{$t('overview.sessionsActive')}</p>{/snippet}
     </InsightCard>
 
     <InsightCard label={$t('overview.events')} info={$t('overview.eventsInfo')} delta={halfOverHalf(trendVals('events'))} deltaLabel={$t('overview.deltaInfo')}>
-      <div class="nums text-[26px] font-semibold tracking-tight">{formatInt(d.cards.events)}</div>
+      <div class="nums text-[26px] font-semibold tracking-tight"><CountUp value={d.cards.events} format={formatInt} /></div>
       {#snippet detail()}<p class="text-xs text-ink-3">{$t('overview.perSessionAvg', { values: { n: formatCompact(Math.round(d.cards.events / Math.max(1, d.cards.sessions))) } })}</p>{/snippet}
     </InsightCard>
   </div>

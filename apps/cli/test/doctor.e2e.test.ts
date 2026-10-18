@@ -132,7 +132,7 @@ describe('agl doctor against a synthetic store', () => {
     expect(out).toContain(
       'session dirs under ~/.claude/projects still exist but hold no session files (upstream retention, every dir in the live store whether ingested or not, §4.4 row 4)',
     )
-    expect(out).toContain('→ history is incomplete')
+    expect(out).toMatch(/→ \d+ of them (was|were) never ingested: history is incomplete/)
     expect(out).toContain('2 sessions named in ~/.claude/history.jsonl')
     expect(out).toContain('1 known only from history.jsonl')
     expect(out).toContain('1 of them never ingested at all')
@@ -141,7 +141,7 @@ describe('agl doctor against a synthetic store', () => {
   it('measures usage quality with the agent\'s own persisted fold', () => {
     expect(out).toContain('request_id dedup active')
     expect(out).toContain('inflation avoided')
-    expect(out).toContain('(4 records without request_id, counted individually)')
+    expect(out).toMatch(/claude-code\s+\S+ usage on [\d.]+% of model calls \(\d+ of \d+;/)
     expect(out).toContain('fold request_max · subagents counted (persisted with the stored rows')
     expect(out).toContain('cube (SQL) and event-model folds agree on every agent')
   })

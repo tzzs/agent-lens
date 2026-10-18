@@ -15,7 +15,7 @@
     format = (n: number) => String(n),
     label = msg('viz.donutBreakdown'),
   }: {
-    data: { label: string; value: number; title?: string }[]
+    data: { label: string; value: number; title?: string; href?: string; color?: string }[]
     size?: number
     thickness?: number
     max?: number
@@ -36,7 +36,7 @@
       const frac = total === 0 ? 0 : d.value / total
       const seg = {
         ...d,
-        color: 'other' in d && d.other ? 'var(--cat-muted)' : SERIES[i % SERIES.length]!,
+        color: 'other' in d && d.other ? 'var(--cat-muted)' : (d.color ?? SERIES[i % SERIES.length]!),
         dash: Math.max(0, frac * c - gap),
         offset: -acc * c,
         pct: frac,
@@ -67,7 +67,7 @@
             stroke-dasharray="{a.dash} {c - a.dash}"
             stroke-dashoffset={a.offset}
             opacity={active === null || active === i ? 1 : 0.35}
-            class="transition-[opacity,stroke-width] duration-150"
+            class="donut-arc transition-[opacity,stroke-width] duration-150"
           />
         {/each}
       </g>
@@ -77,17 +77,29 @@
     <ul class="w-full min-w-0 flex-1 space-y-0.5 text-[13px]">
       {#each arcs as a, i (a.label)}
         <li>
-          <div
-            class="flex items-center gap-2 rounded-md px-1.5 py-1 {active === i ? 'bg-hover' : ''}"
-            onpointerenter={() => (active = i)}
-            onpointerleave={() => (active = null)}
-            role="presentation"
-          >
+          {#snippet body()}
             <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{a.color}"></span>
-            <span class="min-w-0 flex-1 truncate text-ink-2" title={a.title ?? a.label}>{a.label}</span>
+            <span class="min-w-0 flex-1 truncate {a.href ? 'text-ink-2 group-hover:text-accent' : 'text-ink-2'}" title={a.title ?? a.label}>{a.label}</span>
             <span class="nums shrink-0 text-ink">{format(a.value)}</span>
             <span class="nums w-9 shrink-0 text-right text-xs text-ink-3">{(a.pct * 100).toFixed(0)}%</span>
-          </div>
+          {/snippet}
+          {#if a.href}
+            <a
+              href={a.href}
+              class="group flex items-center gap-2 rounded-md px-1.5 py-1 {active === i ? 'bg-hover' : ''}"
+              onpointerenter={() => (active = i)}
+              onpointerleave={() => (active = null)}
+              onfocus={() => (active = i)}
+              onblur={() => (active = null)}
+            >{@render body()}</a>
+          {:else}
+            <div
+              class="flex items-center gap-2 rounded-md px-1.5 py-1 {active === i ? 'bg-hover' : ''}"
+              onpointerenter={() => (active = i)}
+              onpointerleave={() => (active = null)}
+              role="presentation"
+            >{@render body()}</div>
+          {/if}
         </li>
       {/each}
     </ul>

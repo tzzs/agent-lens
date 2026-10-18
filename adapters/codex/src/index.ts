@@ -38,6 +38,13 @@ export const CODEX_AGGREGATION: AggregationPolicy = Object.freeze({
 export const codexAdapter: AgentAdapter = {
   id: AGENT_ID,
   displayName: 'Codex',
+  hostLabels: Object.freeze({
+    [HOST_DESKTOP]: 'Codex Desktop',
+    [HOST_TUI]: 'Codex TUI',
+    [HOST_EXEC]: 'Codex Exec',
+    [HOST_CLI_RS]: 'Codex CLI (Rust)',
+    [HOST_UNKNOWN]: 'Codex (unknown origin)',
+  }),
   parserVersion: PARSER_VERSION,
   aggregation: CODEX_AGGREGATION,
   detect,

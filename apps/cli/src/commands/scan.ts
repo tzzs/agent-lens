@@ -12,6 +12,7 @@ import {
   recordParseFailure,
   resolveSubagentParents,
   setAgentAggregations,
+  setAgentDisplayNames,
   updateSourceProgress,
   upsertProject,
   type SourceProgress,
@@ -180,6 +181,7 @@ export async function runScan(
     // Recorded before that adapter's first row lands, so the stored fold rule covers every
     // row it writes even if the scan dies half-way (§18 row 2).
     setAgentAggregations(db, adapterAggregations([adapter]))
+    setAgentDisplayNames(db, { [adapter.id]: adapter.displayName })
     for await (const source of adapter.discover(makeHostCtx(ctx, detected.dataRoot ?? null))) {
       const saved = savedState(db, source.id)
       const result = await scanSource(adapter, source, {

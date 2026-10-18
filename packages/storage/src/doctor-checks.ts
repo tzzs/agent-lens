@@ -45,6 +45,14 @@ export interface AgentUsageQuality {
   reported: number
   estimated: number
   missing: number
+  /**
+   * The usage-coverage figure that means something: model calls (`generation.end`) and how
+   * many of them carry a token count. `reported`/`estimated`/`missing` above count every
+   * event, and tool calls, hooks and user turns never carry usage — so "missing" read as
+   * 80% for agents whose every call was metered, and hid the one agent that records none.
+   */
+  generations: number
+  generationsWithUsage: number
   /** §11: records the per-request fallback key had to cover, counted individually. */
   noRequestId: number
   noRequestIdWithUsage: number
@@ -104,6 +112,15 @@ export function usageQuality(
     eventCounts.set(agent, cur)
   }
 
+  const gens = new Map(
+    rowsOf(
+      db,
+      `SELECT COALESCE(agent_id, '') AS agent, COUNT(*) AS n,
+              SUM(CASE WHEN usage_source IN ('reported', 'estimated') THEN 1 ELSE 0 END) AS with_usage
+       FROM events WHERE type = 'generation.end' GROUP BY agent`,
+    ).map((r) => [String(r.agent), { n: Number(r.n), withUsage: Number(r.with_usage ?? 0) }]),
+  )
+
   const noReq = new Map(
     rowsOf(
       db,
@@ -141,10 +158,13 @@ export function usageQuality(
     const fold = aggregateUsage(rows, policy)
     const counts = eventCounts.get(agentId) ?? { reported: 0, estimated: 0, missing: 0 }
     const req = noReq.get(agentId) ?? { n: 0, withUsage: 0 }
+    const gen = gens.get(agentId) ?? { n: 0, withUsage: 0 }
     out.push({
       agentId,
       events: total?.events ?? 0,
       ...counts,
+      generations: gen.n,
+      generationsWithUsage: gen.withUsage,
       noRequestId: req.n,
       noRequestIdWithUsage: req.withUsage,
       usageRows: rows.length,

@@ -72,7 +72,7 @@
                 href={'#' + n.path}
                 aria-current={active ? 'page' : undefined}
                 onclick={() => (open = false)}
-                class="flex h-8 items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors
+                class="press flex h-8 items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors
                   {active ? 'bg-surface font-medium text-ink shadow-card' : 'text-ink-2 hover:bg-hover-2/70 hover:text-ink'}"
               >
                 <Icon name={n.icon} size={16} class={active ? 'text-accent' : 'text-ink-3'} />

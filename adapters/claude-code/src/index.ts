@@ -8,7 +8,7 @@ import { detect } from './detect.ts'
 import { discover } from './discover.ts'
 import { normalize } from './normalize.ts'
 import { parse } from './parse.ts'
-import { AGENT_ID } from './record.ts'
+import { AGENT_ID, HOST_CLI, HOST_DESKTOP } from './record.ts'
 
 /** Bump when the mapping rules below change: a mismatch forces a full rescan (§5.3). */
 // v2: subagent parent attribution now prefers the spawn's own tool_result foreign key
@@ -21,6 +21,7 @@ export const PARSER_VERSION = 3
 export const claudeCodeAdapter: AgentAdapter = {
   id: AGENT_ID,
   displayName: 'Claude Code',
+  hostLabels: Object.freeze({ [HOST_CLI]: 'Claude Code CLI', [HOST_DESKTOP]: 'Claude Desktop' }),
   parserVersion: PARSER_VERSION,
   // §1.5: one API response is split across content-block records that repeat the same usage.
   aggregation: Object.freeze({ mode: 'request_max', subagentsIncluded: true }),

@@ -110,7 +110,7 @@
       onkeydown={onKey}
       onblur={() => (hover = null)}
     >
-      <svg viewBox="0 0 {W} {height}" class="h-full w-full overflow-visible" preserveAspectRatio="none" aria-hidden="true">
+      <svg viewBox="0 0 {W} {height}" class="chart-reveal h-full w-full overflow-visible" preserveAspectRatio="none" aria-hidden="true">
         <defs>
           <linearGradient id={gid} x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stop-color={color} stop-opacity="0.22" />

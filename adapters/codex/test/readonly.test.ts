@@ -106,6 +106,7 @@ describe('read-only guarantee (§5.2 rule 3)', () => {
       'detect',
       'discover',
       'displayName',
+      'hostLabels',
       'id',
       'normalize',
       'parse',

@@ -75,14 +75,6 @@ const RULES: Rule[] = [
     ],
   },
   {
-    what: 'whether a host distribution deserves a warning, and how dominant it is',
-    home: '@agentlens/storage → hostSplitFor / pickHostWarning / pickHostSplit',
-    forbidden: [
-      { re: /share\s*(?:<=|<|>=|>)\s*0\.\d/, why: 'a threshold written here is a second rule; §14 had 0.8 in the terminal and 0.5 in the server' },
-      { re: /HOST_SKEW/, why: 'the constant moved to the shared owner' },
-    ],
-  },
-  {
     what: 'what a NULL fused cost leaves as a floor (§8)',
     home: '@agentlens/query → costFloor / costPortionsByAgent',
     forbidden: [
@@ -122,7 +114,7 @@ const RULES: Rule[] = [
       { re: /retentionPhrase\(\s*scope/, why: 'a second builder is a second label for the same fact' },
     ],
     calls: [
-      { file: 'apps/cli/src/index.ts', symbol: 'coverageReport' },
+      { file: 'apps/cli/src/commands/doctor.ts', symbol: 'coverageReport' },
       { file: 'apps/cli/src/commands/doctor.ts', symbol: 'retentionPhrase' },
     ],
   },
@@ -238,7 +230,7 @@ describe('§14: one owner per shared rule, surfaces may not re-implement it', ()
     for (const surface of SURFACES) {
       expect(surface.files.length, `${surface.dir} should contain sources`).toBeGreaterThan(5)
     }
-    expect(SURFACES.flatMap((s) => s.files).some((f) => /pricing-store|serve|banners/.test(f.file))).toBe(true)
+    expect(SURFACES.flatMap((s) => s.files).some((f) => /pricing-store|serve|coverage/.test(f.file))).toBe(true)
   })
 
   it('the owner exports are actually importable, so the rule has somewhere to go', () => {
@@ -246,7 +238,7 @@ describe('§14: one owner per shared rule, surfaces may not re-implement it', ()
     // fix if the owner really publishes the symbol.
     const owners: { pkg: string; names: string[] }[] = [
       { pkg: 'packages/pricing', names: ['loadMergedPricing', 'actualUsdFor', 'planCostFor', 'computeCost', 'billingModeFor', 'planFeeFor', 'writeBillingModelMode', 'writeBillingPlanFee'] },
-      { pkg: 'packages/storage', names: ['hostSplitFor', 'pickHostWarning', 'pickHostSplit', 'loadSessionEvents', 'SESSION_EVENT_SQL'] },
+      { pkg: 'packages/storage', names: ['loadSessionEvents', 'SESSION_EVENT_SQL'] },
       { pkg: 'packages/event-model', names: ['projectLabel'] },
       {
         pkg: 'packages/server',

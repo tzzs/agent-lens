@@ -218,8 +218,82 @@ body {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ---- Motion ------------------------------------------------------------------------
+ * One small vocabulary, used everywhere, so movement reads as one system:
+ *   - a page and its cards rise into place (opacity + 6px), cards a beat apart;
+ *   - charts grow from their baseline or draw in from the left;
+ *   - interactive marks answer the pointer.
+ * Every animation runs once from geometry the element already has, ending exactly where
+ * the static page would be, so a skipped or reduced animation shows the same page. The
+ * reduced-motion block above collapses all of it. */
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes reveal-x {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+@keyframes arc-in {
+  from {
+    stroke-dasharray: 0 1000;
+  }
+}
+.page-enter {
+  animation: rise 280ms var(--ease-out) both;
+}
+.surface-enter {
+  animation: rise 440ms var(--ease-out) both;
+  animation-delay: var(--enter-delay, 60ms);
+}
+/* Cards in a page grid arrive a beat apart, in reading order. */
+.page-enter .grid > :nth-child(1) { --enter-delay: 40ms; }
+.page-enter .grid > :nth-child(2) { --enter-delay: 90ms; }
+.page-enter .grid > :nth-child(3) { --enter-delay: 140ms; }
+.page-enter .grid > :nth-child(4) { --enter-delay: 190ms; }
+.page-enter .grid > :nth-child(5) { --enter-delay: 240ms; }
+.page-enter .grid > :nth-child(6) { --enter-delay: 290ms; }
+.page-enter .grid > :nth-child(7) { --enter-delay: 340ms; }
+.page-enter .grid > :nth-child(n + 8) { --enter-delay: 380ms; }
+.bar-grow {
+  transform-origin: left center;
+  animation: grow-x 650ms var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 45ms + 120ms);
+  transition: width 400ms var(--ease-out);
+}
+.chart-reveal {
+  animation: reveal-x 750ms var(--ease-out) both;
+  animation-delay: 120ms;
+}
+.donut-arc {
+  animation: arc-in 800ms var(--ease-out) both;
+  animation-delay: 120ms;
+}
+/* Interactive rows and links answer the pointer with a small, quick shift. */
+.press {
+  transition: transform 120ms var(--ease-out), background-color 150ms, color 150ms;
+}
+.press:active {
+  transform: scale(0.97);
 }
 
 /* Session waterfall rows and their header share one grid: name | bar | dur | tokens | time.

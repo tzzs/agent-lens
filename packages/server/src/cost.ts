@@ -259,7 +259,10 @@ export function modelSpend(db: DatabaseSync, now: number): ModelSpend[] {
  * bucket, because `computeCost` is the rule this one describes.
  */
 export function unpricedBuckets(entry: PriceEntry | null, m: ModelSpend): string[] {
-  if (!entry) return ['price entry']
+  // Same rule with or without a table row: only a bucket that was spent can lack a price.
+  // A model whose events carry no tokens (Claude Code's `<synthetic>` placeholders, §4.4
+  // row 6) costs nothing at any price, so listing it as unpriced moved no figure.
+  if (!entry) return m.input + m.output + m.cacheRead + m.cacheWrite + m.reasoning > 0 ? ['price entry'] : []
   const gaps: string[] = []
   if (m.input > 0 && isMissingPrice(entry.inputPerMTok)) gaps.push('input')
   if (m.output > 0 && isMissingPrice(entry.outputPerMTok)) gaps.push('output')

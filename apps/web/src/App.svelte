@@ -1,18 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { route, initRouter } from './lib/router.svelte.js'
+  import { route, initRouter, setQuery } from './lib/router.svelte.js'
   import { live, options } from './lib/live.svelte.js'
-  import { range, filterParams } from './lib/filter.svelte.js'
-  import { loader } from './lib/pagestate.svelte.js'
+  import { adoptFilterQuery, filterQuery } from './lib/filter.svelte.js'
   import { initTheme } from './lib/theme.svelte.js'
   import { code, initLang, t } from './lib/lang.js'
-  import { coverageText, hostSplitText } from './lib/banners.ts'
   import { api } from './lib/api.ts'
   import { formatCompact, relativeTime } from './lib/format.ts'
 
   import SidebarNav, { type NavGroup } from './components/ui/SidebarNav.svelte'
   import Icon from './components/ui/Icon.svelte'
-  import Alert from './components/ui/Alert.svelte'
   import RangeControls from './components/RangeControls.svelte'
   import Overview from './pages/Overview.svelte'
   import Agents from './pages/Agents.svelte'
@@ -54,9 +51,9 @@
     },
   ])
 
-  // The overview feed also drives the two §14 header banners, so App owns it and
-  // hands the same loader to the Overview page (one fetch, not two).
-  const ov = loader(() => api.overview(filterParams()))
+  // A deep link's filter is adopted before the first fetch, not after mount: the
+  // pages' loaders would otherwise fire once with the defaults.
+  adoptFilterQuery(route.query)
 
   // Filter options for the header selects: populated from the agent directory,
   // hosts folded from each agent's host breakdown.
@@ -68,9 +65,14 @@
     try {
       const a = await api.agents()
       options.agents = a.rows.map((r) => ({ agentId: r.agentId, displayName: r.displayName }))
-      const hosts = new Set<string>()
-      for (const r of a.rows) for (const h of r.hosts) hosts.add(h.host)
-      options.hosts = [...hosts].sort()
+      options.hostLabels = Object.fromEntries(a.rows.flatMap((r) => r.hosts.map((h) => [h.host, h.label])))
+      options.hostGroups = a.rows
+        .filter((r) => r.hosts.length > 1 || r.hosts.some((h) => h.host !== r.agentId))
+        .map((r) => ({
+          agentId: r.agentId,
+          label: r.displayName || r.agentId,
+          hosts: [...r.hosts].sort((x, y) => y.events - x.events).map((h) => ({ host: h.host, label: h.label })),
+        }))
     } catch {
       /* options are best-effort; a failure just shrinks the filter dropdowns */
     } finally {
@@ -85,7 +87,7 @@
 
   let es: EventSource | null = null
   onMount(() => {
-    const stop = initRouter()
+    const stop = initRouter(adoptFilterQuery)
     const stopTheme = initTheme()
     const stopLang = initLang()
 
@@ -126,13 +128,11 @@
     }
   })
 
-  // Refetch the shared overview feed whenever the filter or the live stream moves.
+  // Mirror the global filter into the hash. Re-runs on every navigation too, so a
+  // link that carried no filter (`#/sessions/<id>`) gets the current one written back.
   $effect(() => {
-    void range.since
-    void range.agent
-    void range.host
-    void live.lastTick
-    ov.run()
+    void route.path
+    setQuery(filterQuery())
   })
 
   // Filter options only change when new data lands, not when the user re-filters.
@@ -140,10 +140,6 @@
     void live.lastTick
     refreshOptions()
   })
-
-  const banners = $derived(ov.state.data?.banners ?? null)
-  const hostSplitLine = $derived(banners?.hostSplit ? hostSplitText(banners.hostSplit) : '')
-  const coverageLine = $derived(banners ? coverageText(banners.coverage) : '')
 </script>
 
 <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-surface focus:px-3 focus:py-2 focus:shadow-overlay">{$t('shell.skipToContent')}</a>
@@ -185,24 +181,17 @@
     </header>
 
     <main id="main" class="mx-auto w-full min-w-0 max-w-[1440px] flex-1 px-4 py-6 sm:px-6 lg:px-8">
-      {#if banners && (hostSplitLine || coverageLine)}
-        <div class="mb-5 space-y-2">
-          {#if banners.hostSplit}
-            <Alert tone="orange" title={$t('banner.hostSplitTitle')} id="host-split">{hostSplitLine}</Alert>
-          {/if}
-          {#if coverageLine}
-            <Alert tone="red" title={$t('banner.coverageTitle')} id="coverage">{coverageLine}</Alert>
-          {/if}
-        </div>
-      {/if}
-
       <!-- A language change remounts the page. The pure display helpers
            (format.ts, eventKinds.ts, banners.ts) read the catalog's active locale
            instead of subscribing to a store, so re-rendering is what turns an
            already-drawn "55h 52m" into "55 时 52 分". -->
       {#key $code}
+      <!-- Keyed by page (and session id) so arriving at a page plays its entrance once;
+           a filter change refetches in place and does not replay it. -->
+      {#key `${page}/${parts[1] ?? ''}`}
+      <div class="page-enter">
       {#if page === ''}
-        <Overview {ov} />
+        <Overview />
       {:else if page === 'agents'}
         <Agents />
       {:else if page === 'projects'}
@@ -228,6 +217,8 @@
           {$t('shell.unknownPageStart')} <span class="nums text-ink">/{page}</span>{$t('shell.unknownPageEnd')}
         </div>
       {/if}
+      </div>
+      {/key}
       {/key}
     </main>
   </div>

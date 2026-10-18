@@ -15,6 +15,8 @@ const en = {
   peak: 'peak',
   noDataInRange: 'No data in range',
   total: 'total',
+  legend: 'Legend',
+  other: 'Other',
 
   // Donut
   donutBreakdown: 'breakdown',
@@ -78,6 +80,8 @@ const zh = matches(en)({
   peak: '峰值',
   noDataInRange: '该范围内没有数据',
   total: '合计',
+  legend: '图例',
+  other: '其他',
 
   donutBreakdown: '分类占比',
   donutAria: '{label}：合计 {v}',
@@ -126,8 +130,8 @@ const zh = matches(en)({
   costLabelReported: '上报',
   costTitleEst: '计算出的估算值：tokens × 牌价（cost_api_equiv），不是现金数字。',
   costTitleActual: '按已声明的计费模式算出的实际现金支出——订阅制与本地模型的花费为 0（§8）。',
-  costTitleReported: 'agent 自己记录的费用（§18 第 1 行）：只有当某个 agent 自己的日志里带着这个费用数字时才用，所以哪些 agent 会上报是数据本身的事实，而不是一份固定清单；此处其他所有费用都会退回计算出的估算值（估算）。',
-  costTitlePartial: '至少这么多：部分 agent 没有价格，已从合计中排除。',
+  costTitleReported: 'Agent 自己记录的费用（§18 第 1 行）：只有当某个 Agent 自己的日志里带着这个费用数字时才用，所以哪些 Agent 会上报是数据本身的事实，而不是一份固定清单；此处其他所有费用都会退回计算出的估算值（估算）。',
+  costTitlePartial: '至少这么多：部分 Agent 没有价格，已从合计中排除。',
   costTitleNoPrice: '该模型暂无价格——显示为未定价，绝不显示 $0（§8）。',
 })
 

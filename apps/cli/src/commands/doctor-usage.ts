@@ -82,13 +82,27 @@ export function renderUsageQuality(
     return
   }
   for (const q of qualities) {
-    const noReq = q.noRequestId > 0
-      ? ` (${formatCount(q.noRequestId)} records without request_id, counted individually${q.noRequestIdWithUsage > 0 ? `, ${formatCount(q.noRequestIdWithUsage)} of them carrying usage` : ''})`
+    // Coverage is measured over model calls only: tool calls, hooks and user turns never
+    // carry usage, so counting them as "missing" made a fully metered agent read as 80%
+    // missing and hid the agent whose logs carry no token counts at all.
+    // Only usage-carrying records without a request_id matter to the dedup fold.
+    const noReq = q.noRequestIdWithUsage > 0
+      ? ` · ${formatCount(q.noRequestIdWithUsage)} usage record${q.noRequestIdWithUsage === 1 ? '' : 's'} without request_id, counted individually`
       : ''
-    ctx.out(
-      `${q.agentId.padEnd(16)} reported ${pctOf(q.reported, q.events)} · estimated ${pctOf(q.estimated, q.events)} · ` +
-        `missing ${pctOf(q.missing, q.events)}${noReq}`,
-    )
+    if (q.generations === 0) {
+      ctx.out(`${q.agentId.padEnd(16)} ${GLYPH.none} no model calls recorded — nothing to meter${noReq}`)
+    } else if (q.generationsWithUsage === 0) {
+      ctx.out(
+        `${q.agentId.padEnd(16)} ${GLYPH.warn} usage on 0 of ${formatCount(q.generations)} model calls — ` +
+          `this agent's logs carry no token counts, so its tokens and cost read as 0${noReq}`,
+      )
+    } else {
+      const glyph = q.generationsWithUsage === q.generations ? GLYPH.ok : GLYPH.warn
+      ctx.out(
+        `${q.agentId.padEnd(16)} ${glyph} usage on ${pctOf(q.generationsWithUsage, q.generations)} of model calls ` +
+          `(${formatCount(q.generationsWithUsage)} of ${formatCount(q.generations)}; reported ${formatCount(q.reported)}, estimated ${formatCount(q.estimated)})${noReq}`,
+      )
+    }
     const avoided = q.naive === 0 ? 0 : (1 - q.folded / q.naive) * 100
     const signed = `${avoided >= 0 ? `-${avoided.toFixed(1)}` : `+${(-avoided).toFixed(1)}`}%`
     const agreed = q.folded === q.modelFolded

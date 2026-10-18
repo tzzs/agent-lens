@@ -18,6 +18,8 @@ export interface ServedUsageQuality {
   estimated: number
   missing: number
   withoutRequestId: number
+  generations: number
+  generationsWithUsage: number
   naiveTokens: number
   dedupedTokens: number
   inflationAvoidedPct: number
@@ -57,6 +59,8 @@ export function usageQualityBlock(ctx: ServerCtx, adapters: readonly AgentAdapte
     estimated: sum((q) => q.estimated),
     missing: sum((q) => q.missing),
     withoutRequestId: sum((q) => q.noRequestId),
+    generations: sum((q) => q.generations),
+    generationsWithUsage: sum((q) => q.generationsWithUsage),
     naiveTokens: naive,
     dedupedTokens: deduped,
     inflationAvoidedPct: naive === 0 ? 0 : (1 - deduped / naive) * 100,

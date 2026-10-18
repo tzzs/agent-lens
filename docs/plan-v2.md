@@ -709,6 +709,19 @@ Replay · 告警（"agentx 今日成本 +240%"）· 效率分析（按 skill/pha
 - 好处是任何历史窗口都有价可查，不会因为日期早于快照首日而整段显示 n/a；
 - 代价是**今天的价格被回溯套用**，`--explain` 与 `doctor` 需要把这一点显式说给用户，而不是假装是当期价格。要精确到历史价，用 `agentlens pricing override` 覆盖，不要改生成器。
 
+### 1.5 / 4.4 row 4 / 10 / 14 的首屏横幅撤下（2026-10-11）
+
+§1.5 第 2 条、§4.4 row 3–4、§10 Overview 与 §14 目标体验要求首屏常驻两条横幅：**宿主拆分**与**历史覆盖度**。两条都已从看板顶部与 `agl` 裸命令摘要中撤下，判据只有一条：**首屏的提示必须对应一个会改变屏上数字的事实**，两条都不满足。
+
+| 横幅 | 为什么不改变数字 | 信息现在在哪 |
+|---|---|---|
+| 宿主拆分（served >50% 即出，CLI ≥80% 且 ≥20 事件） | 合计本来就对："全部主机"就是 cli + desktop 之和，横幅只是在解释一个已经正确的总数。§1.5 要防的"把 Desktop 算成 CLI"由 `host_id` 一等维度防住，而不是由横幅防住 | 顶栏主机筛选、Agents 卡片的宿主占比、doctor |
+| 历史覆盖度（`emptyDirs` + `projectDirsWithoutSessions`） | `emptyDirs` 是**已入库**的源，文件在入库后才被上游删除，行仍在本库；`projectDirsWithoutSessions` 是有项目行、无会话行（通常是 `agl prune` 之后），库内统计与库内数据一致。两者都不是"少算" | Web 体检页的覆盖度一节、`agl doctor`、`GET /api/coverage` |
+
+真正会少算的是**入库前**就被上游清掉的会话，而它只能由 `agl doctor` 的文件系统扫描（`UPSTREAM_RETENTION`）看到，从来不在横幅里。这一点在撤下前的讨论里我先说错过一次：把 `projectDirsWithoutSessions` 当成了"入库前缺失"，读 `coverageReport` 的定义后改正。
+
+随之删除的代码：`packages/storage/src/host-split.ts`（`hostSplitFor` / `pickHostWarning` / `pickHostSplit` 只服务于横幅，再无调用者）、`packages/server/src/banners.ts` 与 `/api/overview` 的 `banners` 字段（Overview 不再为每次加载做一遍覆盖度的 `stat()`）、CLI 的 `hostSkew` / `bannerWarnings`、i18n 的 `banner.hostSplit*`。`rule-homes` 守卫里"宿主倾斜阈值只能有一个家"那条随规则本身一起删除；覆盖度措辞那条保留，调用方改登记为 `apps/cli/src/commands/doctor.ts`。回归由 `apps/cli/test/first-screen.test.ts` 钉住：同一个库上旧代码会印出两条提示，现在首屏一条都不印，而 `doctor` 仍报告该目录。
+
 ### 落地发现（2026-09-21，2026-09-22 回填）
 
 只记已核实的事实与所在文件；每条自带状态，没闭环的在该条里明写"仍开/仍欠"。**那句"其余各条仍未修复"已经过期**：写下它之后，WAL 读取通道、`agl projects` 标签、会话时间线排序、摄入时间 provenance、三条 CLI↔server 重复规则、NULL 头条下限、跨源 subagent 父链、会话标题投影、立方体量级（本节"持久 stage 1"那条）都已各自闭环并在原条里改写；今天仍开的集中在三处 —— ZCode 的 per-session 宿主切分（缺的是一台装了独立 `zcode` 命令行的机器，不是再多一轮分析）、"看一眼像素"的截图取证、以及全历史路由剩下那几秒里属于 stage 2 与多次扫描的部分。

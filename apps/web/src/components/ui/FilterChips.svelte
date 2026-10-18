@@ -24,12 +24,12 @@
 <div class="flex flex-wrap items-center gap-1.5" role="group" aria-label={label}>
   <button
     type="button"
-    class="chip"
+    class="chip press"
     aria-pressed={selected.length === 0}
     onclick={() => (selected = [])}
   >{allLabel}{#if total}<span class="nums count">{count(total)}</span>{/if}</button>
   {#each options as o (o.key)}
-    <button type="button" class="chip" aria-pressed={selected.includes(o.key)} onclick={() => toggle(o.key)}>
+    <button type="button" class="chip press" aria-pressed={selected.includes(o.key)} onclick={() => toggle(o.key)}>
       {#if o.dot}<span class="h-1.5 w-1.5 rounded-full" style="background:{o.dot}"></span>{/if}
       {o.label}
       {#if o.count !== undefined}<span class="nums count">{count(o.count)}</span>{/if}

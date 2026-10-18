@@ -132,6 +132,12 @@ export interface CapabilityCatalog {
 export interface AgentAdapter {
   readonly id: string
   readonly displayName: string
+  /**
+   * How to name each `host_id` this adapter writes, for people (`claude-desktop` →
+   * "Claude Desktop"). Only the adapter knows what its entrypoint values mean; a host it
+   * leaves out is shown by id, and a host equal to the agent id is shown as `displayName`.
+   */
+  readonly hostLabels?: Readonly<Record<string, string>>
   /** Bump when parsing rules change; a mismatch triggers a full rescan of that source (§5.3). */
   readonly parserVersion: number
   /**

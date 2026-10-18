@@ -12,8 +12,18 @@ export const live = $state({
   serverTime: null,
 })
 
-/** @type {{ agents: { agentId: string, displayName: string | null }[], hosts: string[] }} */
+/**
+ * `hostGroups` lists only agents whose hosts say something the agent filter does not:
+ * a single host that repeats the agent id is the agent itself, so offering it as a
+ * "host" made the host menu read as a second agent menu. `hostLabels` names every host.
+ * @type {{
+ *   agents: { agentId: string, displayName: string | null }[],
+ *   hostGroups: { agentId: string, label: string, hosts: { host: string, label: string }[] }[],
+ *   hostLabels: Record<string, string>,
+ * }}
+ */
 export const options = $state({
   agents: [],
-  hosts: [],
+  hostGroups: [],
+  hostLabels: {},
 })

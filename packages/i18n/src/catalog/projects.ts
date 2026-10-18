@@ -56,15 +56,16 @@ const en = {
 
   /* the §4.1 truncation tail */
   truncatedNote:
-    'Showing {n} projects; more were active in this window — narrow the range or agent filter to see the rest.',
+    'Showing {n} projects; more were active in this window.',
+  loadMore: 'Load {n} more',
 }
 
 const zh = matches(en)({
   title: '项目',
   count: '{n} 个项目',
   countPlus: '{n}+ 个项目',
-  desc: '{count}，统计自本时间窗，已按 agent 与 worktree 归并分组。',
-  pageDesc: '已按 agent 与 worktree 归并分组。',
+  desc: '{count}，统计自本时间窗，已按 Agent 与 worktree 归并分组。',
+  pageDesc: '已按 Agent 与 worktree 归并分组。',
   loadingProjects: '正在加载项目',
   empty: '这个时间窗内没有项目',
 
@@ -78,9 +79,9 @@ const zh = matches(en)({
   noRoot: '未记录仓库根目录',
   tokensTitle: '{n} 个 token',
 
-  byAgent: '按 agent 统计',
-  byAgentAria: '按 agent 区分的用量',
-  noAgentActivity: '这个时间窗内没有 agent 活动',
+  byAgent: '按 Agent 统计',
+  byAgentAria: '按 Agent 区分的用量',
+  noAgentActivity: '这个时间窗内没有 Agent 活动',
   recentSessions: '最近的会话',
   untitled: '未命名',
   noSessions: '未记录任何会话',
@@ -95,7 +96,8 @@ const zh = matches(en)({
     '下面每个路径都归到了这个项目——正是把 worktree 与子目录折叠汇总成一行的依据。按繁忙程度排在前面；事件数量覆盖全部已记录历史，不只是当前时间窗。',
   eventsCount: '{n} 个事件',
 
-  truncatedNote: '这里只显示 {n} 个项目；这个时间窗内还有更多项目在活动——缩小时间范围或 agent 筛选即可看到其余部分。',
+  truncatedNote: '这里只显示 {n} 个项目；这个时间窗内还有更多项目在活动。',
+  loadMore: '再加载 {n} 个',
 })
 
 export default { en, zh }
