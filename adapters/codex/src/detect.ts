@@ -8,7 +8,7 @@
  */
 import { isParseErrorRecord, readIncremental, walkForFiles } from '@agentlens/event-model'
 import type { Detection, HostContext } from '@agentlens/event-model'
-import { rootOf, sessionsDirsOf } from './paths.ts'
+import { rootOf, rootsOf, sessionsDirsOf } from './paths.ts'
 import { asRecord, str } from './record.ts'
 
 const NEWEST_SCAN_LIMIT = 400
@@ -17,7 +17,8 @@ const PROBE_LINES = 5
 
 export async function detect(ctx: HostContext): Promise<Detection> {
   const dataRoot = rootOf(ctx)
-  const dirs = sessionsDirsOf(ctx)
+  const roots = await rootsOf(ctx)
+  const variantRoots = roots.filter((r) => r !== dataRoot)
 
   let rootExists = false
   try {
@@ -26,28 +27,33 @@ export async function detect(ctx: HostContext): Promise<Detection> {
     rootExists = false
   }
   if (!rootExists) {
-    return { present: false, agentVersion: null, dataRoot, reason: `no codex data root at ${dataRoot}` }
+    return { present: false, agentVersion: null, dataRoot, variantRoots, reason: `no codex data root at ${dataRoot}` }
   }
 
   const files: string[] = []
   try {
-    for (const dir of dirs) {
-      for await (const path of walkForFiles(dir, { pattern: 'rollout-*.jsonl' })) {
-        files.push(path)
-        if (files.length >= NEWEST_SCAN_LIMIT) break
+    for (const root of roots) {
+      for (const dir of sessionsDirsOf(ctx, root)) {
+        for await (const path of walkForFiles(dir, { pattern: 'rollout-*.jsonl' })) {
+          files.push(path)
+          if (files.length >= NEWEST_SCAN_LIMIT) break
+        }
       }
     }
   } catch (err) {
-    return { present: true, agentVersion: null, dataRoot, reason: `unreadable store: ${String(err)}` }
+    return { present: true, agentVersion: null, dataRoot, variantRoots, reason: `unreadable store: ${String(err)}` }
   }
 
   if (files.length === 0) {
-    const readable = await anyDirReadable(ctx, dirs)
-    if (!readable) return { present: true, agentVersion: null, dataRoot, reason: `sessions directories unreadable: ${dirs.join(', ')}` }
+    const readable = await anyDirReadable(ctx, roots.flatMap((root) => sessionsDirsOf(ctx, root)))
+    if (!readable) {
+      return { present: true, agentVersion: null, dataRoot, variantRoots, reason: `sessions directories unreadable: ${sessionsDirsOf(ctx).join(', ')}` }
+    }
     return {
       present: true,
       agentVersion: null,
       dataRoot,
+      variantRoots,
       reason: 'sessions directories exist but contain no rollout files (upstream retention)',
     }
   }
@@ -57,6 +63,7 @@ export async function detect(ctx: HostContext): Promise<Detection> {
     present: true,
     agentVersion: version,
     dataRoot,
+    variantRoots,
     reason: version ? null : 'cli_version absent from every probed session_meta record',
   }
 }

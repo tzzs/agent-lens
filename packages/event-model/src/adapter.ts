@@ -24,6 +24,13 @@ export interface Detection {
   /** Upstream product version, used for drift reporting (§5.3). */
   agentVersion?: string | null
   dataRoot?: string | null
+  /**
+   * §5.3: sibling stores this adapter also reads (a model-switching setup leaves a second
+   * full data root beside the canonical one). Canonical root is NOT repeated here. Sorted,
+   * deterministic, and empty when the canonical root came from an upstream env switch.
+   * `doctor` prints these, so a machine with two stores is a sentence rather than a silent gap.
+   */
+  variantRoots?: string[]
   reason?: string | null
 }
 

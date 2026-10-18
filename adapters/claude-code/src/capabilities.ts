@@ -8,12 +8,16 @@
 import { extname, join } from 'node:path'
 import type { CapabilityCatalog, HostContext } from '@agentlens/event-model'
 import { asRecord, arr, str, strList } from './record.ts'
-import { installedPluginsFileOf, skillsDirOf, userConfigFileOf } from './paths.ts'
+import { installedPluginsFileOf, rootsOf, skillsDirOf, userConfigFileOf } from './paths.ts'
 
 export async function capabilities(ctx: HostContext): Promise<CapabilityCatalog[]> {
   const out: CapabilityCatalog[] = []
-  out.push(...(await skillDirs(ctx)))
-  out.push(...(await installedPlugins(ctx)))
+  // §5.3: a variant store carries its own skills/plugins. Reading only the canonical root
+  // would report "installed 62" for a machine whose DeepSeek store added more.
+  for (const root of await rootsOf(ctx)) {
+    out.push(...(await skillDirs(ctx, root)))
+    out.push(...(await installedPlugins(ctx, root)))
+  }
   out.push(...(await mcpServers(ctx)))
   return out.sort(
     (a, b) =>
@@ -21,8 +25,8 @@ export async function capabilities(ctx: HostContext): Promise<CapabilityCatalog[
   )
 }
 
-async function skillDirs(ctx: HostContext): Promise<CapabilityCatalog[]> {
-  const dir = skillsDirOf(ctx)
+async function skillDirs(ctx: HostContext, root?: string): Promise<CapabilityCatalog[]> {
+  const dir = skillsDirOf(ctx, root)
   let names: string[]
   try {
     names = await ctx.readDir(dir)
@@ -50,8 +54,8 @@ function isLikelyFile(name: string): boolean {
   return ext !== '' && ext !== '.md' && ext !== '.json' && ext !== '.ts' && ext !== '.js'
 }
 
-async function installedPlugins(ctx: HostContext): Promise<CapabilityCatalog[]> {
-  const file = installedPluginsFileOf(ctx)
+async function installedPlugins(ctx: HostContext, dataRoot?: string): Promise<CapabilityCatalog[]> {
+  const file = installedPluginsFileOf(ctx, dataRoot)
   let text: string
   try {
     text = await ctx.readFile(file)

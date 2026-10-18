@@ -4,20 +4,25 @@
  * `sessions/**` holds live threads and `archived_sessions/**` archived ones: codex.md's
  * sample covers both (379 files), and archived threads carry real usage, so scanning only
  * `sessions/` would under-report. Sorted so `source_id` enumeration stays deterministic.
+ *
+ * §5.3: every root from `rootsOf` is walked — a `CODEX_HOME`-switched variant store is real
+ * usage that no gateway can see.
  */
 import { basename } from 'node:path'
 import { walkForFiles } from '@agentlens/event-model'
 import { deriveSourceId, type HostContext, type SourceSpec } from '@agentlens/event-model'
-import { sessionsDirsOf, threadHintFromPath } from './paths.ts'
+import { rootsOf, sessionsDirsOf, threadHintFromPath } from './paths.ts'
 import { AGENT_ID } from './record.ts'
 
 export const ROLLOUT_PATTERN = 'rollout-*.jsonl'
 
 export async function* discover(ctx: HostContext): AsyncIterable<SourceSpec> {
   const paths: string[] = []
-  for (const dir of sessionsDirsOf(ctx)) {
-    for await (const path of walkForFiles(dir, { pattern: ROLLOUT_PATTERN })) {
-      paths.push(path)
+  for (const root of await rootsOf(ctx)) {
+    for (const dir of sessionsDirsOf(ctx, root)) {
+      for await (const path of walkForFiles(dir, { pattern: ROLLOUT_PATTERN })) {
+        paths.push(path)
+      }
     }
   }
   paths.sort()

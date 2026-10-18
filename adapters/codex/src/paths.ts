@@ -1,15 +1,34 @@
 /**
  * Data-root layout. `CODEX_HOME` wins over the host-supplied root because it is the
  * upstream switch for relocating the whole store (same role as `CLAUDE_CONFIG_DIR`).
+ *
+ * §5.3: model-switching setups leave a second full store beside the canonical one
+ * (`~/.codex-deepseek`); `rootsOf` lists every store this adapter should read.
  */
 import { isAbsolute, join } from 'node:path'
-import type { HostContext } from '@agentlens/event-model'
+import { rootsOf as variantRootsOf, type HostContext } from '@agentlens/event-model'
+
+/** The layout marker that makes a sibling directory a real Codex store. */
+export const ROOT_MARKERS: readonly string[] = ['sessions']
+
+/** Suffixes that belong to Codex itself or to its regional builds, never to a second store. */
+export const NOT_VARIANTS: readonly string[] = ['cn']
+
+export function rootFromEnv(ctx: HostContext): string | null {
+  const fromEnv = ctx.env.CODEX_HOME
+  return fromEnv && isAbsolute(fromEnv) ? fromEnv : null
+}
 
 export function rootOf(ctx: HostContext): string {
-  const fromEnv = ctx.env.CODEX_HOME
-  if (fromEnv && isAbsolute(fromEnv)) return fromEnv
-  if (ctx.dataRoot) return ctx.dataRoot
-  return join(ctx.homedir, '.codex')
+  return rootFromEnv(ctx) ?? ctx.dataRoot ?? join(ctx.homedir, '.codex')
+}
+
+/** Canonical root first, then every sibling store that holds this agent's layout (§5.3). */
+export async function rootsOf(ctx: HostContext): Promise<string[]> {
+  return variantRootsOf(ctx, rootOf(ctx), rootFromEnv(ctx) !== null, {
+    markers: ROOT_MARKERS,
+    notVariants: NOT_VARIANTS,
+  })
 }
 
 /**
@@ -18,12 +37,12 @@ export function rootOf(ctx: HostContext): string {
  */
 export const SESSION_DIRS: readonly string[] = ['sessions', 'archived_sessions']
 
-export function sessionsDirsOf(ctx: HostContext): string[] {
-  return SESSION_DIRS.map((dir) => join(rootOf(ctx), dir))
+export function sessionsDirsOf(ctx: HostContext, root = rootOf(ctx)): string[] {
+  return SESSION_DIRS.map((dir) => join(root, dir))
 }
 
-export function hooksFileOf(ctx: HostContext): string {
-  return join(rootOf(ctx), 'hooks.json')
+export function hooksFileOf(ctx: HostContext, root = rootOf(ctx)): string {
+  return join(root, 'hooks.json')
 }
 
 /**

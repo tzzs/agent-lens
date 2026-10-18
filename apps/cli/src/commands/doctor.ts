@@ -88,7 +88,8 @@ export interface AdapterProbe {
   /** Discovered but not stat-able: deleted between discovery and this pass. */
   vanished: string[]
   sqlite: { path: string; refusal: string | null; sidecars: number }[]
-  storeDir: string | null
+  /** Store roots, one per data root read (canonical first, then §5.3 variants). */
+  storeDirs: string[]
   ext: string
   historyFile: string | null
   survey: StoreSurvey | null
@@ -109,7 +110,7 @@ export async function probeAdapters(adapters: readonly AgentAdapter[], rctx: Ctx
       files: [],
       vanished: [],
       sqlite: [],
-      storeDir: null,
+      storeDirs: [],
       ext: DEFAULT_EXT,
       historyFile: null,
       survey: null,
@@ -158,11 +159,72 @@ export async function probeAdapters(adapters: readonly AgentAdapter[], rctx: Ctx
     // The store ROOT, not the deepest shared prefix of the surviving files: with one project
     // left on disk the prefix would be that project dir, and the Agents glob plus §4.4 row 4's
     // emptied-dir check would then describe a scope nobody scanned.
-    probe.storeDir =
-      sessionStoreRoot(probe.files.map((f) => f.path), detection.dataRoot ?? null) ?? storeDirFromDb(db, adapter.id)
-    if (probe.storeDir) probe.survey = await surveySessionStore(probe.storeDir, probe.ext)
+    //
+    // §5.3: one root per data root, never the common prefix of all of them. Two stores are
+    // siblings (`~/.claude` + `~/.claude-deepseek`), so their common prefix is the home
+    // directory — surveying that would walk the whole home and claim a scope nobody read.
+    probe.storeDirs = await storeRootsOf(probe.files.map((f) => f.path), detection)
+    if (probe.storeDirs.length === 0) {
+      const fallback = storeDirFromDb(db, adapter.id)
+      if (fallback) probe.storeDirs = [fallback]
+    }
+    const surveys: StoreSurvey[] = []
+    for (const dir of probe.storeDirs) surveys.push(await surveySessionStore(dir, probe.ext))
+    probe.survey = mergeSurveys(surveys)
   }
   return probes
+}
+
+/**
+ * One store root per data root the probe actually read (§5.3), so a multi-store machine is
+ * surveyed once per store rather than once for their common ancestor — which, for two
+ * sibling stores, is the home directory and walks everything.
+ */
+async function storeRootsOf(files: readonly string[], detection: Detection): Promise<string[]> {
+  const canonical = detection.dataRoot ?? null
+  const roots = [canonical, ...(detection.variantRoots ?? [])].filter((r): r is string => Boolean(r))
+  const out: string[] = []
+  for (const root of roots) {
+    const storeRoot = sessionStoreRoot(files.filter((f) => f.startsWith(root + '/')), root)
+    if (storeRoot && !out.includes(storeRoot)) out.push(storeRoot)
+  }
+  return out
+}
+
+/**
+ * §5.3: the Coverage line has to mean one thing across a multi-store machine, so the surveys
+ * are merged rather than printed side by side. Counts add up; a dir that is empty in one store
+ * and populated in the other is REPORTED as empty (the honest read: that dir holds no session
+ * file), because pretending otherwise would hide real retention.
+ */
+function mergeSurveys(surveys: readonly StoreSurvey[]): StoreSurvey | null {
+  if (surveys.length === 0) return null
+  if (surveys.length === 1) return surveys[0]!
+  const storeDir = surveys[0]!.storeDir
+  const access = surveys.some((s) => s.access === 'readable')
+    ? 'readable'
+    : surveys.some((s) => s.access === 'unreadable') ? 'unreadable' : 'missing'
+  const dirs = new Set<string>()
+  const unreadable = new Set<string>()
+  let total = 0
+  let files = 0
+  let bytes = 0
+  for (const s of surveys) {
+    total += s.dirs
+    files += s.files
+    bytes += s.bytes
+    for (const d of s.emptyDirs) dirs.add(d)
+    for (const d of s.unreadableDirs) unreadable.add(d)
+  }
+  return {
+    storeDir,
+    access,
+    dirs: total,
+    emptyDirs: [...dirs],
+    files,
+    bytes,
+    unreadableDirs: [...unreadable],
+  }
 }
 
 /** A store emptied by upstream retention leaves no live file to derive its root from (§4.4 row 4). */
@@ -194,7 +256,7 @@ function mostUsedExt(paths: readonly string[]): string {
 }
 
 function sourceGlob(p: AdapterProbe, home: string): string {
-  if (p.storeDir) return `${displayPath(p.storeDir, home)}/**/*${p.ext}`
+  if (p.storeDirs.length > 0) return `${p.storeDirs.map((d) => displayPath(d, home)).join(', ')}/**/*${p.ext}`
   const sqliteSource = p.sqlite[0]?.path ?? p.sources.find((s) => s.kind === 'sqlite')?.path
   if (sqliteSource) return `${displayPath(sqliteSource, home)} (sqlite, header-only)`
   return p.detection?.dataRoot ? displayPath(p.detection.dataRoot, home) : 'no store located'
@@ -364,11 +426,11 @@ export async function renderCoverage(db: DatabaseSync, rctx: Ctx, probes: readon
   rctx.out('Coverage')
   for (const p of probes) {
     if (!p.detection?.present) continue
-    if (!p.storeDir || !p.survey) {
+    if (p.storeDirs.length === 0 || !p.survey) {
       rctx.out(`${GLYPH.none} ${p.adapter.id}: no session store located — "we scanned everything" is not a claim this report can make`)
       continue
     }
-    const shown = displayPath(p.storeDir, rctx.homedir)
+    const shown = p.storeDirs.map((d) => displayPath(d, rctx.homedir)).join(', ')
     if (p.survey.access !== 'readable') {
       rctx.out(`${GLYPH.err} ${p.adapter.id}: ${shown} ${describeAccess(p.survey.access)} — coverage of it is unknown`)
       continue
@@ -621,7 +683,15 @@ export function renderPermissions(rctx: Ctx, probes: readonly AdapterProbe[]): v
   let sniffed = 0
   const shown = new Set<string>()
   for (const p of probes) {
-    const roots = [p.detection?.dataRoot ?? null, p.storeDir, p.historyFile, ...p.sqlite.map((s) => s.path)].filter((r): r is string => Boolean(r))
+    // §5.3: variant stores are roots this adapter also reads. Printing them here is the
+    // difference between "the machine ran two stores" and a silent gap in the numbers.
+    const roots = [
+      p.detection?.dataRoot ?? null,
+      ...(p.detection?.variantRoots ?? []),
+      ...p.storeDirs,
+      p.historyFile,
+      ...p.sqlite.map((s) => s.path),
+    ].filter((r): r is string => Boolean(r))
     // A session dir the store survey could not list is a permission fact of exactly the same
     // kind as the roots above, and it is only knowable from the survey (§11's third state).
     const targets = [...roots, ...(p.survey?.unreadableDirs ?? []).filter((d) => accessOf(d) === 'unreadable')]
@@ -631,6 +701,8 @@ export function renderPermissions(rctx: Ctx, probes: readonly AdapterProbe[]): v
       const access = accessOf(root)
       const glyph = access === 'readable' ? GLYPH.ok : access === 'unreadable' ? GLYPH.err : GLYPH.none
       rctx.out(`${glyph} ${displayPath(root, rctx.homedir).padEnd(32)} ${describeAccess(access)}`)
+      const variant = p.detection?.variantRoots?.includes(root)
+      if (variant) rctx.out(`  → second store beside the canonical root (§5.3): its sessions are ingested too`)
       lines++
     }
     for (const s of p.sqlite) {

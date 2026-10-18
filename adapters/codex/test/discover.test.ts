@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { deriveSourceId, type SourceSpec } from '@agentlens/event-model'
-import { discover, ROLLOUT_PATTERN } from '../src/index.ts'
+import { codexAdapter, discover, ROLLOUT_PATTERN } from '../src/index.ts'
 import { SESSION_DIRS, threadHintFromPath } from '../src/paths.ts'
 import { FIXTURES_DIR, HOST_DIR, hostCtx } from './helpers.ts'
 
@@ -88,5 +88,43 @@ describe('discover (§5.1)', () => {
     expect(specs.map((s) => basename(s.path))).toEqual(['rollout-2026-09-17T09-00-00-01JNOVERSIONUUUUUUUUUUUUUU.jsonl'])
     const relocated = await collect(hostCtx({ dataRoot: '', homedir: '/nonexistent', env: { CODEX_HOME: HOST_DIR } }))
     expect(relocated).toEqual(await collect(hostCtx()))
+  })
+
+  /**
+   * §5.3, measured on a real home: `~/.codex` (6.2 GB) plus `~/.codex-deepseek` (85 MB, a
+   * full `state_5.sqlite` layout). Reading one root reported a smaller world than the machine
+   * ran; both stores must be sources, deterministically ordered and path-id'd.
+   */
+  it('reads a second store beside the canonical one (§5.3 variant roots)', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'agl-codex-variants-'))
+    try {
+      const canonical = join(home, '.codex')
+      const variant = join(home, '.codex-deepseek')
+      await mkdir(join(canonical, 'sessions', '2026', '09', '10'), { recursive: true })
+      await mkdir(join(variant, 'sessions', '2026', '09', '11'), { recursive: true })
+      await writeFile(
+        join(canonical, 'sessions', '2026', '09', '10', 'rollout-2026-09-10T09-00-00-01JCANONICALAAAAAAAAAAAA.jsonl'),
+        '{}\n',
+        'utf8',
+      )
+      await writeFile(
+        join(variant, 'sessions', '2026', '09', '11', 'rollout-2026-09-11T09-00-00-01JVARIANTBBBBBBBBBBBBB.jsonl'),
+        '{}\n',
+        'utf8',
+      )
+      const ctx = hostCtx({ homedir: home, dataRoot: null, env: {} })
+      const specs = await collect(ctx)
+      const paths = specs.map((s) => s.path)
+      expect(paths).toContain(join(canonical, 'sessions', '2026', '09', '10', 'rollout-2026-09-10T09-00-00-01JCANONICALAAAAAAAAAAAA.jsonl'))
+      expect(paths).toContain(join(variant, 'sessions', '2026', '09', '11', 'rollout-2026-09-11T09-00-00-01JVARIANTBBBBBBBBBBBBB.jsonl'))
+      expect(specs).toEqual(await collect(ctx))
+      expect(new Set(specs.map((s) => s.id)).size).toBe(specs.length)
+
+      const d = await codexAdapter.detect(ctx)
+      expect(d.present).toBe(true)
+      expect(d.variantRoots).toEqual([variant])
+    } finally {
+      await rm(home, { recursive: true, force: true })
+    }
   })
 })

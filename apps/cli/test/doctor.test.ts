@@ -428,7 +428,7 @@ describe('Agents', () => {
     expect(claude.files).toHaveLength(2)
     expect(claude.bytes).toBe(SESSION_BYTES(SESSION_A) + SESSION_BYTES(SESSION_B))
     expect(claude.vanished).toEqual([])
-    expect(claude.storeDir).toBe(PROJECTS)
+    expect(claude.storeDirs).toEqual([PROJECTS])
     expect(claude.ext).toBe('.jsonl')
     expect(claude.historyFile).toBe(HISTORY)
     expect(claude.survey?.files).toBe(2)
@@ -547,6 +547,50 @@ describe('Coverage', () => {
     expect(out.text()).toContain('coverage stops where upstream retention stops (§4.4 row 4)')
   })
 
+  /**
+   * §5.3 regression, and it was a real hang: with two stores the shared prefix of their
+   * session files is the HOME directory, so surveying that walked the whole home (minutes on
+   * a real one). One survey per data root instead, and the Coverage line reports the sum.
+   */
+  it('surveys one store per data root, never their shared ancestor', async () => {
+    const out = recordingCtx(HOME)
+    const variant = join(HOME, '.claude-deepseek')
+    const variantProjects = join(variant, 'projects')
+    mkdirSync(join(variantProjects, 'proj-variant'), { recursive: true })
+    writeFileSync(join(variantProjects, 'proj-variant', 'sess-v.jsonl'), '{}\n', 'utf8')
+    mkdirSync(join(PROJECTS, 'proj-alpha'), { recursive: true })
+    try {
+      const [probe] = await probeAdapters(
+        [
+          fakeAdapter({
+            id: 'claude-code',
+            sources: [
+              ...CLAUDE_SOURCES,
+              { id: 'src-v', path: join(variantProjects, 'proj-variant', 'sess-v.jsonl'), kind: 'jsonl', sessionHint: 'sess-v' },
+            ],
+            detection: {
+              present: true,
+              agentVersion: '2.1.275',
+              dataRoot: CLAUDE,
+              variantRoots: [variant],
+            },
+          }),
+        ],
+        out,
+        db,
+      )
+      expect(probe!.storeDirs).toEqual([PROJECTS, variantProjects])
+      // The merged survey describes both stores: 2 canonical + 1 variant session file.
+      expect(probe!.survey?.files).toBe(3)
+      expect(probe!.survey?.access).toBe('readable')
+      await renderCoverage(db, out, [probe!])
+      const text = out.text()
+      expect(text).toContain('~/.claude/projects, ~/.claude-deepseek/projects')
+    } finally {
+      rmSync(variant, { recursive: true, force: true })
+    }
+  })
+
   it('refuses to claim completeness for an unreadable or absent store', async () => {
     const out = recordingCtx(HOME)
     const [ghost] = await probeAdapters(
@@ -563,7 +607,7 @@ describe('Coverage', () => {
     // resolve the root, forced onto the locked directory.
     const lockedProbe: AdapterProbe = {
       ...locked,
-      storeDir: LOCKED_PROJECT,
+      storeDirs: [LOCKED_PROJECT],
       survey: await surveySessionStore(LOCKED_PROJECT, '.jsonl'),
     }
     await renderCoverage(db, out, [ghost!, lockedProbe])

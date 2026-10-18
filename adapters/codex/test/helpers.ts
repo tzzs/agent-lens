@@ -78,13 +78,21 @@ export function ctxFor(name: string, sessionHint: string | null = null, path = `
   }
 }
 
+/**
+ * The fixture tree puts `host`, `host-empty` and `host-noversion` side by side, which is
+ * exactly the shape variant-root discovery looks for (§5.3) — real in a home directory, but
+ * here it would make every test read its siblings' stores. Fixture contexts therefore pin the
+ * root through the upstream env switch, the same way a user who relocated the store does, so
+ * each test still sees only the root it names. Variant behaviour is tested against real temp
+ * directories instead (`discover.test.ts`).
+ */
 export function hostCtx(overrides: Partial<HostContext> = {}): HostContext {
   const dataRoot = overrides.dataRoot ?? HOST_DIR
   const homedir = overrides.homedir ?? HOST_DIR
   return {
     dataRoot,
     homedir,
-    env: {},
+    env: { CODEX_HOME: dataRoot },
     async readFile(path) {
       return readFile(path, 'utf8')
     },
